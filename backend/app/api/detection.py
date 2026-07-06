@@ -17,7 +17,7 @@ from app.database.session import get_db
 from app.entity.db_models import User, DetectionScene, DetectionTask
 from app.entity.schemas import ApiResponse
 from app.services.detection_service import detection_service
-from app.storage.minio_client import MinIOClient, get_minio_client
+from app.storage.minio_client import get_minio_client
 from app.storage.redis_client import redis_client
 
 router = APIRouter(prefix="/api/detection", tags=["目标检测"])
@@ -198,13 +198,7 @@ async def detect_folder(
     if not image_files:
         raise HTTPException(status_code=400, detail="文件夹中没有支持的图像文件")
 
-    # 加载模型
-    model_path = detection_service.get_default_model_path(db, scene_id, model_version_id)
-    cache_key = (scene_id, model_version_id)
-    if not detection_service.load_model(scene_id, model_path, cache_key=cache_key):
-        raise HTTPException(status_code=500, detail="模型加载失败")
-
-    # 逐文件检测
+    # 逐文件检测（detect_batch 内部会自动加载模型，无需在此重复加载）
     batch_results = await detection_service.detect_batch(
         db=db,
         scene_id=scene_id,

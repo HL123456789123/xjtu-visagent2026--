@@ -249,19 +249,22 @@ class KnowledgeService:
         Returns:
             统计信息
         """
+        import asyncio
+
         self._initialize()
 
         try:
             from sqlalchemy import text
 
-            connection = self.vector_store._connection
-            if connection:
-                # 查询文档数量
+            def _query_stats():
+                connection = self.vector_store._connection
+                if not connection:
+                    return {"total_chunks": 0, "sources": []}
+
                 query = text("SELECT COUNT(*) FROM langchain_pg_embedding")
                 result = connection.execute(query)
                 count = result.scalar()
 
-                # 查询来源统计
                 query = text("""
                     SELECT cmetadata->>'source' as source, COUNT(*) as count
                     FROM langchain_pg_embedding
@@ -272,7 +275,7 @@ class KnowledgeService:
 
                 return {"total_chunks": count, "sources": sources}
 
-            return {"total_chunks": 0, "sources": []}
+            return await asyncio.to_thread(_query_stats)
 
         except Exception as e:
             logger.error(f"获取统计信息失败: {e}")

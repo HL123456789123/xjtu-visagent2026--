@@ -9,7 +9,6 @@ import tempfile
 import threading
 import time
 from collections import OrderedDict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -17,6 +16,7 @@ import cv2
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
+from app.core.tz import now_cst
 from app.entity.db_models import (
     DetectionTask,
     DetectionResult,
@@ -176,10 +176,13 @@ class DetectionService:
         # 使用场景+模型版本组合作为缓存 key
         cache_key = (scene_id, model_version_id)
 
-        # 确保模型已加载
+        # 确保模型已加载（load_model 是同步操作，通过 to_thread 避免阻塞事件循环）
         if cache_key not in self.models:
             model_path = self.get_default_model_path(db, scene_id, model_version_id)
-            if not self.load_model(scene_id, model_path, cache_key=cache_key):
+            import asyncio
+
+            loaded = await asyncio.to_thread(self.load_model, scene_id, model_path, cache_key)
+            if not loaded:
                 raise ValueError(f"无法加载模型: scene_id={scene_id}")
 
         model = self.models[cache_key]
@@ -363,7 +366,8 @@ class DetectionService:
         cache_key = (scene_id, model_version_id)
         if cache_key not in self.models:
             model_path = self.get_default_model_path(db, scene_id, model_version_id)
-            if not self.load_model(scene_id, model_path, cache_key=cache_key):
+            loaded = await asyncio.to_thread(self.load_model, scene_id, model_path, cache_key)
+            if not loaded:
                 raise ValueError(f"无法加载模型: scene_id={scene_id}")
 
         # 在线程中执行同步推理，避免阻塞事件循环
@@ -571,7 +575,7 @@ class DetectionService:
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
             image_size=image_size,
-            completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            completed_at=now_cst(),
         )
         # 记录使用的模型版本（如果有的话）
         if model_version_id:
@@ -663,7 +667,7 @@ class DetectionService:
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
             image_size=image_size,
-            completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            completed_at=now_cst(),
         )
         if model_version_id:
             task.model_version_id = model_version_id

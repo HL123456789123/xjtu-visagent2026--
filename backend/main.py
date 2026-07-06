@@ -98,7 +98,6 @@ def _validate_security_config():
 async def _shutdown_cleanup():
     """优雅关闭：停止训练线程、关闭 LLM 客户端和 Redis 连接"""
     import asyncio
-    import threading
 
     # 1. 停止所有训练任务
     try:
@@ -110,8 +109,9 @@ async def _shutdown_cleanup():
                 logger.info(f"已发送停止信号: 训练任务 {task_id}")
 
         # 等待训练线程结束（最多 5 秒）
+        # 使用 to_thread 包装 join，避免在 async 上下文中阻塞事件循环
         for task_id, thread in list(training_service.active_tasks.items()):
-            thread.join(timeout=5)
+            await asyncio.to_thread(thread.join, timeout=5)
             if thread.is_alive():
                 logger.warning(f"训练线程 {task_id} 未能在超时内停止")
     except Exception as e:

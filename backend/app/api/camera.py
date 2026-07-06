@@ -13,10 +13,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
-from app.core.security import decode_access_token, get_current_user
+from app.core.security import decode_access_token, get_current_user, RequirePermission
 from app.entity.schemas import ApiResponse
 from app.database.session import get_db, SessionLocal
-from app.entity.db_models import User, DetectionScene, ModelVersion, SceneModel
+from app.entity.db_models import User, DetectionScene, ModelVersion, SceneModel, UserRole, RolePermission, Permission
 from app.services.detection_service import detection_service
 from app.services.user_service import user_service
 
@@ -70,8 +70,31 @@ def _authenticate_websocket_token(token: Optional[str]) -> Optional[int]:
         return None
 
 
+def _check_websocket_permission(db, user_id: int, permission_code: str) -> bool:
+    """检查 WebSocket 用户是否拥有指定权限"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return False
+    if user.is_superuser:
+        return True
+    has_perm = (
+        db.query(Permission)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(UserRole, UserRole.role_id == RolePermission.role_id)
+        .filter(UserRole.user_id == user_id, Permission.code == permission_code)
+        .first()
+    )
+    return has_perm is not None
+
+
 @router.websocket("/detect")
-async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str] = None):
+async def camera_detect(
+    websocket: WebSocket,
+    scene_id: int,
+    token: Optional[str] = None,
+    conf_threshold: float = 0.25,
+    iou_threshold: float = 0.45,
+):
     """
     摄像头实时检测 WebSocket 端点
 
@@ -109,6 +132,12 @@ async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str
             await websocket.accept()
             await websocket.send_json({"type": "error", "message": "用户不存在或已被禁用"})
             await websocket.close(code=4001)
+            return
+        # 检查检测权限
+        if not _check_websocket_permission(db, user_id, "detection:task:create"):
+            await websocket.accept()
+            await websocket.send_json({"type": "error", "message": "权限不足，需要 detection:task:create 权限"})
+            await websocket.close(code=4003)
             return
     except Exception:
         await websocket.accept()
@@ -209,9 +238,12 @@ async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str
                         await session.send_json({"type": "error", "message": "图像解码失败"})
                         continue
 
-                    # 执行检测
+                    # 执行检测（通过 to_thread 避免阻塞事件循环）
                     start_time = time.time()
-                    results = detection_service.models[cache_key](frame, conf=0.25, iou=0.45)
+                    results = await asyncio.to_thread(
+                        detection_service.models[cache_key],
+                        frame, conf=conf_threshold, iou=iou_threshold,
+                    )
                     inference_time = (time.time() - start_time) * 1000  # ms
 
                     # 解析检测结果
@@ -273,7 +305,7 @@ async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str
         )
 
 
-@router.get("/scenes", response_model=ApiResponse)
+@router.get("/scenes", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:view"))])
 async def get_camera_scenes(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
