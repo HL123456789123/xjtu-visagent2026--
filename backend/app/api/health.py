@@ -5,10 +5,10 @@
 - GET /api/health/redis - 真实检测 Redis 连接
 - GET /api/health/minio - 真实检测 MinIO 连接
 """
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 from app.config.settings import settings
-from app.database.session import get_db
 from app.core.logger import get_logger
 
 logger = get_logger("health")
@@ -31,6 +31,7 @@ async def database_health():
     """真实检测 PostgreSQL 连接"""
     try:
         from app.database.session import SessionLocal
+
         db = SessionLocal()
         try:
             db.execute(text("SELECT 1"))
@@ -57,7 +58,7 @@ async def database_health():
 async def redis_health():
     """真实检测 Redis 连接"""
     from app.storage.redis_client import redis_client
-    
+
     if redis_client.is_connected():
         return {
             "status": "healthy",
@@ -81,6 +82,7 @@ async def minio_health():
     """真实检测 MinIO 连接"""
     try:
         from minio import Minio
+
         client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ACCESS_KEY,
