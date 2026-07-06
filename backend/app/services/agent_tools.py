@@ -4,6 +4,7 @@ Agent 工具模块
 包括检测、历史查询、统计、知识库检索等
 """
 import json
+from contextlib import contextmanager
 from typing import Optional, Dict, Any, List
 
 from langchain_core.tools import tool
@@ -12,6 +13,20 @@ from pydantic import BaseModel, Field
 from app.core.logger import get_logger
 
 logger = get_logger("agent_tools")
+
+
+@contextmanager
+def _agent_db():
+    """Agent 工具统一的数据库会话上下文管理器"""
+    from app.database.session import SessionLocal
+    db = SessionLocal()
+    try:
+        yield db
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 # ── 工具输入模型 ──────────────────────────────────────
@@ -61,12 +76,10 @@ async def detect_objects(
         检测结果JSON字符串
     """
     try:
-        from app.database.session import SessionLocal
         from app.entity.db_models import DetectionScene
         from app.services.detection_service import detection_service
         
-        db = SessionLocal()
-        try:
+        with _agent_db() as db:
             # 查找场景
             scene = db.query(DetectionScene).filter(
                 DetectionScene.name == scene_name
@@ -102,9 +115,6 @@ async def detect_objects(
                 })
             
             return json.dumps(formatted_result, ensure_ascii=False)
-        
-        finally:
-            db.close()
     
     except Exception as e:
         logger.error(f"检测工具执行失败: {e}")
@@ -125,11 +135,9 @@ async def query_history(query: str, limit: int = 10) -> str:
         历史记录JSON字符串
     """
     try:
-        from app.database.session import SessionLocal
         from app.entity.db_models import DetectionTask, DetectionScene
         
-        db = SessionLocal()
-        try:
+        with _agent_db() as db:
             # 简单查询最近的检测记录
             tasks = db.query(DetectionTask).order_by(
                 DetectionTask.created_at.desc()
@@ -155,9 +163,6 @@ async def query_history(query: str, limit: int = 10) -> str:
                 "total": len(results),
                 "records": results
             }, ensure_ascii=False)
-        
-        finally:
-            db.close()
     
     except Exception as e:
         logger.error(f"历史查询工具执行失败: {e}")
@@ -177,12 +182,10 @@ async def get_statistics(scene_name: Optional[str] = None) -> str:
         统计信息JSON字符串
     """
     try:
-        from app.database.session import SessionLocal
         from app.entity.db_models import DetectionTask, DetectionScene, DetectionResult
         from sqlalchemy import func
         
-        db = SessionLocal()
-        try:
+        with _agent_db() as db:
             stats = {}
             
             if scene_name:
@@ -236,9 +239,6 @@ async def get_statistics(scene_name: Optional[str] = None) -> str:
                 }
             
             return json.dumps(stats, ensure_ascii=False)
-        
-        finally:
-            db.close()
     
     except Exception as e:
         logger.error(f"统计工具执行失败: {e}")
@@ -289,11 +289,9 @@ async def get_scenes() -> str:
         场景列表JSON字符串
     """
     try:
-        from app.database.session import SessionLocal
         from app.entity.db_models import DetectionScene
         
-        db = SessionLocal()
-        try:
+        with _agent_db() as db:
             scenes = db.query(DetectionScene).filter(
                 DetectionScene.is_active == True
             ).all()
@@ -312,9 +310,6 @@ async def get_scenes() -> str:
                 "total": len(result),
                 "scenes": result
             }, ensure_ascii=False)
-        
-        finally:
-            db.close()
     
     except Exception as e:
         logger.error(f"获取场景工具执行失败: {e}")

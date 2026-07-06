@@ -40,8 +40,16 @@ class AgentState(TypedDict):
 
 import httpx
 
+# LLM 实例缓存，避免每次调用都创建新实例
+_llm_cache = None
+
+
 def get_llm():
-    """获取 LLM 实例"""
+    """获取 LLM 实例（缓存复用）"""
+    global _llm_cache
+    if _llm_cache is not None:
+        return _llm_cache
+    
     # 创建自定义 httpx 客户端，禁用 HTTP/2 并增加超时
     http_async_client = httpx.AsyncClient(
         http2=False,
@@ -49,7 +57,7 @@ def get_llm():
         follow_redirects=True
     )
     
-    return ChatOpenAI(
+    _llm_cache = ChatOpenAI(
         model=settings.OPENAI_MODEL,
         openai_api_key=settings.OPENAI_API_KEY,
         openai_api_base=settings.OPENAI_BASE_URL,
@@ -57,6 +65,7 @@ def get_llm():
         streaming=True,
         http_async_client=http_async_client
     )
+    return _llm_cache
 
 
 # ── Supervisor 节点 ───────────────────────────────────
