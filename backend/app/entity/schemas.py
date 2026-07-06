@@ -133,16 +133,6 @@ class PermissionResponse(BaseModel):
 # ══════════════════════════════════════════════════════════════
 
 
-class DetectionSceneCreate(BaseModel):
-    """创建检测场景"""
-    name: str = Field(..., min_length=2, max_length=100, description="场景标识")
-    display_name: str = Field(..., description="场景显示名")
-    description: str = ""
-    category: str = Field(..., description="场景分类")
-    class_names: list[str] = Field(..., description="类别名称列表")
-    class_names_cn: Optional[dict] = Field(None, description="类别中文名映射")
-
-
 class DetectionSceneResponse(BaseModel):
     """检测场景响应"""
     id: int
@@ -150,7 +140,7 @@ class DetectionSceneResponse(BaseModel):
     display_name: str
     description: Optional[str] = None
     category: str
-    class_names: list
+    class_names: list[str]
     class_names_cn: Optional[dict] = None
     is_active: bool = True
     created_by: Optional[int] = None
@@ -204,21 +194,6 @@ class DetectionResultResponse(BaseModel):
 # ══════════════════════════════════════════════════════════════
 # 三、训练模块
 # ══════════════════════════════════════════════════════════════
-
-
-class TrainingTaskCreate(BaseModel):
-    """创建训练任务"""
-    model_id: int
-    base_architecture: str = "yolov11n"
-    epochs: int = 100
-    img_size: int = 640
-    batch_size: int = 16
-    device: str = "cpu"
-    optimizer: str = "SGD"
-    lr0: float = 0.01
-    dataset_path: str
-    data_yaml: str
-    set_as_default: bool = False
 
 
 class TrainingTaskResponse(BaseModel):
@@ -315,7 +290,7 @@ class ModelCreate(BaseModel):
     description: str = ""
     base_architecture: str = "yolov11n"
     category: str = "general"
-    class_names: list = Field(..., description="类别列表")
+    class_names: list[str] = Field(..., description="类别列表")
     class_names_cn: Optional[dict] = Field(None, description="类别中文名映射")
 
 
@@ -337,7 +312,7 @@ class ModelResponse(BaseModel):
     description: Optional[str] = None
     base_architecture: str = "yolov11n"
     category: str
-    class_names: list
+    class_names: list[str]
     class_names_cn: Optional[dict] = None
     status: str = "active"
     created_by: Optional[int] = None

@@ -85,3 +85,15 @@ class MinIOClient:
             bucket_name=self.bucket_name,
             object_name=object_name,
         )
+
+
+# 全局单例，避免重复创建连接
+_minio_client_instance: MinIOClient | None = None
+
+
+def get_minio_client() -> MinIOClient:
+    """获取全局 MinIO 客户端单例"""
+    global _minio_client_instance
+    if _minio_client_instance is None:
+        _minio_client_instance = MinIOClient()
+    return _minio_client_instance

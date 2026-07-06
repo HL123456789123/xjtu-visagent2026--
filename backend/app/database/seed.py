@@ -74,10 +74,9 @@ OPERATOR_PERMISSIONS = [
     "system:dashboard",
 ]
 
-# viewer 角色拥有的权限
+# viewer 角色拥有的权限（只读，不含创建/修改资源权限）
 VIEWER_PERMISSIONS = [
     "detection:task:view",
-    "detection:scene:create",
     "training:task:view",
     "model:view",
     "agent:chat",

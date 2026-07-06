@@ -3,7 +3,7 @@ Dashboard 数据统计 API 路由
 提供后端聚合的统计数据，避免前端多次请求和聚合计算
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -71,7 +71,7 @@ async def get_dashboard_stats(
         )
 
         # 2. 近7天检测趋势
-        seven_days_ago = datetime.now() - timedelta(days=7)
+        seven_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
         trend_query = db.query(
             func.date(DetectionTask.created_at).label("date"),
             func.count(DetectionTask.id).label("count"),
@@ -85,7 +85,7 @@ async def get_dashboard_stats(
         # 填充完整7天数据
         trend_data = []
         for i in range(7):
-            date = (datetime.now() - timedelta(days=6 - i)).strftime("%Y-%m-%d")
+            date = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=6 - i)).strftime("%Y-%m-%d")
             count = next((d.count for d in daily_detections if str(d.date) == date), 0)
             trend_data.append({"date": date, "count": count})
 
