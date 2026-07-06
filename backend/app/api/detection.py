@@ -17,7 +17,7 @@ from app.database.session import get_db
 from app.entity.db_models import User, DetectionScene, DetectionTask
 from app.entity.schemas import ApiResponse
 from app.services.detection_service import detection_service
-from app.storage.minio_client import MinIOClient
+from app.storage.minio_client import MinIOClient, get_minio_client
 from app.storage.redis_client import redis_client
 
 router = APIRouter(prefix="/api/detection", tags=["目标检测"])
@@ -282,15 +282,36 @@ async def detect_video(
         )
 
         # 上传结果视频到 MinIO
-
-        minio_client = MinIOClient()
+        minio_client = get_minio_client()
         object_name = f"detection/video/{os.path.basename(output_path)}"
         video_url = minio_client.upload_file(object_name, output_path)
+
+        # 保存视频检测任务记录
+        task = await detection_service.save_detection_result(
+            db=db,
+            user_id=current_user.id,
+            scene_id=scene_id,
+            task_type="video",
+            detections=[],
+            image_path=video_path,
+            annotated_image_path=None,
+            conf_threshold=conf_threshold,
+            iou_threshold=iou_threshold,
+            image_size=image_size,
+            inference_time=result.get("inference_time", 0),
+            model_version_id=model_version_id,
+        )
+        # 更新视频检测统计
+        task.total_images = result.get("total_frames", 0)
+        task.total_objects = result.get("total_objects", 0)
+        db.commit()
+        db.refresh(task)
 
         return ApiResponse(
             code=200,
             message="视频检测完成",
             data={
+                "task_id": task.id,
                 "total_frames": result["total_frames"],
                 "total_objects": result["total_objects"],
                 "inference_time": result["inference_time"],
@@ -312,11 +333,11 @@ async def get_detection_task(
 ):
     """获取检测任务详情"""
 
-    task = (
-        db.query(DetectionTask)
-        .filter(DetectionTask.id == task_id, DetectionTask.user_id == current_user.id)
-        .first()
-    )
+    query = db.query(DetectionTask).filter(DetectionTask.id == task_id)
+    # 非超级管理员只能查看自己的任务
+    if not current_user.is_superuser:
+        query = query.filter(DetectionTask.user_id == current_user.id)
+    task = query.first()
     if not task:
         raise HTTPException(status_code=404, detail="检测任务不存在")
 
@@ -348,12 +369,10 @@ async def get_detection_results(
 ):
     """获取检测结果"""
     # 先校验任务所有权
-
-    task = (
-        db.query(DetectionTask)
-        .filter(DetectionTask.id == task_id, DetectionTask.user_id == current_user.id)
-        .first()
-    )
+    query = db.query(DetectionTask).filter(DetectionTask.id == task_id)
+    if not current_user.is_superuser:
+        query = query.filter(DetectionTask.user_id == current_user.id)
+    task = query.first()
     if not task:
         raise HTTPException(status_code=404, detail="检测任务不存在")
 

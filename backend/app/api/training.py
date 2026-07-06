@@ -48,12 +48,15 @@ def _validate_training_path(file_path: str, label: str = "路径"):
     )
 
 
-def _get_task_or_403(db: Session, task_id: int, user_id: int):
-    """获取训练任务并校验所有权，不属于当前用户则抛出 403"""
+def _get_task_or_403(db: Session, task_id: int, user: User):
+    """获取训练任务并校验所有权，超级管理员可管理所有任务"""
     task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="训练任务不存在")
-    if task.user_id != user_id:
+    # 超级管理员直接放行
+    if user.is_superuser:
+        return task
+    if task.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权操作该训练任务")
     return task
 
@@ -113,7 +116,7 @@ async def start_training(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """启动训练任务"""
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     success = training_service.start_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="启动训练失败")
@@ -126,7 +129,7 @@ async def pause_training(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """暂停训练任务"""
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     success = training_service.pause_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="暂停训练失败")
@@ -139,7 +142,7 @@ async def cancel_training(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """取消训练任务"""
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     success = training_service.cancel_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="取消训练失败")
@@ -152,7 +155,7 @@ async def get_training_task(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取训练任务详情"""
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     status = training_service.get_training_status(db, task_id)
     if not status:
         raise HTTPException(status_code=404, detail="训练任务不存在")
@@ -165,7 +168,7 @@ async def get_training_status(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取训练状态"""
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     status = training_service.get_training_status(db, task_id)
     if not status:
         raise HTTPException(status_code=404, detail="训练任务不存在")
@@ -178,7 +181,7 @@ async def get_training_metrics(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取训练指标"""
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     metrics = training_service.get_training_metrics(db, task_id)
     return ApiResponse(code=200, data=metrics)
 
@@ -196,7 +199,7 @@ async def validate_model(
 
     对训练完成的模型在验证集上进行评估，返回 mAP、precision、recall 等指标
     """
-    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     result = training_service.validate_model(
         db=db, task_id=task_id, data_yaml=data_yaml, img_size=img_size, batch_size=batch_size
     )
@@ -303,7 +306,7 @@ async def upload_model(
     """手动上传模型版本文件（归属于指定模型下）"""
     import shutil
     from pathlib import Path
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # 验证模型是否存在
     model_obj = db.query(Model).filter(Model.id == model_id).first()
@@ -344,7 +347,7 @@ async def upload_model(
         source="upload",
         status="active",
         model_path=str(model_path),
-        description=description or f"手动上传于 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        description=description or f"手动上传于 {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')}",
         file_size=file_size,
         is_default=is_default,
     )
@@ -401,6 +404,11 @@ async def convert_voc_to_yolo_api(
         if os.path.exists(voc_path):
             os.unlink(voc_path)
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        # 清理临时目录
+        if 'output_dir' in locals() and os.path.exists(output_dir):
+            import shutil as _shutil
+            _shutil.rmtree(output_dir, ignore_errors=True)
 
 
 @router.post("/datasets/convert/coco-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
@@ -466,6 +474,11 @@ async def convert_labelme_to_yolo_api(
         if os.path.exists(labelme_path):
             os.unlink(labelme_path)
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        # 清理临时目录
+        if 'output_dir' in locals() and os.path.exists(output_dir):
+            import shutil as _shutil
+            _shutil.rmtree(output_dir, ignore_errors=True)
 
 
 @router.get("/models/{version_id}/download", dependencies=[Depends(RequirePermission("model:view"))])
@@ -487,13 +500,18 @@ async def download_model(
     if not model_version:
         raise HTTPException(status_code=404, detail="模型不存在")
 
+    # 校验模型所有权：超级管理员可下载所有模型，其他用户只能下载自己创建的
+    model_obj = db.query(Model).filter(Model.id == model_version.model_id).first()
+    if not current_user.is_superuser:
+        if model_obj and model_obj.created_by and model_obj.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="无权下载该模型")
+
     # 检查模型文件是否存在
     model_path = model_version.model_path
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="模型文件不存在")
 
-    # 生成下载文件名（通过关联的 Model 获取名称）
-    model_obj = db.query(Model).filter(Model.id == model_version.model_id).first()
+    # 生成下载文件名
     model_name = model_obj.name if model_obj else "model"
     filename = f"{model_name}_{model_version.version}.pt"
 
