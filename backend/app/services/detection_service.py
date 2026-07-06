@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -184,8 +184,11 @@ class DetectionService:
 
         model = self.models[cache_key]
 
-        # 执行检测
-        results = model.predict(
+        # 执行检测（同步阻塞操作，委托到线程池）
+        import asyncio
+
+        results = await asyncio.to_thread(
+            model.predict,
             source=image_path,
             conf=conf_threshold,
             iou=iou_threshold,
@@ -568,7 +571,7 @@ class DetectionService:
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
             image_size=image_size,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         # 记录使用的模型版本（如果有的话）
         if model_version_id:
@@ -660,7 +663,7 @@ class DetectionService:
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
             image_size=image_size,
-            completed_at=datetime.now(),
+            completed_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         if model_version_id:
             task.model_version_id = model_version_id

@@ -146,16 +146,18 @@ class KnowledgeService:
         Returns:
             存储的文档块数量
         """
+        import asyncio
+
         self._initialize()
 
         try:
-            # 加载文档
-            documents = self.load_document(file_path)
+            # 加载文档（同步阻塞操作，委托到线程池）
+            documents = await asyncio.to_thread(self.load_document, file_path)
             if not documents:
                 return 0
 
             # 分块
-            chunks = self.split_document(documents)
+            chunks = await asyncio.to_thread(self.split_document, documents)
             if not chunks:
                 return 0
 
@@ -164,8 +166,8 @@ class KnowledgeService:
                 chunk.metadata["source"] = file_path
                 chunk.metadata["file_name"] = Path(file_path).name
 
-            # 存储到向量库
-            self.vector_store.add_documents(chunks)
+            # 存储到向量库（同步阻塞操作，委托到线程池）
+            await asyncio.to_thread(self.vector_store.add_documents, chunks)
 
             logger.info(f"文档存储完成: {file_path}, 块数={len(chunks)}")
             return len(chunks)

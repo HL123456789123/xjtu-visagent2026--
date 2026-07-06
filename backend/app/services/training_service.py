@@ -7,7 +7,7 @@
 import csv
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from sqlalchemy.orm import Session
@@ -65,7 +65,7 @@ class TrainingService:
                         logger.info(
                             f"任务 {task.id} ({task.task_uuid}) 标记为 failed（无 checkpoint）"
                         )
-                    task.updated_at = datetime.now()
+                    task.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
                 db.commit()
                 logger.info(
@@ -144,7 +144,7 @@ class TrainingService:
 
         # 更新任务状态
         task.status = "running"
-        task.started_at = datetime.now()
+        task.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
         task.error_message = None
         db.commit()
 
@@ -268,7 +268,7 @@ class TrainingService:
             else:
                 # 训练完成
                 task.status = "completed"
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 task.progress = 100
                 task.current_epoch = task.epochs
 
@@ -660,7 +660,7 @@ class TrainingService:
                 "confusion_matrix": results.confusion_matrix.matrix.tolist()
                 if results.confusion_matrix
                 else None,
-                "evaluated_at": datetime.now().isoformat(),
+                "evaluated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             }
 
             # 提取各类别 AP
@@ -743,7 +743,6 @@ class TrainingService:
                     "batch_size": t.batch_size,
                     "lr0": t.lr0,
                     "device": t.device,
-                    "checkpoint_path": t.checkpoint_path,
                     "last_checkpoint_epoch": t.last_checkpoint_epoch,
                     "created_at": t.created_at.isoformat() if t.created_at else None,
                 }

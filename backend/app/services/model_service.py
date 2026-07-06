@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -230,11 +230,12 @@ class ModelService:
             "class_names_cn",
             "status",
         }
+        # 允许将 description 等可选字段设为 None（清空）
         for key, value in kwargs.items():
-            if key in allowed_fields and value is not None:
+            if key in allowed_fields:
                 setattr(model, key, value)
 
-        model.updated_at = datetime.now()
+        model.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         db.refresh(model)
         logger.info(f"更新模型: id={model_id}")
@@ -247,7 +248,7 @@ class ModelService:
             return False
 
         model.status = "archived"
-        model.updated_at = datetime.now()
+        model.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # 同时归档所有版本
         db.query(ModelVersion).filter(
@@ -374,7 +375,7 @@ class ModelService:
                     "class_names": model.class_names,
                     "class_names_cn": model.class_names_cn,
                     "source": version.source,
-                    "exported_at": datetime.now().isoformat(),
+                    "exported_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
                     "metrics": {
                         "map50": version.map50,
                         "map50_95": version.map50_95,
@@ -400,6 +401,9 @@ class ModelService:
 
         except Exception as e:
             logger.error(f"导出模型失败: {e}")
+            # 清理失败的临时目录
+            if 'tmp_dir' in locals() and os.path.exists(tmp_dir):
+                shutil.rmtree(tmp_dir, ignore_errors=True)
             return None
 
     def import_model(
@@ -477,7 +481,7 @@ class ModelService:
                     model_path=str(dest_path),
                     file_size=file_size,
                     description=description
-                    or f"导入于 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    or f"导入于 {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')}",
                     is_default=(version_count == 0),
                 )
                 db.add(mv)

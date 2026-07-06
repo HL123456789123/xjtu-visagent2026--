@@ -5,7 +5,7 @@
 
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, AIMessage
@@ -49,7 +49,7 @@ class ChatService:
             title=title or "新对话",
             status="active",
             message_count=0,
-            last_message_at=datetime.now(),
+            last_message_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         db.add(session)
         db.commit()
@@ -103,7 +103,7 @@ class ChatService:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if session:
             session.message_count += 1
-            session.last_message_at = datetime.now()
+            session.last_message_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         db.commit()
         db.refresh(message)
@@ -209,7 +209,9 @@ class ChatService:
 
             # 流式执行（设置递归限制防止无限循环）
             async for event in graph.astream_events(
-                initial_state, version="v2", recursion_limit=10
+                initial_state,
+                config={"recursion_limit": 10},
+                version="v2",
             ):
                 event_kind = event["event"]
 
