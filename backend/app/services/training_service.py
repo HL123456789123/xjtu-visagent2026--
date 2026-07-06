@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
 from app.core.tz import now_cst
+from app.storage.redis_client import redis_client
 from app.entity.db_models import TrainingTask, TrainingMetric, ModelVersion
 
 logger = get_logger("training_service")
@@ -266,6 +267,7 @@ class TrainingService:
                         logger.info(f"已清理取消任务的 checkpoint: {checkpoint_file}")
                     task.checkpoint_path = None
                     task.last_checkpoint_epoch = 0
+                    self._invalidate_training_cache(task_id)
                     logger.info(f"训练任务已取消: task_id={task_id}")
             else:
                 # 训练完成
@@ -273,6 +275,7 @@ class TrainingService:
                 task.completed_at = now_cst()
                 task.progress = 100
                 task.current_epoch = task.epochs
+                self._invalidate_training_cache(task_id)
 
                 # 训练完成，清理 checkpoint
                 if os.path.exists(checkpoint_file):
@@ -301,6 +304,7 @@ class TrainingService:
                 try:
                     task.status = "failed"
                     task.error_message = str(e)
+                    self._invalidate_training_cache(task_id)
                     db.commit()
                 except Exception as commit_err:
                     logger.error(f"记录训练失败状态时发生数据库错误: {commit_err}")
@@ -460,6 +464,7 @@ class TrainingService:
             stop_flag.set()
 
         task.status = "cancelled"
+        self._invalidate_training_cache(task_id)
         db.commit()
 
         # 注意：checkpoint 文件的实际清理由 _train_worker 线程完成
@@ -477,9 +482,13 @@ class TrainingService:
         logger.info(f"取消训练任务: task_id={task_id}")
         return True
 
+    def _invalidate_training_cache(self, task_id: int) -> None:
+        """清除训练状态 Redis 缓存"""
+        redis_client.cache_delete("training_status", str(task_id))
+
     def get_training_status(self, db: Session, task_id: int) -> Optional[Dict[str, Any]]:
         """
-        获取训练状态
+        获取训练状态（支持 Redis 缓存）
 
         Args:
             db: 数据库会话
@@ -488,11 +497,16 @@ class TrainingService:
         Returns:
             训练状态字典
         """
+        # 尝试从 Redis 缓存获取（5 秒 TTL）
+        cached = redis_client.cache_get("training_status", str(task_id))
+        if cached:
+            return cached
+
         task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
         if not task:
             return None
 
-        return {
+        result = {
             "task_id": task.id,
             "status": task.status,
             "current_epoch": task.current_epoch,
@@ -502,6 +516,12 @@ class TrainingService:
             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             "error_message": task.error_message,
         }
+
+        # 写入缓存，训练中使用 5 秒 TTL，完成状态使用 60 秒 TTL
+        ttl = 5 if task.status in ("running", "paused") else 60
+        redis_client.cache_set("training_status", str(task_id), result, ex=ttl)
+
+        return result
 
     def get_training_metrics(self, db: Session, task_id: int) -> List[Dict[str, Any]]:
         """
