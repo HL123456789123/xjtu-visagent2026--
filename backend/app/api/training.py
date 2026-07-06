@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.core.tz import now_cst
 from app.database.session import get_db
 from app.entity.db_models import User, Model, ModelVersion, TrainingTask
 from app.entity.schemas import ApiResponse
+from app.core.rate_limiter import limiter
 from app.services.training_service import training_service
 from app.services.data_utils import (
     validate_dataset,
@@ -63,15 +64,17 @@ def _get_task_or_403(db: Session, task_id: int, user: User):
 
 
 @router.post("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
+@limiter.limit("10/minute")
 async def create_training_task(
+    request: Request,
     model_id: int = Form(..., description="模型ID"),
     base_architecture: str = Form("yolov11n", description="基础架构：yolov11n/s/m/l/x"),
-    epochs: int = Form(100, description="训练轮数"),
-    img_size: int = Form(640, description="图像尺寸"),
-    batch_size: int = Form(16, description="批次大小"),
+    epochs: int = Form(100, ge=1, le=1000, description="训练轮数"),
+    img_size: int = Form(640, ge=320, le=2048, description="图像尺寸"),
+    batch_size: int = Form(16, ge=1, le=256, description="批次大小"),
     device: str = Form("cpu", description="训练设备：0/1/cpu"),
     optimizer: str = Form("SGD", description="优化器：SGD/Adam/AdamW"),
-    lr0: float = Form(0.01, description="初始学习率"),
+    lr0: float = Form(0.01, ge=0.0001, le=0.1, description="初始学习率"),
     dataset_path: str = Form(..., description="数据集路径"),
     data_yaml: str = Form(..., description="data.yaml 路径"),
     set_as_default: bool = Form(False, description="训练完成后是否自动设为默认版本"),
@@ -292,7 +295,9 @@ async def generate_data_yaml_api(
 
 
 @router.post("/models/upload", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:create"))])
+@limiter.limit("10/minute")
 async def upload_model(
+    request: Request,
     model_id: int = Form(..., description="所属模型ID"),
     model_file: UploadFile = File(..., description="模型文件(.pt)"),
     version: str = Form(..., description="版本号，如 v1.0.0"),
