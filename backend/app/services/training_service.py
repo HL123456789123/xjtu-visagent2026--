@@ -7,12 +7,12 @@
 import csv
 import os
 import threading
-from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
+from app.core.tz import now_cst
 from app.entity.db_models import TrainingTask, TrainingMetric, ModelVersion
 
 logger = get_logger("training_service")
@@ -65,7 +65,7 @@ class TrainingService:
                         logger.info(
                             f"任务 {task.id} ({task.task_uuid}) 标记为 failed（无 checkpoint）"
                         )
-                    task.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    task.updated_at = now_cst()
 
                 db.commit()
                 logger.info(
@@ -144,7 +144,7 @@ class TrainingService:
 
         # 更新任务状态
         task.status = "running"
-        task.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        task.started_at = now_cst()
         task.error_message = None
         db.commit()
 
@@ -268,7 +268,7 @@ class TrainingService:
             else:
                 # 训练完成
                 task.status = "completed"
-                task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                task.completed_at = now_cst()
                 task.progress = 100
                 task.current_epoch = task.epochs
 
@@ -389,7 +389,8 @@ class TrainingService:
         """
         暂停训练任务
 
-        设置停止标志让训练线程自然停止，并保存 checkpoint 路径以便恢复
+        设置停止标志让训练线程自然停止，并保存 checkpoint 路径以便恢复。
+        注意：先设置 DB 状态再设置 stop_flag，避免工作线程看到旧状态而误判为取消。
 
         Args:
             db: 数据库会话
@@ -405,20 +406,22 @@ class TrainingService:
         if task.status != "running":
             return False
 
-        # 设置停止标志
-        with self._lock:
-            stop_flag = self.task_stop_flags.get(task_id)
-        if stop_flag:
-            stop_flag.set()
-
         # 保存 checkpoint 路径（YOLO 训练时 last.pt 会自动保存在 runs/train/task_X/weights/ 下）
         checkpoint_dir = os.path.join("runs", "train", f"task_{task_id}", "weights", "last.pt")
         if os.path.exists(checkpoint_dir):
             task.checkpoint_path = checkpoint_dir
             logger.info(f"已保存 checkpoint 路径: {checkpoint_dir}")
 
+        # 先设置 DB 状态为 paused 并提交，确保工作线程在检查 stop_flag 时
+        # 已经能看到正确的状态，避免“先设 flag 再改 status”导致的竞态条件
         task.status = "paused"
         db.commit()
+
+        # 设置停止标志（放在状态提交之后）
+        with self._lock:
+            stop_flag = self.task_stop_flags.get(task_id)
+        if stop_flag:
+            stop_flag.set()
 
         logger.info(f"暂停训练任务: task_id={task_id}")
         return True
@@ -660,7 +663,7 @@ class TrainingService:
                 "confusion_matrix": results.confusion_matrix.matrix.tolist()
                 if results.confusion_matrix
                 else None,
-                "evaluated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                "evaluated_at": now_cst().isoformat(),
             }
 
             # 提取各类别 AP
