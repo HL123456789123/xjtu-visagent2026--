@@ -20,7 +20,7 @@ export function createSceneApi(data) {
 
 /**
  * 单图检测
- * @param {Object} data - { scene_id, image, conf_threshold, iou_threshold, image_size }
+ * @param {Object} data - { scene_id, image, conf_threshold, iou_threshold, image_size, model_version_id }
  */
 export function detectSingleApi(data) {
   const formData = new FormData()
@@ -29,6 +29,9 @@ export function detectSingleApi(data) {
   formData.append('conf_threshold', data.conf_threshold || 0.25)
   formData.append('iou_threshold', data.iou_threshold || 0.45)
   formData.append('image_size', data.image_size || 640)
+  if (data.model_version_id) {
+    formData.append('model_version_id', data.model_version_id)
+  }
   return request.post('/detection/single', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
@@ -36,7 +39,7 @@ export function detectSingleApi(data) {
 
 /**
  * 批量检测
- * @param {Object} data - { scene_id, images[], conf_threshold, iou_threshold, image_size }
+ * @param {Object} data - { scene_id, images[], conf_threshold, iou_threshold, image_size, model_version_id }
  */
 export function detectBatchApi(data) {
   const formData = new FormData()
@@ -47,6 +50,9 @@ export function detectBatchApi(data) {
   formData.append('conf_threshold', data.conf_threshold || 0.25)
   formData.append('iou_threshold', data.iou_threshold || 0.45)
   formData.append('image_size', data.image_size || 640)
+  if (data.model_version_id) {
+    formData.append('model_version_id', data.model_version_id)
+  }
   return request.post('/detection/batch', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
@@ -54,7 +60,7 @@ export function detectBatchApi(data) {
 
 /**
  * 视频检测
- * @param {Object} data - { scene_id, video, conf_threshold, iou_threshold, image_size }
+ * @param {Object} data - { scene_id, video, conf_threshold, iou_threshold, image_size, model_version_id }
  */
 export function detectVideoApi(data) {
   const formData = new FormData()
@@ -63,6 +69,9 @@ export function detectVideoApi(data) {
   formData.append('conf_threshold', data.conf_threshold || 0.25)
   formData.append('iou_threshold', data.iou_threshold || 0.45)
   formData.append('image_size', data.image_size || 640)
+  if (data.model_version_id) {
+    formData.append('model_version_id', data.model_version_id)
+  }
   return request.post('/detection/video', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })

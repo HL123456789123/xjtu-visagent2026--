@@ -20,6 +20,7 @@
           <el-radio-button value="">全部</el-radio-button>
           <el-radio-button value="pending">等待中</el-radio-button>
           <el-radio-button value="running">运行中</el-radio-button>
+          <el-radio-button value="paused">已暂停</el-radio-button>
           <el-radio-button value="completed">已完成</el-radio-button>
           <el-radio-button value="failed">失败</el-radio-button>
         </el-radio-group>
@@ -34,7 +35,7 @@
           @click="selectTask(task)"
         >
           <div class="task-info">
-            <div class="task-name">{{ task.model_name }} - 场景 #{{ task.scene_id }}</div>
+            <div class="task-name">{{ task.base_architecture }} - 模型 #{{ task.model_id }}</div>
             <div class="task-meta">
               <el-tag :type="getStatusType(task.status)" size="small">
                 {{ getStatusText(task.status) }}
@@ -81,6 +82,14 @@
                 <el-icon><VideoPause /></el-icon>暂停
               </el-button>
               <el-button
+                v-if="currentTask.status === 'paused'"
+                type="success"
+                size="small"
+                @click="resumeTask"
+              >
+                <el-icon><VideoPlay /></el-icon>恢复训练
+              </el-button>
+              <el-button
                 v-if="['pending', 'running', 'paused'].includes(currentTask.status)"
                 type="danger"
                 size="small"
@@ -93,13 +102,13 @@
 
           <el-descriptions :column="2" border>
             <el-descriptions-item label="任务ID">{{ currentTask.id }}</el-descriptions-item>
-            <el-descriptions-item label="模型">{{ currentTask.model_name }}</el-descriptions-item>
+            <el-descriptions-item label="基础架构">{{ currentTask.base_architecture }}</el-descriptions-item>
             <el-descriptions-item label="状态">
               <el-tag :type="getStatusType(currentTask.status)">
                 {{ getStatusText(currentTask.status) }}
               </el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="场景ID">{{ currentTask.scene_id }}</el-descriptions-item>
+            <el-descriptions-item label="模型ID">{{ currentTask.model_id }}</el-descriptions-item>
             <el-descriptions-item label="训练轮数">{{ currentTask.epochs }}</el-descriptions-item>
             <el-descriptions-item label="批次大小">{{ currentTask.batch_size }}</el-descriptions-item>
             <el-descriptions-item label="学习率">{{ currentTask.lr0 }}</el-descriptions-item>
@@ -152,13 +161,13 @@
     <!-- 创建任务对话框 -->
     <el-dialog v-model="showCreateDialog" title="创建训练任务" width="500px">
       <el-form :model="createForm" label-width="100px">
-        <el-form-item label="检测场景" required>
-          <el-select v-model="createForm.scene_id" placeholder="选择场景">
+        <el-form-item label="模型" required>
+          <el-select v-model="createForm.model_id" placeholder="选择模型">
             <el-option
-              v-for="scene in scenes"
-              :key="scene.id"
-              :label="scene.display_name"
-              :value="scene.id"
+              v-for="model in models"
+              :key="model.id"
+              :label="model.name"
+              :value="model.id"
             />
           </el-select>
         </el-form-item>
@@ -202,13 +211,13 @@
     <!-- 上传模型对话框 -->
     <el-dialog v-model="showUploadDialog" title="上传训练模型" width="500px">
       <el-form :model="uploadForm" label-width="100px">
-        <el-form-item label="检测场景" required>
-          <el-select v-model="uploadForm.scene_id" placeholder="选择模型对应的场景">
+        <el-form-item label="模型" required>
+          <el-select v-model="uploadForm.model_id" placeholder="选择模型">
             <el-option
-              v-for="scene in scenes"
-              :key="scene.id"
-              :label="scene.display_name"
-              :value="scene.id"
+              v-for="model in models"
+              :key="model.id"
+              :label="model.name"
+              :value="model.id"
             />
           </el-select>
         </el-form-item>
@@ -226,27 +235,15 @@
             </template>
           </el-upload>
         </el-form-item>
-        <el-form-item label="模型名称" required>
-          <el-input v-model="uploadForm.model_name" placeholder="如 visagent_yolov11n" />
-        </el-form-item>
         <el-form-item label="版本号" required>
           <el-input v-model="uploadForm.version" placeholder="如 v1.0.0" />
-        </el-form-item>
-        <el-form-item label="模型类型">
-          <el-select v-model="uploadForm.model_type">
-            <el-option label="YOLOv11n (轻量)" value="yolov11n" />
-            <el-option label="YOLOv11s (小型)" value="yolov11s" />
-            <el-option label="YOLOv11m (中型)" value="yolov11m" />
-            <el-option label="YOLOv11l (大型)" value="yolov11l" />
-            <el-option label="YOLOv11x (超大)" value="yolov11x" />
-          </el-select>
         </el-form-item>
         <el-form-item label="模型描述">
           <el-input v-model="uploadForm.description" type="textarea" :rows="2" placeholder="模型说明（可选）" />
         </el-form-item>
         <el-form-item label="设为默认">
           <el-switch v-model="uploadForm.is_default" />
-          <span class="form-tip">开启后该场景的检测将使用此模型</span>
+          <span class="form-tip">开启后检测时将使用此模型</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -271,7 +268,7 @@ import {
   getTrainingMetricsApi,
   uploadModelApi
 } from '@/api/training'
-import { getScenesApi } from '@/api/detection'
+import { getModelsApi } from '@/api/model'
 
 // 任务列表
 const tasks = ref([])
@@ -282,9 +279,9 @@ const pollingTimer = ref(null)
 // 创建任务
 const showCreateDialog = ref(false)
 const creating = ref(false)
-const scenes = ref([])
+const models = ref([])
 const createForm = ref({
-  scene_id: null,
+  model_id: null,
   model_name: 'yolov11n',
   epochs: 100,
   batch_size: 16,
@@ -298,11 +295,9 @@ const createForm = ref({
 const showUploadDialog = ref(false)
 const uploading = ref(false)
 const uploadForm = ref({
-  scene_id: null,
+  model_id: null,
   model_file: null,
   version: 'v1.0.0',
-  model_name: '',
-  model_type: 'yolov11n',
   description: '',
   is_default: true
 })
@@ -328,13 +323,13 @@ async function loadTasks() {
   }
 }
 
-// 加载场景列表
-async function loadScenes() {
+// 加载模型列表
+async function loadModels() {
   try {
-    const res = await getScenesApi()
-    scenes.value = res.data || []
+    const res = await getModelsApi({ page: 1, page_size: 100, status: 'active' })
+    models.value = res.data?.items || []
   } catch (error) {
-    console.error('加载场景失败:', error)
+    console.error('加载模型列表失败:', error)
   }
 }
 
@@ -346,7 +341,7 @@ async function selectTask(task) {
 
 // 创建任务
 async function createTask() {
-  if (!createForm.value.scene_id || !createForm.value.dataset_path || !createForm.value.data_yaml) {
+  if (!createForm.value.model_id || !createForm.value.dataset_path || !createForm.value.data_yaml) {
     ElMessage.warning('请填写必填项')
     return
   }
@@ -386,6 +381,17 @@ async function pauseTask() {
   }
 }
 
+// 恢复训练
+async function resumeTask() {
+  try {
+    await startTrainingApi(currentTask.value.id)
+    ElMessage.success('任务已恢复')
+    loadTasks()
+  } catch (error) {
+    ElMessage.error('恢复任务失败')
+  }
+}
+
 // 取消任务
 async function cancelTask() {
   try {
@@ -407,15 +413,11 @@ async function cancelTask() {
 // 处理模型文件选择
 function handleModelFileChange(file) {
   uploadForm.value.model_file = file.raw
-  // 自动填充模型名称
-  if (!uploadForm.value.model_name) {
-    uploadForm.value.model_name = file.name.replace('.pt', '')
-  }
 }
 
 // 上传模型
 async function uploadModel() {
-  if (!uploadForm.value.scene_id || !uploadForm.value.model_file || !uploadForm.value.version || !uploadForm.value.model_name) {
+  if (!uploadForm.value.model_id || !uploadForm.value.model_file || !uploadForm.value.version) {
     ElMessage.warning('请填写必填项')
     return
   }
@@ -423,15 +425,13 @@ async function uploadModel() {
   uploading.value = true
   try {
     const res = await uploadModelApi(uploadForm.value)
-    ElMessage.success(`模型上传成功：${res.data?.model_name} ${res.data?.version}`)
+    ElMessage.success(`模型上传成功：${res.data?.version}`)
     showUploadDialog.value = false
     // 重置表单
     uploadForm.value = {
-      scene_id: null,
+      model_id: null,
       model_file: null,
       version: 'v1.0.0',
-      model_name: '',
-      model_type: 'yolov11n',
       description: '',
       is_default: true
     }
@@ -560,7 +560,7 @@ function handleResize() {
 
 onMounted(() => {
   loadTasks()
-  loadScenes()
+  loadModels()
   startPolling()
   window.addEventListener('resize', handleResize)
 })

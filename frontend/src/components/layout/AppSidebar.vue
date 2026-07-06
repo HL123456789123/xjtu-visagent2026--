@@ -31,6 +31,7 @@ import {
   Clock,
   DataAnalysis,
   User,
+  Goods,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -45,6 +46,7 @@ const menuItems = [
   { path: '/chat', title: '智能对话', icon: ChatDotRound },
   { path: '/detection', title: '目标检测', icon: Camera },
   { path: '/training', title: '模型训练', icon: Cpu },
+  { path: '/models', title: '模型管理', icon: Goods },
   { path: '/history', title: '历史记录', icon: Clock },
   { path: '/dashboard', title: '仪表盘', icon: DataAnalysis },
   { path: '/profile', title: '个人信息', icon: User },

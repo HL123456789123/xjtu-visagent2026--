@@ -20,6 +20,19 @@
         </el-select>
       </div>
 
+      <!-- 模型版本选择 -->
+      <div class="control-section">
+        <label>模型版本 <span class="optional-hint">（可选）</span></label>
+        <el-select v-model="selectedModelVersion" placeholder="默认使用场景默认模型" clearable>
+          <el-option
+            v-for="mv in modelVersions"
+            :key="mv.id"
+            :label="`${mv.version}${mv.is_default ? ' (默认)' : ''}`"
+            :value="mv.id"
+          />
+        </el-select>
+      </div>
+
       <!-- 检测模式 -->
       <div class="control-section">
         <label>检测模式</label>
@@ -183,10 +196,13 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { UploadFilled, Aim, VideoCamera } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getScenesApi, detectSingleApi, detectBatchApi, detectVideoApi } from '@/api/detection'
+import { getSceneModelsApi } from '@/api/model'
 
 // 场景列表
 const scenes = ref([])
 const selectedScene = ref(null)
+const selectedModelVersion = ref(null)
+const modelVersions = ref([])
 const detectMode = ref('single')
 const confThreshold = ref(0.25)
 const iouThreshold = ref(0.45)
@@ -226,9 +242,34 @@ async function loadScenes() {
 }
 
 // 场景变更
-function onSceneChange() {
+async function onSceneChange() {
   detectionResult.value = null
   fileList.value = []
+  selectedModelVersion.value = null
+  // 加载场景关联的模型版本
+  if (selectedScene.value) {
+    try {
+      const res = await getSceneModelsApi(selectedScene.value)
+      // 获取每个模型的版本列表
+      const allVersions = []
+      const sceneModels = res.data || []
+      for (const sm of sceneModels) {
+        if (sm.versions) {
+          for (const v of sm.versions) {
+            if (v.status === 'active') {
+              allVersions.push(v)
+            }
+          }
+        }
+      }
+      modelVersions.value = allVersions
+    } catch (error) {
+      console.error('加载模型版本失败:', error)
+      modelVersions.value = []
+    }
+  } else {
+    modelVersions.value = []
+  }
 }
 
 // 文件变更
@@ -253,6 +294,9 @@ async function startDetection() {
       scene_id: selectedScene.value,
       conf_threshold: confThreshold.value,
       iou_threshold: iouThreshold.value
+    }
+    if (selectedModelVersion.value) {
+      params.model_version_id = selectedModelVersion.value
     }
 
     let res
@@ -553,6 +597,11 @@ onUnmounted(() => {
     .scene-category {
       float: right;
       color: $text-secondary;
+      font-size: 12px;
+    }
+
+    .optional-hint {
+      color: $text-placeholder;
       font-size: 12px;
     }
   }

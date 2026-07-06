@@ -3,7 +3,7 @@
 表结构总览：
 用户权限：users, roles, permissions, user_roles, role_permissions
 检测业务：detection_scenes, detection_tasks, detection_results
-模型管理：training_tasks, training_metrics, model_versions
+模型体系：models, model_versions, scene_models, training_tasks, training_metrics
 智能体：  chat_sessions, chat_messages
 系统运维：operation_logs
 """
@@ -42,6 +42,7 @@ class User(Base):
     training_tasks = relationship("TrainingTask", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
     operation_logs = relationship("OperationLog", back_populates="user")
+    models = relationship("Model", back_populates="creator")
 
 
 class Role(Base):
@@ -123,8 +124,7 @@ class DetectionScene(Base):
 
     # 关联
     detection_tasks = relationship("DetectionTask", back_populates="scene")
-    model_versions = relationship("ModelVersion", back_populates="scene")
-    training_tasks = relationship("TrainingTask", back_populates="scene")
+    scene_models = relationship("SceneModel", back_populates="scene", cascade="all, delete-orphan")
 
 
 class DetectionTask(Base):
@@ -193,8 +193,80 @@ class DetectionResult(Base):
     task = relationship("DetectionTask", back_populates="results")
 
 # ══════════════════════════════════════════════════════════════
-# 三、模型管理
+# 三、模型体系
 # ══════════════════════════════════════════════════════════════
+
+class Model(Base):
+    """模型表 — 独立的逻辑实体，代表一类检测能力"""
+    __tablename__ = "models"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), unique=True, nullable=False, comment="模型名称，如 遥感飞机检测模型")
+    description = Column(Text, nullable=True, comment="模型描述")
+    base_architecture = Column(String(50), default="yolov11n", comment="基础架构：yolov11n/s/m/l/x")
+    category = Column(String(50), nullable=False, comment="模型分类：general/remote_sensing/medical/industrial/agriculture")
+    class_names = Column(JSON, nullable=False, comment='类别列表，如 ["airplane","helicopter"]')
+    class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
+    status = Column(String(20), default="active", comment="状态：active/archived")
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+    # 关联
+    creator = relationship("User", back_populates="models")
+    versions = relationship("ModelVersion", back_populates="model", cascade="all, delete-orphan")
+    training_tasks = relationship("TrainingTask", back_populates="model")
+    scene_models = relationship("SceneModel", back_populates="model", cascade="all, delete-orphan")
+
+
+class SceneModel(Base):
+    """场景-模型关联表 — N:M 关系，支持一个场景关联多个模型"""
+    __tablename__ = "scene_models"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="场景ID")
+    model_id = Column(Integer, ForeignKey("models.id"), nullable=False, index=True, comment="模型ID")
+    is_default = Column(Boolean, default=False, comment="是否为该场景的默认模型")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+
+    # 关联
+    scene = relationship("DetectionScene", back_populates="scene_models")
+    model = relationship("Model", back_populates="scene_models")
+
+
+class ModelVersion(Base):
+    """模型版本表 — 每个版本对应一个具体的 .pt 权重文件"""
+    __tablename__ = "model_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_id = Column(Integer, ForeignKey("models.id"), nullable=False, index=True, comment="所属模型")
+    training_task_id = Column(Integer, ForeignKey("training_tasks.id"), nullable=True, comment="来源训练任务（可为空，支持手动上传/导入）")
+    version = Column(String(50), nullable=False, comment="版本号，如 v1.0.0")
+    source = Column(String(20), default="training", comment="来源：training/upload/import")
+    status = Column(String(20), default="active", comment="状态：active/archived/deleted")
+
+    # 模型文件
+    model_path = Column(String(500), nullable=False, comment="本地模型文件路径")
+    minio_url = Column(String(500), nullable=True, comment="MinIO 存储 URL")
+
+    # 评估指标（训练完成或评估后写入）
+    map50 = Column(Float, nullable=True, comment="mAP@0.50")
+    map50_95 = Column(Float, nullable=True, comment="mAP@0.50:0.95")
+    precision = Column(Float, nullable=True, comment="精确率")
+    recall = Column(Float, nullable=True, comment="召回率")
+    per_class_ap = Column(JSON, nullable=True, comment='各类别 AP，如 {"airplane":0.85,"tank":0.72}')
+
+    # 元信息
+    description = Column(Text, nullable=True, comment="版本描述/变更说明")
+    file_size = Column(BigInteger, nullable=True, comment="模型文件大小（字节）")
+    is_default = Column(Boolean, default=False, comment="是否为该模型的默认版本")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+
+    # 关联
+    model = relationship("Model", back_populates="versions")
+    training_task = relationship("TrainingTask", back_populates="model_versions")
+    detection_tasks = relationship("DetectionTask", back_populates="model_version")
+
 
 class TrainingTask(Base):
     """模型训练任务表"""
@@ -202,12 +274,12 @@ class TrainingTask(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户")
-    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="关联场景")
+    model_id = Column(Integer, ForeignKey("models.id"), nullable=False, index=True, comment="关联模型")
     task_uuid = Column(String(100), unique=True, nullable=False, index=True, comment="任务唯一标识")
-    status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed/cancelled")
+    status = Column(String(20), default="pending", comment="状态：pending/running/paused/completed/failed/cancelled")
 
     # 训练配置
-    model_name = Column(String(50), default="yolov11n", comment="基础模型：yolov11n/s/m/l/x")
+    base_architecture = Column(String(50), default="yolov11n", comment="基础架构：yolov11n/s/m/l/x")
     epochs = Column(Integer, default=100, comment="训练轮数")
     img_size = Column(Integer, default=640, comment="图像尺寸")
     batch_size = Column(Integer, default=16, comment="批次大小")
@@ -220,10 +292,17 @@ class TrainingTask(Base):
     current_epoch = Column(Integer, default=0, comment="当前轮数")
     progress = Column(Integer, default=0, comment="进度百分比 0~100")
 
+    # Checkpoint（暂停/恢复/断电恢复）
+    checkpoint_path = Column(String(500), nullable=True, comment="checkpoint 文件路径（last.pt）")
+    last_checkpoint_epoch = Column(Integer, default=0, comment="最后保存 checkpoint 的 epoch")
+
     # 数据集信息
     dataset_path = Column(String(500), nullable=True, comment="数据集路径")
     dataset_size = Column(Integer, nullable=True, comment="数据集图像数量")
     data_yaml = Column(String(500), nullable=True, comment="data.yaml 路径")
+
+    # 训练完成后是否自动设为默认版本
+    set_as_default = Column(Boolean, default=False, comment="训练完成后是否自动设为模型默认版本")
 
     # 错误信息
     error_message = Column(Text, nullable=True, comment="失败错误信息")
@@ -235,7 +314,7 @@ class TrainingTask(Base):
 
     # 关联
     user = relationship("User", back_populates="training_tasks")
-    scene = relationship("DetectionScene", back_populates="training_tasks")
+    model = relationship("Model", back_populates="training_tasks")
     metrics = relationship("TrainingMetric", back_populates="task", cascade="all, delete-orphan")
     model_versions = relationship("ModelVersion", back_populates="training_task")
 
@@ -266,40 +345,6 @@ class TrainingMetric(Base):
     # 关联
     task = relationship("TrainingTask", back_populates="metrics")
 
-
-class ModelVersion(Base):
-    """模型版本管理表 — 每次训练产出或手动上传的模型版本"""
-    __tablename__ = "model_versions"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="所属场景")
-    training_task_id = Column(Integer, ForeignKey("training_tasks.id"), nullable=True, comment="来源训练任务（可为空，支持手动上传）")
-    version = Column(String(50), nullable=False, comment="版本号，如 v1.0.0")
-    model_name = Column(String(100), nullable=False, comment="模型名称")
-    model_type = Column(String(50), default="yolov11n", comment="模型类型：yolov11n/s/m/l/x")
-    status = Column(String(20), default="active", comment="状态：active/archived/deleted")
-
-    # 模型文件
-    model_path = Column(String(500), nullable=False, comment="本地模型文件路径")
-    minio_url = Column(String(500), nullable=True, comment="MinIO 存储 URL")
-
-    # 评估指标（训练完成后写入）
-    map50 = Column(Float, nullable=True, comment="mAP@0.50")
-    map50_95 = Column(Float, nullable=True, comment="mAP@0.50:0.95")
-    precision = Column(Float, nullable=True, comment="精确率")
-    recall = Column(Float, nullable=True, comment="召回率")
-    per_class_ap = Column(JSON, nullable=True, comment='各类别 AP，如 {"airplane":0.85,"tank":0.72}')
-
-    # 元信息
-    description = Column(Text, nullable=True, comment="版本描述/变更说明")
-    file_size = Column(BigInteger, nullable=True, comment="模型文件大小（字节）")
-    is_default = Column(Boolean, default=False, comment="是否为该场景的默认模型")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
-
-    # 关联
-    scene = relationship("DetectionScene", back_populates="model_versions")
-    training_task = relationship("TrainingTask", back_populates="model_versions")
-    detection_tasks = relationship("DetectionTask", back_populates="model_version")
 
 # ══════════════════════════════════════════════════════════════
 # 四、智能体对话

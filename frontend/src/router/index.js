@@ -47,6 +47,12 @@ const routes = [
         meta: { title: '模型训练', icon: 'Cpu' },
       },
       {
+        path: 'models',
+        name: 'Models',
+        component: () => import('@/views/ModelPage.vue'),
+        meta: { title: '模型管理', icon: 'Goods' },
+      },
+      {
         path: 'history',
         name: 'History',
         component: () => import('@/views/HistoryPage.vue'),
