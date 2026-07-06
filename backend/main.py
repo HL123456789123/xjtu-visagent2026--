@@ -2,7 +2,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from app.config.settings import settings
+from app.core.rate_limiter import limiter
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.training import router as training_router
@@ -81,17 +84,17 @@ async def lifespan(_app: FastAPI):
 
 def _validate_security_config():
     """校验安全配置，防止使用不安全的默认值"""
-    insecure_jwt_default = "your-super-secret-key-change-in-production"
-    if settings.JWT_SECRET_KEY == insecure_jwt_default:
+    insecure_jwt_values = {"", "your-super-secret-key-change-in-production"}
+    if settings.JWT_SECRET_KEY in insecure_jwt_values:
         if not settings.DEBUG:
             logger.error(
-                "安全错误: JWT_SECRET_KEY 使用了不安全的默认值，"
+                "安全错误: JWT_SECRET_KEY 未配置或使用了不安全的默认值，"
                 "请在 .env 中配置强密钥！非 DEBUG 模式下拒绝启动。"
             )
             raise SystemExit(1)
         else:
             logger.warning(
-                "安全警告: JWT_SECRET_KEY 使用了不安全的默认值，请在 .env 中配置强密钥！"
+                "安全警告: JWT_SECRET_KEY 未配置或使用了不安全的默认值，请在 .env 中配置强密钥！"
             )
     if settings.DEBUG:
         logger.warning("调试模式已开启 (DEBUG=True)，生产环境请务必关闭")
@@ -154,6 +157,10 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+# ── API 限流配置 ─────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── 注册异常处理器 ──────────────────────────────────
 app.add_exception_handler(AppException, app_exception_handler)

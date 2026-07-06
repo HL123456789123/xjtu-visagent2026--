@@ -36,6 +36,8 @@ dependencies = [
     # 环境变量
     "python-dotenv>=1.2.0",
     "langchain-openai>=1.3.3",
+    # API 限流
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]

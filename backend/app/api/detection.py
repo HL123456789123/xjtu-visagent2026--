@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, RequirePermission
@@ -16,6 +16,7 @@ from app.config.settings import settings
 from app.database.session import get_db
 from app.entity.db_models import User, DetectionScene, DetectionTask
 from app.entity.schemas import ApiResponse
+from app.core.rate_limiter import limiter
 from app.services.detection_service import detection_service
 from app.storage.minio_client import get_minio_client
 from app.storage.redis_client import redis_client
@@ -24,7 +25,9 @@ router = APIRouter(prefix="/api/detection", tags=["目标检测"])
 
 
 @router.post("/single", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
+@limiter.limit("30/minute")
 async def detect_single(
+    request: Request,
     scene_id: int = Form(..., description="场景ID"),
     image: UploadFile = File(..., description="图像文件"),
     conf_threshold: float = Form(0.25, description="置信度阈值"),
@@ -92,7 +95,9 @@ async def detect_single(
 
 
 @router.post("/batch", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
+@limiter.limit("30/minute")
 async def detect_batch(
+    request: Request,
     scene_id: int = Form(..., description="场景ID"),
     images: List[UploadFile] = File(..., description="图像文件列表"),
     conf_threshold: float = Form(0.25, description="置信度阈值"),
@@ -160,7 +165,9 @@ async def detect_batch(
 
 
 @router.post("/folder", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
+@limiter.limit("30/minute")
 async def detect_folder(
+    request: Request,
     scene_id: int = Form(..., description="场景ID"),
     folder_path: str = Form(..., description="图片文件夹路径"),
     conf_threshold: float = Form(0.25, description="置信度阈值"),
@@ -234,7 +241,9 @@ async def detect_folder(
 
 
 @router.post("/video", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
+@limiter.limit("10/minute")
 async def detect_video(
+    request: Request,
     scene_id: int = Form(..., description="场景ID"),
     video: UploadFile = File(..., description="视频文件"),
     conf_threshold: float = Form(0.25, description="置信度阈值"),
