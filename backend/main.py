@@ -68,18 +68,36 @@ async def lifespan(_app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     logger.info("正在初始化服务...")
+    _validate_security_config()
     init_minio()
     init_redis()
     init_seed()
     yield
     # 关闭时执行：优雅清理资源
     logger.info("正在关闭服务...")
-    _shutdown_cleanup()
+    await _shutdown_cleanup()
     logger.info("服务已关闭")
 
 
-def _shutdown_cleanup():
+def _validate_security_config():
+    """校验安全配置，防止使用不安全的默认值"""
+    insecure_defaults = {
+        "JWT_SECRET_KEY": "your-super-secret-key-change-in-production",
+        "SECRET_KEY": "your-super-secret-key-change-in-production",
+    }
+    for key, default_val in insecure_defaults.items():
+        actual_val = getattr(settings, key, None)
+        if actual_val == default_val:
+            logger.warning(
+                f"安全警告: {key} 使用了不安全的默认值，请在 .env 中配置强密钥！"
+            )
+    if settings.DEBUG:
+        logger.warning("调试模式已开启 (DEBUG=True)，生产环境请务必关闭")
+
+
+async def _shutdown_cleanup():
     """优雅关闭：停止训练线程、关闭 LLM 客户端和 Redis 连接"""
+    import asyncio
     import threading
 
     # 1. 停止所有训练任务
@@ -106,16 +124,11 @@ def _shutdown_cleanup():
         if _llm_cache is not None and hasattr(_llm_cache, "async_client"):
             client = _llm_cache.async_client
             if client and hasattr(client, "aclose"):
-                import asyncio
-
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.create_task(client.aclose())
-                    else:
-                        loop.run_until_complete(client.aclose())
-                except Exception:
-                    pass
+                    await client.aclose()
+                    logger.info("LLM httpx 客户端已关闭")
+                except Exception as e:
+                    logger.warning(f"LLM 客户端关闭失败: {e}")
     except Exception as e:
         logger.error(f"LLM 客户端关闭失败: {e}")
 
