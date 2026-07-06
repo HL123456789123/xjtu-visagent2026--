@@ -12,10 +12,19 @@ export function getScenesApi() {
 
 /**
  * 创建检测场景
- * @param {Object} data - 场景信息
+ * @param {Object} data - 场景信息（name, display_name, description, category, class_names, class_names_cn）
  */
 export function createSceneApi(data) {
-  return request.post('/detection/scenes', data)
+  const formData = new FormData()
+  formData.append('name', data.name)
+  formData.append('display_name', data.display_name)
+  formData.append('description', data.description || '')
+  formData.append('category', data.category)
+  formData.append('class_names', data.class_names)
+  formData.append('class_names_cn', data.class_names_cn || '')
+  return request.post('/detection/scenes', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 }
 
 /**
