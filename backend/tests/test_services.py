@@ -88,10 +88,9 @@ class TestUserRoles:
         assert found.username == "byid"
 
     def test_get_user_by_id_not_found(self, db):
-        """不存在的用户 ID 抛出 404"""
-        with pytest.raises(HTTPException) as exc:
-            user_service.get_user_by_id(db, 99999)
-        assert exc.value.status_code == 404
+        """不存在的用户 ID 返回 None"""
+        result = user_service.get_user_by_id(db, 99999)
+        assert result is None
 
 
 class TestTokenGeneration:

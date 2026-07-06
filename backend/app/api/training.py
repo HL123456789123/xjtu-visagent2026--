@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.config.settings import settings
 from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
+from app.core.tz import now_cst
 from app.database.session import get_db
 from app.entity.db_models import User, Model, ModelVersion, TrainingTask
 from app.entity.schemas import ApiResponse
@@ -237,7 +238,6 @@ async def validate_dataset_api(
     images_dir: str = Form(..., description="图像目录路径"),
     labels_dir: str = Form(..., description="标注目录路径"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """验证数据集"""
@@ -255,7 +255,6 @@ async def split_dataset_api(
     train_ratio: float = Form(0.8, description="训练集比例"),
     val_ratio: float = Form(0.1, description="验证集比例"),
     test_ratio: float = Form(0.1, description="测试集比例"),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """划分数据集"""
@@ -279,7 +278,6 @@ async def generate_data_yaml_api(
     output_path: str = Form(..., description="输出文件路径"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
     dataset_dir: str = Form(..., description="数据集根目录"),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """生成 data.yaml 配置文件"""
@@ -306,7 +304,6 @@ async def upload_model(
     """手动上传模型版本文件（归属于指定模型下）"""
     import shutil
     from pathlib import Path
-    from datetime import datetime, timezone
 
     # 验证模型是否存在
     model_obj = db.query(Model).filter(Model.id == model_id).first()
@@ -347,7 +344,7 @@ async def upload_model(
         source="upload",
         status="active",
         model_path=str(model_path),
-        description=description or f"手动上传于 {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')}",
+        description=description or f"手动上传于 {now_cst().strftime('%Y-%m-%d %H:%M')}",
         file_size=file_size,
         is_default=is_default,
     )
@@ -376,7 +373,6 @@ async def upload_model(
 async def convert_voc_to_yolo_api(
     voc_file: UploadFile = File(..., description="VOC XML 文件"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """VOC XML → YOLO TXT 格式转换"""
@@ -416,7 +412,6 @@ async def convert_coco_to_yolo_api(
     coco_file: UploadFile = File(..., description="COCO JSON 文件"),
     image_dir: str = Form(..., description="图像目录路径（用于获取图像尺寸）"),
     output_dir: str = Form(..., description="YOLO 标注输出目录"),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """COCO JSON → YOLO TXT 格式转换"""

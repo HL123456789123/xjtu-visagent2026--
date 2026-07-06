@@ -8,6 +8,9 @@ from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
 from app.config.settings import settings
+from app.core.logger import get_logger
+
+logger = get_logger("minio_client")
 
 
 class MinIOClient:
@@ -29,7 +32,7 @@ class MinIOClient:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
         except S3Error as e:
-            print(f"MinIO bucket 初始化警告: {e}")
+            logger.warning(f"MinIO bucket 初始化警告: {e}")
 
     def upload_file(self, object_name: str, file_path: str) -> str:
         """

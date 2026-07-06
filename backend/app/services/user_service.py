@@ -103,12 +103,9 @@ class UserService:
         return [role[0] for role in roles]
 
     @staticmethod
-    def get_user_by_id(db: Session, user_id: int) -> User:
-        """根据 ID 获取用户"""
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
-        return user
+    def get_user_by_id(db: Session, user_id: int) -> User | None:
+        """根据 ID 获取用户，不存在则返回 None"""
+        return db.query(User).filter(User.id == user_id).first()
 
 
 # 全局单例
