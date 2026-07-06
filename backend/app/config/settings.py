@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "visagent"
 
+    # ── 安全配置 ────────────────────────────────────────
+    ALLOWED_DETECTION_DIRS: str = "/tmp,/data,/home"
+    """允许文件夹检测访问的目录白名单，逗号分隔"""
+
     # ── CORS 配置 ────────────────────────────────────
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:8080"
 

@@ -8,6 +8,75 @@ from app.core.logger import get_logger
 logger = get_logger("seed")
 
 
+# ── 默认角色和权限 ──────────────────────────────────────
+
+DEFAULT_ROLES = [
+    {
+        "name": "admin",
+        "display_name": "管理员",
+        "description": "系统管理员，拥有所有权限",
+        "is_system": True,
+    },
+    {
+        "name": "operator",
+        "display_name": "操作员",
+        "description": "操作员，可执行检测、训练、模型管理",
+        "is_system": True,
+    },
+    {
+        "name": "viewer",
+        "display_name": "访客",
+        "description": "只读用户，仅可查看",
+        "is_system": True,
+    },
+]
+
+DEFAULT_PERMISSIONS = [
+    # 检测模块
+    {"code": "detection:task:create", "name": "创建检测任务", "module": "detection"},
+    {"code": "detection:task:view", "name": "查看检测任务", "module": "detection"},
+    {"code": "detection:scene:create", "name": "创建检测场景", "module": "detection"},
+    {"code": "detection:scene:manage", "name": "管理检测场景", "module": "detection"},
+    # 训练模块
+    {"code": "training:task:create", "name": "创建训练任务", "module": "training"},
+    {"code": "training:task:manage", "name": "管理训练任务", "module": "training"},
+    {"code": "training:task:view", "name": "查看训练任务", "module": "training"},
+    # 模型模块
+    {"code": "model:create", "name": "创建模型", "module": "model"},
+    {"code": "model:update", "name": "更新模型", "module": "model"},
+    {"code": "model:delete", "name": "删除模型", "module": "model"},
+    {"code": "model:view", "name": "查看模型", "module": "model"},
+    # 智能体模块
+    {"code": "agent:chat", "name": "智能对话", "module": "agent"},
+    # 知识库模块
+    {"code": "knowledge:manage", "name": "管理知识库", "module": "knowledge"},
+    {"code": "knowledge:search", "name": "检索知识库", "module": "knowledge"},
+    # 系统模块
+    {"code": "system:dashboard", "name": "查看仪表盘", "module": "system"},
+    {"code": "system:admin", "name": "系统管理", "module": "system"},
+]
+
+# operator 角色拥有的权限
+OPERATOR_PERMISSIONS = [
+    "detection:task:create", "detection:task:view", "detection:scene:create",
+    "training:task:create", "training:task:manage", "training:task:view",
+    "model:create", "model:update", "model:view",
+    "agent:chat",
+    "knowledge:manage", "knowledge:search",
+    "system:dashboard",
+]
+
+# viewer 角色拥有的权限
+VIEWER_PERMISSIONS = [
+    "detection:task:view", "detection:scene:create",
+    "training:task:view",
+    "model:view",
+    "agent:chat",
+    "knowledge:search",
+    "system:dashboard",
+]
+
+
 DEFAULT_SCENES = [
     {
         "name": "coco",
@@ -102,10 +171,10 @@ DEFAULT_SCENES = [
 
 def seed_scenes(db_session) -> int:
     """
-    初始化默认检测场景（如果表为空）
+    初始化默认检测场景、角色和权限（如果表为空）
 
-    在应用启动时调用，确保新安装的系统至少有基本场景可用。
-    场景已存在时不会重复创建。
+    在应用启动时调用，确保新安装的系统至少有基本场景、模型和 RBAC 权限可用。
+    已存在时不会重复创建。
 
     Args:
         db_session: SQLAlchemy Session
@@ -113,8 +182,46 @@ def seed_scenes(db_session) -> int:
     Returns:
         本次新创建的场景数量
     """
-    from app.entity.db_models import DetectionScene
+    from app.entity.db_models import (
+        DetectionScene, Model, SceneModel,
+        Role, Permission, RolePermission,
+    )
 
+    # ── 初始化角色和权限 ─────────────────────────────
+    existing_perms = db_session.query(Permission).count()
+    if existing_perms == 0:
+        # 创建权限
+        perm_objects = {}
+        for p in DEFAULT_PERMISSIONS:
+            perm = Permission(**p)
+            db_session.add(perm)
+            db_session.flush()
+            perm_objects[p["code"]] = perm
+        logger.info(f"创建 {len(DEFAULT_PERMISSIONS)} 个默认权限")
+
+        # 创建角色
+        for role_data in DEFAULT_ROLES:
+            role = Role(**role_data)
+            db_session.add(role)
+            db_session.flush()
+
+            # admin 拥有所有权限
+            if role.name == "admin":
+                for perm in perm_objects.values():
+                    db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
+            elif role.name == "operator":
+                for code in OPERATOR_PERMISSIONS:
+                    if code in perm_objects:
+                        db_session.add(RolePermission(role_id=role.id, permission_id=perm_objects[code].id))
+            elif role.name == "viewer":
+                for code in VIEWER_PERMISSIONS:
+                    if code in perm_objects:
+                        db_session.add(RolePermission(role_id=role.id, permission_id=perm_objects[code].id))
+
+        db_session.commit()
+        logger.info("默认角色和权限初始化完成")
+
+    # ── 初始化检测场景和模型 ───────────────────────────
     existing_count = db_session.query(DetectionScene).count()
     if existing_count > 0:
         logger.info(f"检测场景已存在 {existing_count} 个，跳过种子数据初始化")
@@ -132,9 +239,33 @@ def seed_scenes(db_session) -> int:
             is_active=True,
         )
         db_session.add(scene)
+        db_session.flush()  # 获取 scene.id
         created += 1
         logger.info(f"创建默认检测场景: {scene_data['display_name']}")
 
+        # 为每个场景创建一个默认模型
+        model_name = f"{scene_data['display_name']}模型"
+        model = Model(
+            name=model_name,
+            description=f"{scene_data['description']}（默认模型）",
+            base_architecture="yolov11n",
+            category=scene_data["category"],
+            class_names=scene_data["class_names"],
+            class_names_cn=scene_data["class_names_cn"],
+            status="active",
+        )
+        db_session.add(model)
+        db_session.flush()  # 获取 model.id
+        logger.info(f"创建默认模型: {model_name}")
+
+        # 创建场景-模型关联
+        scene_model = SceneModel(
+            scene_id=scene.id,
+            model_id=model.id,
+            is_default=True,
+        )
+        db_session.add(scene_model)
+
     db_session.commit()
-    logger.info(f"种子数据初始化完成，共创建 {created} 个检测场景")
+    logger.info(f"种子数据初始化完成，共创建 {created} 个检测场景和对应模型")
     return created

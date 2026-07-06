@@ -8,6 +8,7 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.entity.db_models import User, UserRole, Role
 
 
+
 class UserService:
     """用户服务"""
 
@@ -45,6 +46,13 @@ class UserService:
             hashed_password=hash_password(password),
         )
         db.add(new_user)
+        db.flush()
+
+        # 自动分配 operator 角色
+        operator_role = db.query(Role).filter(Role.name == "operator").first()
+        if operator_role:
+            db.add(UserRole(user_id=new_user.id, role_id=operator_role.id))
+
         db.commit()
         db.refresh(new_user)
         return new_user

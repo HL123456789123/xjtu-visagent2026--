@@ -14,10 +14,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
-from app.core.security import get_current_user
-from app.database.session import get_db
-from app.entity.db_models import User, DetectionScene, ModelVersion
+from app.core.security import decode_access_token, get_current_user
+from app.database.session import get_db, SessionLocal
+from app.entity.db_models import User, DetectionScene, ModelVersion, SceneModel
 from app.services.detection_service import detection_service
+from app.services.user_service import user_service
 
 logger = get_logger("camera_api")
 
@@ -55,6 +56,20 @@ class CameraSession:
         return self.frame_count / elapsed
 
 
+def _authenticate_websocket_token(token: Optional[str]) -> Optional[int]:
+    """验证 WebSocket 连接的 JWT Token，返回 user_id 或 None"""
+    if not token:
+        return None
+    try:
+        payload = decode_access_token(token)
+        user_id_str = payload.get("sub")
+        if user_id_str is None:
+            return None
+        return int(user_id_str)
+    except Exception:
+        return None
+
+
 @router.websocket("/detect")
 async def camera_detect(
     websocket: WebSocket,
@@ -66,7 +81,7 @@ async def camera_detect(
     
     参数：
     - scene_id: 检测场景 ID
-    - token: JWT Token（用于身份验证）
+    - token: JWT Token（用于身份验证，必传）
     
     协议：
     - 客户端发送：二进制图像帧（JPEG/PNG）
@@ -81,15 +96,40 @@ async def camera_detect(
         "fps": float
     }
     """
-    # 简化版身份验证（实际应验证 JWT）
-    user_id = 1  # 默认用户
+    # JWT 身份验证
+    user_id = _authenticate_websocket_token(token)
+    if user_id is None:
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "message": "认证失败，请提供有效的 JWT Token"
+        })
+        await websocket.close(code=4001)
+        return
+    
+    # 验证用户是否存在且活跃
+    db = SessionLocal()
+    try:
+        user = user_service.get_user_by_id(db, user_id)
+        if not user or not user.is_active:
+            await websocket.accept()
+            await websocket.send_json({
+                "type": "error",
+                "message": "用户不存在或已被禁用"
+            })
+            await websocket.close(code=4001)
+            return
+    except Exception:
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "message": "认证失败"
+        })
+        await websocket.close(code=4001)
+        return
     
     await websocket.accept()
-    logger.info(f"摄像头连接建立: scene_id={scene_id}")
-    
-    # 检查场景是否存在
-    from app.database.session import SessionLocal
-    db = SessionLocal()
+    logger.info(f"摄像头连接建立: scene_id={scene_id}, user_id={user_id}")
     
     try:
         scene = db.query(DetectionScene).filter(
@@ -105,14 +145,21 @@ async def camera_detect(
             await websocket.close()
             return
         
-        # 获取默认模型
-        model_version = db.query(ModelVersion).filter(
-            ModelVersion.scene_id == scene_id,
-            ModelVersion.is_default == True,
-            ModelVersion.status == "active"
+        # 获取默认模型（通过 SceneModel 关联表查找）
+        scene_model = db.query(SceneModel).filter(
+            SceneModel.scene_id == scene_id,
+            SceneModel.is_default == True
         ).first()
         
-        model_path = model_version.model_path if model_version else "yolo11n.pt"
+        model_path = "yolo11n.pt"
+        if scene_model:
+            model_version = db.query(ModelVersion).filter(
+                ModelVersion.model_id == scene_model.model_id,
+                ModelVersion.is_default == True,
+                ModelVersion.status == "active"
+            ).first()
+            if model_version:
+                model_path = model_version.model_path
         
         # 加载模型
         if not detection_service.load_model(scene_id, model_path):
@@ -213,7 +260,8 @@ async def camera_detect(
 
 @router.get("/scenes", response_model=dict)
 async def get_camera_scenes(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """获取支持摄像头检测的场景列表"""
     scenes = db.query(DetectionScene).filter(
