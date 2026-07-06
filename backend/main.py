@@ -74,8 +74,62 @@ async def lifespan(_app: FastAPI):
     init_redis()
     init_seed()
     yield
-    # 关闭时执行
+    # 关闭时执行：优雅清理资源
+    logger.info("正在关闭服务...")
+    _shutdown_cleanup()
     logger.info("服务已关闭")
+
+
+def _shutdown_cleanup():
+    """优雅关闭：停止训练线程、关闭 LLM 客户端和 Redis 连接"""
+    import threading
+
+    # 1. 停止所有训练任务
+    try:
+        from app.services.training_service import training_service
+
+        with training_service._lock:
+            for task_id, stop_flag in training_service.task_stop_flags.items():
+                stop_flag.set()
+                logger.info(f"已发送停止信号: 训练任务 {task_id}")
+
+        # 等待训练线程结束（最多 5 秒）
+        for task_id, thread in list(training_service.active_tasks.items()):
+            thread.join(timeout=5)
+            if thread.is_alive():
+                logger.warning(f"训练线程 {task_id} 未能在超时内停止")
+    except Exception as e:
+        logger.error(f"训练任务关闭失败: {e}")
+
+    # 2. 关闭 LLM httpx 客户端
+    try:
+        from app.services.agent_graph import _llm_cache
+
+        if _llm_cache is not None and hasattr(_llm_cache, "async_client"):
+            client = _llm_cache.async_client
+            if client and hasattr(client, "aclose"):
+                import asyncio
+
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        loop.create_task(client.aclose())
+                    else:
+                        loop.run_until_complete(client.aclose())
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.error(f"LLM 客户端关闭失败: {e}")
+
+    # 3. 关闭 Redis 连接
+    try:
+        from app.storage.redis_client import redis_client
+
+        if hasattr(redis_client, "client") and redis_client.client:
+            redis_client.client.close()
+            logger.info("Redis 连接已关闭")
+    except Exception as e:
+        logger.error(f"Redis 关闭失败: {e}")
 
 
 # 创建 FastAPI 实例
