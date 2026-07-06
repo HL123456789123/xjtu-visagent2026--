@@ -5,7 +5,7 @@ Dashboard 数据统计 API 路由
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ from app.core.logger import get_logger
 from app.database.session import get_db
 from app.entity.db_models import (
     User, DetectionTask, DetectionResult, DetectionScene,
-    TrainingTask, ModelVersion, ChatSession
+    TrainingTask, Model, ChatSession
 )
 from app.entity.schemas import ApiResponse
 
@@ -42,24 +42,38 @@ async def get_dashboard_stats(
     - 训练任务状态分布
     """
     try:
+        # 非管理员仅查看自己的数据
+        is_admin = current_user.is_superuser
+        user_filter = None if is_admin else current_user.id
+        
         # 1. 基础统计
-        total_detections = db.query(func.count(DetectionTask.id)).scalar() or 0
-        total_training = db.query(func.count(TrainingTask.id)).scalar() or 0
-        total_models = db.query(func.count(ModelVersion.id)).filter(
-            ModelVersion.status == "active"
-        ).scalar() or 0
+        det_query = db.query(func.count(DetectionTask.id))
+        train_query = db.query(func.count(TrainingTask.id))
+        model_query = db.query(func.count(Model.id)).filter(Model.status == "active")
+        
+        if user_filter:
+            det_query = det_query.filter(DetectionTask.user_id == user_filter)
+            train_query = train_query.filter(TrainingTask.user_id == user_filter)
+            model_query = model_query.filter(Model.created_by == user_filter)
+        
+        total_detections = det_query.scalar() or 0
+        total_training = train_query.scalar() or 0
+        total_models = model_query.scalar() or 0
         total_sessions = db.query(func.count(ChatSession.id)).filter(
             ChatSession.user_id == current_user.id
         ).scalar() or 0
         
         # 2. 近7天检测趋势
         seven_days_ago = datetime.now() - timedelta(days=7)
-        daily_detections = db.query(
+        trend_query = db.query(
             func.date(DetectionTask.created_at).label("date"),
             func.count(DetectionTask.id).label("count")
         ).filter(
             DetectionTask.created_at >= seven_days_ago
-        ).group_by(
+        )
+        if user_filter:
+            trend_query = trend_query.filter(DetectionTask.user_id == user_filter)
+        daily_detections = trend_query.group_by(
             func.date(DetectionTask.created_at)
         ).order_by("date").all()
         
@@ -71,22 +85,30 @@ async def get_dashboard_stats(
             trend_data.append({"date": date, "count": count})
         
         # 3. 各场景检测统计
-        scene_stats = db.query(
+        scene_query = db.query(
             DetectionScene.display_name,
             func.count(DetectionTask.id).label("count")
         ).outerjoin(
             DetectionTask, DetectionTask.scene_id == DetectionScene.id
-        ).group_by(
+        )
+        if user_filter:
+            scene_query = scene_query.filter(DetectionTask.user_id == user_filter)
+        scene_stats = scene_query.group_by(
             DetectionScene.id, DetectionScene.display_name
         ).all()
         
         scene_data = [{"name": s.display_name, "count": s.count} for s in scene_stats]
         
         # 4. 各类别检测分布
-        class_distribution = db.query(
+        class_query = db.query(
             DetectionResult.class_name,
             func.count(DetectionResult.id).label("count")
-        ).group_by(
+        )
+        if user_filter:
+            class_query = class_query.join(
+                DetectionTask, DetectionResult.task_id == DetectionTask.id
+            ).filter(DetectionTask.user_id == user_filter)
+        class_distribution = class_query.group_by(
             DetectionResult.class_name
         ).order_by(
             func.count(DetectionResult.id).desc()
@@ -95,15 +117,21 @@ async def get_dashboard_stats(
         class_data = [{"name": c.class_name, "count": c.count} for c in class_distribution]
         
         # 5. 训练任务状态分布
-        training_status = db.query(
+        status_query = db.query(
             TrainingTask.status,
             func.count(TrainingTask.id).label("count")
-        ).group_by(TrainingTask.status).all()
+        )
+        if user_filter:
+            status_query = status_query.filter(TrainingTask.user_id == user_filter)
+        training_status = status_query.group_by(TrainingTask.status).all()
         
         status_data = [{"status": s.status, "count": s.count} for s in training_status]
         
         # 6. 最近检测任务
-        recent_detections = db.query(DetectionTask).order_by(
+        recent_query = db.query(DetectionTask)
+        if user_filter:
+            recent_query = recent_query.filter(DetectionTask.user_id == user_filter)
+        recent_detections = recent_query.order_by(
             DetectionTask.created_at.desc()
         ).limit(5).all()
         
@@ -136,10 +164,7 @@ async def get_dashboard_stats(
         
     except Exception as e:
         logger.error(f"获取统计数据失败: {e}")
-        return ApiResponse(
-            code=500,
-            message=f"获取统计数据失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取统计数据失败: {str(e)}")
 
 
 @router.get("/user-stats", response_model=ApiResponse)
@@ -181,7 +206,4 @@ async def get_user_stats(
         
     except Exception as e:
         logger.error(f"获取用户统计数据失败: {e}")
-        return ApiResponse(
-            code=500,
-            message=f"获取用户统计数据失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"获取用户统计数据失败: {str(e)}")
