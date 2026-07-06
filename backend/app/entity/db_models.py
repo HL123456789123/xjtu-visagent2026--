@@ -182,7 +182,10 @@ class DetectionTask(Base):
         String(20), nullable=False, comment="检测类型：single/batch/folder/video/camera"
     )
     status = Column(
-        String(20), default="pending", comment="状态：pending/processing/completed/failed"
+        String(20),
+        default="pending",
+        index=True,
+        comment="状态：pending/processing/completed/failed",
     )
 
     # 检测统计
@@ -360,6 +363,7 @@ class TrainingTask(Base):
     status = Column(
         String(20),
         default="pending",
+        index=True,
         comment="状态：pending/running/paused/completed/failed/cancelled",
     )
 
@@ -454,7 +458,7 @@ class ChatSession(Base):
     title = Column(String(200), nullable=True, comment="会话标题（取第一条消息摘要）")
     status = Column(String(20), default="active", comment="状态：active/archived")
     message_count = Column(Integer, default=0, comment="消息数量")
-    last_message_at = Column(DateTime, nullable=True, comment="最后消息时间")
+    last_message_at = Column(DateTime, nullable=True, index=True, comment="最后消息时间")
     created_at = Column(DateTime, default=datetime.now, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
