@@ -81,15 +81,17 @@ async def lifespan(_app: FastAPI):
 
 def _validate_security_config():
     """校验安全配置，防止使用不安全的默认值"""
-    insecure_defaults = {
-        "JWT_SECRET_KEY": "your-super-secret-key-change-in-production",
-        "SECRET_KEY": "your-super-secret-key-change-in-production",
-    }
-    for key, default_val in insecure_defaults.items():
-        actual_val = getattr(settings, key, None)
-        if actual_val == default_val:
+    insecure_jwt_default = "your-super-secret-key-change-in-production"
+    if settings.JWT_SECRET_KEY == insecure_jwt_default:
+        if not settings.DEBUG:
+            logger.error(
+                "安全错误: JWT_SECRET_KEY 使用了不安全的默认值，"
+                "请在 .env 中配置强密钥！非 DEBUG 模式下拒绝启动。"
+            )
+            raise SystemExit(1)
+        else:
             logger.warning(
-                f"安全警告: {key} 使用了不安全的默认值，请在 .env 中配置强密钥！"
+                "安全警告: JWT_SECRET_KEY 使用了不安全的默认值，请在 .env 中配置强密钥！"
             )
     if settings.DEBUG:
         logger.warning("调试模式已开启 (DEBUG=True)，生产环境请务必关闭")

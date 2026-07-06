@@ -498,7 +498,7 @@ async def download_model(
     # 校验模型所有权：超级管理员可下载所有模型，其他用户只能下载自己创建的
     model_obj = db.query(Model).filter(Model.id == model_version.model_id).first()
     if not current_user.is_superuser:
-        if model_obj and model_obj.created_by and model_obj.created_by != current_user.id:
+        if not model_obj or model_obj.created_by != current_user.id:
             raise HTTPException(status_code=403, detail="无权下载该模型")
 
     # 检查模型文件是否存在
