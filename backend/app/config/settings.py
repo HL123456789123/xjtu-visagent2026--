@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     ALLOWED_DETECTION_DIRS: str = "/tmp,/data,/home"
     """允许文件夹检测访问的目录白名单，逗号分隔"""
 
+    ALLOWED_TRAINING_DIRS: str = "/tmp,/data,/home"
+    """允许训练任务访问的目录白名单，逗号分隔"""
+
     COOKIE_SECURE: bool = True
     """Cookie 安全标志，生产环境需开启 HTTPS"""
 

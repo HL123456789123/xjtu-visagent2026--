@@ -4,6 +4,7 @@
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -27,6 +28,24 @@ from app.services.data_utils import (
 logger = get_logger("training_api")
 
 router = APIRouter(prefix="/api/training", tags=["训练管理"])
+
+
+def _validate_training_path(file_path: str, label: str = "路径"):
+    """校验训练相关路径是否在白名单目录内"""
+    from app.config.settings import settings
+
+    resolved = Path(file_path).resolve()
+    allowed_dirs = [d.strip() for d in settings.ALLOWED_TRAINING_DIRS.split(",") if d.strip()]
+    for allowed in allowed_dirs:
+        try:
+            resolved.relative_to(Path(allowed).resolve())
+            return  # 路径在白名单内
+        except ValueError:
+            continue
+    raise HTTPException(
+        status_code=400,
+        detail=f"{label}不在允许的目录内，允许的目录: {', '.join(allowed_dirs)}",
+    )
 
 
 def _get_task_or_403(db: Session, task_id: int, user_id: int):
@@ -62,6 +81,10 @@ async def create_training_task(
     model_obj = db.query(Model).filter(Model.id == model_id).first()
     if not model_obj:
         raise HTTPException(status_code=404, detail="模型不存在")
+
+    # 校验路径安全性
+    _validate_training_path(dataset_path, "数据集路径")
+    _validate_training_path(data_yaml, "data.yaml 路径")
 
     config = {
         "base_architecture": base_architecture,

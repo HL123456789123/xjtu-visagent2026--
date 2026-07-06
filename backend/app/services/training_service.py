@@ -24,6 +24,7 @@ class TrainingService:
     def __init__(self):
         self.active_tasks: Dict[int, threading.Thread] = {}
         self.task_stop_flags: Dict[int, threading.Event] = {}
+        self._lock = threading.Lock()
         # 启动时恢复中断的任务状态
         self._recover_interrupted_tasks()
 
@@ -147,13 +148,12 @@ class TrainingService:
         task.error_message = None
         db.commit()
 
-        # 创建停止标志
+        # 创建停止标志并启动后台训练线程
         stop_flag = threading.Event()
-        self.task_stop_flags[task_id] = stop_flag
-
-        # 启动后台训练线程
         thread = threading.Thread(target=self._train_worker, args=(task_id, stop_flag), daemon=True)
-        self.active_tasks[task_id] = thread
+        with self._lock:
+            self.task_stop_flags[task_id] = stop_flag
+            self.active_tasks[task_id] = thread
         thread.start()
 
         logger.info(f"启动训练任务: task_id={task_id}")
@@ -223,13 +223,19 @@ class TrainingService:
 
             logger.info(f"开始训练: task_id={task_id}, args={train_args}")
 
-            # 设置 YOLO 回调：定期更新 checkpoint epoch
+            # 设置 YOLO 回调：更新进度并写入逐 epoch 指标
+            results_csv_path = os.path.join("runs", "train", f"task_{task_id}", "results.csv")
+
             def _on_train_epoch_end(trainer):
                 try:
                     current_ep = getattr(trainer, "epoch", 0)
                     task.current_epoch = current_ep
                     task.last_checkpoint_epoch = current_ep
                     task.progress = int((current_ep / task.epochs) * 100)
+
+                    # 从 results.csv 读取当前 epoch 的指标并写入数据库
+                    self._write_epoch_metric(db, task_id, current_ep, results_csv_path)
+
                     db.commit()
                 except Exception:
                     db.rollback()
@@ -295,8 +301,9 @@ class TrainingService:
                 db.commit()
         finally:
             # 清理
-            self.active_tasks.pop(task_id, None)
-            self.task_stop_flags.pop(task_id, None)
+            with self._lock:
+                self.active_tasks.pop(task_id, None)
+                self.task_stop_flags.pop(task_id, None)
             db.close()
 
     def _save_model_version(self, db: Session, task: TrainingTask, model_path: str):
@@ -333,6 +340,51 @@ class TrainingService:
             f"保存模型版本: model_id={task.model_id}, version={version.version}, path={model_path}"
         )
 
+    def _write_epoch_metric(self, db: Session, task_id: int, epoch: int, results_csv_path: str):
+        """
+        从 results.csv 读取指定 epoch 的指标并写入 TrainingMetric
+
+        Args:
+            db: 数据库会话
+            task_id: 任务ID
+            epoch: 当前轮数
+            results_csv_path: results.csv 文件路径
+        """
+        try:
+            if not os.path.exists(results_csv_path):
+                return
+
+            # 已存在则跳过
+            existing = (
+                db.query(TrainingMetric)
+                .filter(TrainingMetric.task_id == task_id, TrainingMetric.epoch == epoch)
+                .first()
+            )
+            if existing:
+                return
+
+            # 读取 CSV 并找到对应 epoch 的行
+            with open(results_csv_path, "r") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if int(row.get("epoch", -1)) == epoch:
+                        metric = TrainingMetric(
+                            task_id=task_id,
+                            epoch=epoch,
+                            box_loss=float(row.get("train/box_loss", 0)),
+                            cls_loss=float(row.get("train/cls_loss", 0)),
+                            dfl_loss=float(row.get("train/dfl_loss", 0)),
+                            precision=float(row.get("metrics/precision(B)", 0)),
+                            recall=float(row.get("metrics/recall(B)", 0)),
+                            map50=float(row.get("metrics/mAP50(B)", 0)),
+                            map50_95=float(row.get("metrics/mAP50-95(B)", 0)),
+                            lr=float(row.get("lr/pg0", 0)),
+                        )
+                        db.add(metric)
+                        break
+        except Exception as e:
+            logger.warning(f"写入 epoch {epoch} 指标失败: {e}")
+
     def pause_training(self, db: Session, task_id: int) -> bool:
         """
         暂停训练任务
@@ -354,7 +406,8 @@ class TrainingService:
             return False
 
         # 设置停止标志
-        stop_flag = self.task_stop_flags.get(task_id)
+        with self._lock:
+            stop_flag = self.task_stop_flags.get(task_id)
         if stop_flag:
             stop_flag.set()
 
@@ -389,7 +442,8 @@ class TrainingService:
             return False
 
         # 设置停止标志
-        stop_flag = self.task_stop_flags.get(task_id)
+        with self._lock:
+            stop_flag = self.task_stop_flags.get(task_id)
         if stop_flag:
             stop_flag.set()
 
