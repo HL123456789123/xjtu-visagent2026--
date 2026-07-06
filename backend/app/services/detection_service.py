@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Any
 import cv2
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.core.logger import get_logger
 from app.core.tz import now_cst
 from app.entity.db_models import (
@@ -33,7 +34,7 @@ logger = get_logger("detection_service")
 class DetectionService:
     """检测服务类"""
 
-    MAX_CACHED_MODELS = 5  # 最多缓存 5 个模型
+    MAX_CACHED_MODELS = settings.MAX_CACHED_MODELS
 
     def __init__(self):
         self.models: OrderedDict = OrderedDict()  # LRU 缓存

@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
 
     # ── JWT 认证配置 ──────────────────────────────────
-    JWT_SECRET_KEY: str = "your-super-secret-key-change-in-production"
+    JWT_SECRET_KEY: str = ""  # 必须通过环境变量或 .env 配置
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
@@ -70,6 +70,9 @@ class Settings(BaseSettings):
 
     ALLOWED_TRAINING_DIRS: str = "/tmp,/data,/home"
     """允许训练任务访问的目录白名单，逗号分隔"""
+
+    MAX_CACHED_MODELS: int = 5
+    """检测服务模型 LRU 缓存最大数量"""
 
     COOKIE_SECURE: bool = True
     """Cookie 安全标志，生产环境需开启 HTTPS"""
