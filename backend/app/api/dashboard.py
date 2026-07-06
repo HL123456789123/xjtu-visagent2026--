@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
 from app.database.session import get_db
 from app.entity.db_models import (
@@ -28,7 +28,7 @@ logger = get_logger("dashboard_api")
 router = APIRouter(prefix="/api/dashboard", tags=["数据看板"])
 
 
-@router.get("/stats", response_model=ApiResponse)
+@router.get("/stats", response_model=ApiResponse, dependencies=[Depends(RequirePermission("system:dashboard"))])
 async def get_dashboard_stats(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -162,7 +162,7 @@ async def get_dashboard_stats(
         raise HTTPException(status_code=500, detail=f"获取统计数据失败: {str(e)}")
 
 
-@router.get("/user-stats", response_model=ApiResponse)
+@router.get("/user-stats", response_model=ApiResponse, dependencies=[Depends(RequirePermission("system:dashboard"))])
 async def get_user_stats(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):

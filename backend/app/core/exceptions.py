@@ -8,6 +8,7 @@
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from app.config.settings import settings
 from app.core.logger import get_logger
 
 logger = get_logger("exceptions")
@@ -95,11 +96,12 @@ async def general_exception_handler(request: Request, exc: Exception):
         f"Method: {request.method}",
         exc_info=True,
     )
+    detail = str(exc) if settings.DEBUG else None
     return JSONResponse(
         status_code=500,
         content={
             "code": 500,
             "message": "服务器内部错误",
-            "detail": str(exc) if hasattr(exc, "__str__") else None,
+            "detail": detail,
         },
     )

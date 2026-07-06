@@ -7,25 +7,18 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, RequirePermission
 from app.database.session import get_db
-from app.entity.db_models import User
-from app.entity.schemas import ApiResponse
+from app.entity.db_models import User, ChatSession
+from app.entity.schemas import ApiResponse, SendMessageRequest
 from app.services.chat_service import chat_service
 
 router = APIRouter(prefix="/api/chat", tags=["智能对话"])
 
 
-class SendMessageRequest(BaseModel):
-    """发送消息请求体"""
-
-    message: str
-
-
-@router.post("/sessions", response_model=ApiResponse)
+@router.post("/sessions", response_model=ApiResponse, dependencies=[Depends(RequirePermission("agent:chat"))])
 async def create_session(
     title: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -45,7 +38,7 @@ async def create_session(
     )
 
 
-@router.post("/sessions/{session_id}/messages")
+@router.post("/sessions/{session_id}/messages", dependencies=[Depends(RequirePermission("agent:chat"))])
 async def send_message(
     session_id: int,
     body: SendMessageRequest,
@@ -63,7 +56,6 @@ async def send_message(
     - error: 错误信息
     """
     # 验证会话是否存在且属于当前用户
-    from app.entity.db_models import ChatSession
 
     session = (
         db.query(ChatSession)
@@ -89,7 +81,7 @@ async def send_message(
     )
 
 
-@router.get("/sessions/{session_id}/messages", response_model=ApiResponse)
+@router.get("/sessions/{session_id}/messages", response_model=ApiResponse, dependencies=[Depends(RequirePermission("agent:chat"))])
 async def get_messages(
     session_id: int,
     limit: int = 50,
@@ -98,7 +90,6 @@ async def get_messages(
 ):
     """获取对话历史"""
     # 验证会话是否存在且属于当前用户
-    from app.entity.db_models import ChatSession
 
     session = (
         db.query(ChatSession)
@@ -114,7 +105,7 @@ async def get_messages(
     return ApiResponse(code=200, data={"session_id": session_id, "messages": messages})
 
 
-@router.get("/sessions", response_model=ApiResponse)
+@router.get("/sessions", response_model=ApiResponse, dependencies=[Depends(RequirePermission("agent:chat"))])
 async def get_sessions(
     page: int = 1,
     page_size: int = 20,
@@ -129,7 +120,7 @@ async def get_sessions(
     return ApiResponse(code=200, data=result)
 
 
-@router.delete("/sessions/{session_id}", response_model=ApiResponse)
+@router.delete("/sessions/{session_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("agent:chat"))])
 async def delete_session(
     session_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):

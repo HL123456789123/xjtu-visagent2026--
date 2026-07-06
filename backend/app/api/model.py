@@ -4,16 +4,18 @@
 """
 
 import os
+import shutil
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
 from app.database.session import get_db
-from app.entity.db_models import User
+from app.entity.db_models import User, Model, DetectionScene
 from app.entity.schemas import ApiResponse
 from app.services.model_service import model_service
 
@@ -24,12 +26,14 @@ router = APIRouter(prefix="/api/models", tags=["模型管理"])
 
 def _check_model_ownership(db: Session, model_id: int, user_id: int):
     """校验模型所有权，不属于当前用户则抛出 403"""
-    from app.entity.db_models import Model
-
     model = db.query(Model).filter(Model.id == model_id).first()
     if not model:
         raise HTTPException(status_code=404, detail="模型不存在")
-    if model.created_by and model.created_by != user_id:
+    # 超级管理员直接放行
+    user = db.query(User).filter(User.id == user_id).first()
+    if user and user.is_superuser:
+        return model
+    if model.created_by is None or model.created_by != user_id:
         raise HTTPException(status_code=403, detail="无权操作该模型")
     return model
 
@@ -37,7 +41,7 @@ def _check_model_ownership(db: Session, model_id: int, user_id: int):
 # ── 模型 CRUD ────────────────────────────────────────────
 
 
-@router.get("", response_model=ApiResponse)
+@router.get("", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:view"))])
 async def list_models(
     category: Optional[str] = None,
     status: Optional[str] = None,
@@ -57,7 +61,7 @@ async def list_models(
     return ApiResponse(code=200, data=result)
 
 
-@router.post("", response_model=ApiResponse)
+@router.post("", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:create"))])
 async def create_model(
     name: str = Form(..., description="模型名称"),
     description: str = Form("", description="模型描述"),
@@ -98,7 +102,7 @@ async def create_model(
     )
 
 
-@router.get("/{model_id}", response_model=ApiResponse)
+@router.get("/{model_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:view"))])
 async def get_model(
     model_id: int,
     db: Session = Depends(get_db),
@@ -111,7 +115,7 @@ async def get_model(
     return ApiResponse(code=200, data=detail)
 
 
-@router.put("/{model_id}", response_model=ApiResponse)
+@router.put("/{model_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:update"))])
 async def update_model(
     model_id: int,
     name: Optional[str] = Form(None),
@@ -158,7 +162,7 @@ async def update_model(
     return ApiResponse(code=200, message="模型更新成功")
 
 
-@router.delete("/{model_id}", response_model=ApiResponse)
+@router.delete("/{model_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:delete"))])
 async def delete_model(
     model_id: int,
     db: Session = Depends(get_db),
@@ -175,7 +179,7 @@ async def delete_model(
 # ── 版本管理 ──────────────────────────────────────────────
 
 
-@router.get("/{model_id}/versions", response_model=ApiResponse)
+@router.get("/{model_id}/versions", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:view"))])
 async def list_versions(
     model_id: int,
     page: int = 1,
@@ -188,7 +192,7 @@ async def list_versions(
     return ApiResponse(code=200, data=result)
 
 
-@router.put("/{model_id}/versions/{version_id}/default", response_model=ApiResponse)
+@router.put("/{model_id}/versions/{version_id}/default", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:update"))])
 async def set_default_version(
     model_id: int,
     version_id: int,
@@ -203,7 +207,7 @@ async def set_default_version(
     return ApiResponse(code=200, message="已设为默认版本")
 
 
-@router.delete("/{model_id}/versions/{version_id}", response_model=ApiResponse)
+@router.delete("/{model_id}/versions/{version_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:delete"))])
 async def delete_version(
     model_id: int,
     version_id: int,
@@ -221,7 +225,7 @@ async def delete_version(
 # ── 导入导出 ──────────────────────────────────────────────
 
 
-@router.get("/{model_id}/versions/{version_id}/export")
+@router.get("/{model_id}/versions/{version_id}/export", dependencies=[Depends(RequirePermission("model:view"))])
 async def export_model(
     model_id: int,
     version_id: int,
@@ -241,10 +245,11 @@ async def export_model(
         path=zip_path,
         filename=filename,
         media_type="application/zip",
+        background=BackgroundTask(shutil.rmtree, os.path.dirname(zip_path), ignore_errors=True),
     )
 
 
-@router.post("/{model_id}/import", response_model=ApiResponse)
+@router.post("/{model_id}/import", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:create"))])
 async def import_model(
     model_id: int,
     zip_file: UploadFile = File(..., description="模型 ZIP 包"),
@@ -285,14 +290,13 @@ async def import_model(
 # ── 场景绑定 ──────────────────────────────────────────────
 
 
-@router.get("/scenes/{scene_id}/models", response_model=ApiResponse)
+@router.get("/scenes/{scene_id}/models", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:view"))])
 async def list_scene_models(
     scene_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """获取场景关联的模型列表"""
-    from app.entity.db_models import DetectionScene
 
     scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
     if not scene:
@@ -302,7 +306,7 @@ async def list_scene_models(
     return ApiResponse(code=200, data=result)
 
 
-@router.post("/scenes/{scene_id}/bindmodel", response_model=ApiResponse)
+@router.post("/scenes/{scene_id}/bindmodel", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:update"))])
 async def bind_model_to_scene(
     scene_id: int,
     model_id: int = Form(..., description="模型ID"),
@@ -311,7 +315,6 @@ async def bind_model_to_scene(
     current_user: User = Depends(get_current_user),
 ):
     """绑定模型到场景"""
-    from app.entity.db_models import DetectionScene, Model
 
     scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
     if not scene:
@@ -325,7 +328,7 @@ async def bind_model_to_scene(
     return ApiResponse(code=200, message="模型绑定成功", data={"scene_model_id": sm.id})
 
 
-@router.delete("/scenes/{scene_id}/bindmodel/{model_id}", response_model=ApiResponse)
+@router.delete("/scenes/{scene_id}/bindmodel/{model_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:update"))])
 async def unbind_model_from_scene(
     scene_id: int,
     model_id: int,

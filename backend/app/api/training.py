@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.config.settings import settings
+from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
 from app.database.session import get_db
-from app.entity.db_models import User, Model, ModelVersion
+from app.entity.db_models import User, Model, ModelVersion, TrainingTask
 from app.entity.schemas import ApiResponse
 from app.services.training_service import training_service
 from app.services.data_utils import (
@@ -32,8 +34,6 @@ router = APIRouter(prefix="/api/training", tags=["训练管理"])
 
 def _validate_training_path(file_path: str, label: str = "路径"):
     """校验训练相关路径是否在白名单目录内"""
-    from app.config.settings import settings
-
     resolved = Path(file_path).resolve()
     allowed_dirs = [d.strip() for d in settings.ALLOWED_TRAINING_DIRS.split(",") if d.strip()]
     for allowed in allowed_dirs:
@@ -50,8 +50,6 @@ def _validate_training_path(file_path: str, label: str = "路径"):
 
 def _get_task_or_403(db: Session, task_id: int, user_id: int):
     """获取训练任务并校验所有权，不属于当前用户则抛出 403"""
-    from app.entity.db_models import TrainingTask
-
     task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="训练任务不存在")
@@ -60,7 +58,7 @@ def _get_task_or_403(db: Session, task_id: int, user_id: int):
     return task
 
 
-@router.post("/tasks", response_model=ApiResponse)
+@router.post("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def create_training_task(
     model_id: int = Form(..., description="模型ID"),
     base_architecture: str = Form("yolov11n", description="基础架构：yolov11n/s/m/l/x"),
@@ -110,7 +108,7 @@ async def create_training_task(
     )
 
 
-@router.post("/tasks/{task_id}/start", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/start", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def start_training(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -123,7 +121,7 @@ async def start_training(
     return ApiResponse(code=200, message="训练任务已启动")
 
 
-@router.post("/tasks/{task_id}/pause", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/pause", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def pause_training(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -136,7 +134,7 @@ async def pause_training(
     return ApiResponse(code=200, message="训练任务已暂停")
 
 
-@router.post("/tasks/{task_id}/cancel", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/cancel", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def cancel_training(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -149,7 +147,7 @@ async def cancel_training(
     return ApiResponse(code=200, message="训练任务已取消")
 
 
-@router.get("/tasks/{task_id}", response_model=ApiResponse)
+@router.get("/tasks/{task_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_task(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -162,7 +160,7 @@ async def get_training_task(
     return ApiResponse(code=200, data=status)
 
 
-@router.get("/tasks/{task_id}/status", response_model=ApiResponse)
+@router.get("/tasks/{task_id}/status", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_status(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -175,7 +173,7 @@ async def get_training_status(
     return ApiResponse(code=200, data=status)
 
 
-@router.get("/tasks/{task_id}/metrics", response_model=ApiResponse)
+@router.get("/tasks/{task_id}/metrics", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_metrics(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -185,7 +183,7 @@ async def get_training_metrics(
     return ApiResponse(code=200, data=metrics)
 
 
-@router.post("/tasks/{task_id}/validate", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/validate", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def validate_model(
     task_id: int,
     data_yaml: Optional[str] = Form(None, description="数据集配置文件路径（可选）"),
@@ -209,7 +207,7 @@ async def validate_model(
     return ApiResponse(code=200, message="模型评估完成", data=result)
 
 
-@router.get("/tasks", response_model=ApiResponse)
+@router.get("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_tasks(
     model_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -231,7 +229,7 @@ async def get_training_tasks(
     return ApiResponse(code=200, data=result)
 
 
-@router.post("/datasets/validate", response_model=ApiResponse)
+@router.post("/datasets/validate", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def validate_dataset_api(
     images_dir: str = Form(..., description="图像目录路径"),
     labels_dir: str = Form(..., description="标注目录路径"),
@@ -246,7 +244,7 @@ async def validate_dataset_api(
     return ApiResponse(code=200, message="数据集验证完成", data=result)
 
 
-@router.post("/datasets/split", response_model=ApiResponse)
+@router.post("/datasets/split", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def split_dataset_api(
     images_dir: str = Form(..., description="图像目录路径"),
     labels_dir: str = Form(..., description="标注目录路径"),
@@ -273,7 +271,7 @@ async def split_dataset_api(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/datasets/generate-yaml", response_model=ApiResponse)
+@router.post("/datasets/generate-yaml", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def generate_data_yaml_api(
     output_path: str = Form(..., description="输出文件路径"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
@@ -292,7 +290,7 @@ async def generate_data_yaml_api(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/models/upload", response_model=ApiResponse)
+@router.post("/models/upload", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:create"))])
 async def upload_model(
     model_id: int = Form(..., description="所属模型ID"),
     model_file: UploadFile = File(..., description="模型文件(.pt)"),
@@ -371,7 +369,7 @@ async def upload_model(
 # ── 数据集格式转换 ──────────────────────────────────
 
 
-@router.post("/datasets/convert/voc-to-yolo", response_model=ApiResponse)
+@router.post("/datasets/convert/voc-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def convert_voc_to_yolo_api(
     voc_file: UploadFile = File(..., description="VOC XML 文件"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
@@ -405,7 +403,7 @@ async def convert_voc_to_yolo_api(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/datasets/convert/coco-to-yolo", response_model=ApiResponse)
+@router.post("/datasets/convert/coco-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def convert_coco_to_yolo_api(
     coco_file: UploadFile = File(..., description="COCO JSON 文件"),
     image_dir: str = Form(..., description="图像目录路径（用于获取图像尺寸）"),
@@ -436,7 +434,7 @@ async def convert_coco_to_yolo_api(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/datasets/convert/labelme-to-yolo", response_model=ApiResponse)
+@router.post("/datasets/convert/labelme-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def convert_labelme_to_yolo_api(
     labelme_file: UploadFile = File(..., description="LabelMe JSON 文件"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
@@ -470,7 +468,7 @@ async def convert_labelme_to_yolo_api(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/models/{version_id}/download")
+@router.get("/models/{version_id}/download", dependencies=[Depends(RequirePermission("model:view"))])
 async def download_model(
     version_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -478,8 +476,6 @@ async def download_model(
 
     返回模型文件流，支持 .pt 文件下载
     """
-    from fastapi.responses import FileResponse
-    from app.entity.db_models import ModelVersion
 
     # 查询模型版本
     model_version = (

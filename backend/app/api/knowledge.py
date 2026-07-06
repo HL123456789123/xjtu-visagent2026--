@@ -7,14 +7,13 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
 from app.database.session import get_db
 from app.entity.db_models import User
-from app.entity.schemas import ApiResponse
+from app.entity.schemas import ApiResponse, DeleteDocumentRequest
 from app.services.knowledge_service import knowledge_service
 
 logger = get_logger("knowledge_api")
@@ -22,13 +21,7 @@ logger = get_logger("knowledge_api")
 router = APIRouter(prefix="/api/knowledge", tags=["知识库"])
 
 
-class DeleteDocumentRequest(BaseModel):
-    """删除文档请求体"""
-
-    source: str
-
-
-@router.post("/upload", response_model=ApiResponse)
+@router.post("/upload", response_model=ApiResponse, dependencies=[Depends(RequirePermission("knowledge:manage"))])
 async def upload_document(
     file: UploadFile = File(..., description="文档文件 (PDF/MD/TXT)"),
     db: Session = Depends(get_db),
@@ -84,7 +77,7 @@ async def upload_document(
             os.unlink(tmp_path)
 
 
-@router.get("/search", response_model=ApiResponse)
+@router.get("/search", response_model=ApiResponse, dependencies=[Depends(RequirePermission("knowledge:search"))])
 async def search_knowledge(
     query: str = ...,
     k: int = 5,
@@ -113,7 +106,7 @@ async def search_knowledge(
         raise HTTPException(status_code=500, detail=f"检索失败: {str(e)}")
 
 
-@router.get("/stats", response_model=ApiResponse)
+@router.get("/stats", response_model=ApiResponse, dependencies=[Depends(RequirePermission("knowledge:search"))])
 async def get_knowledge_stats(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
@@ -128,7 +121,7 @@ async def get_knowledge_stats(
         raise HTTPException(status_code=500, detail=f"获取统计失败: {str(e)}")
 
 
-@router.delete("/", response_model=ApiResponse)
+@router.delete("/", response_model=ApiResponse, dependencies=[Depends(RequirePermission("knowledge:manage"))])
 async def delete_document(
     request: DeleteDocumentRequest,
     db: Session = Depends(get_db),

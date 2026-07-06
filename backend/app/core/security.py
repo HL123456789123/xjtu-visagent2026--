@@ -13,6 +13,7 @@ from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 import bcrypt
 from app.config.settings import settings
+from app.database.session import get_db
 
 
 def hash_password(password: str) -> str:
@@ -45,7 +46,7 @@ def create_access_token(data: dict) -> str:
         JWT Token 字符串
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
         to_encode,
@@ -84,50 +85,39 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=Fals
 async def get_current_user(
     request: Request,
     token: str = Depends(oauth2_scheme),
-    db=None,
+    db: Session = Depends(get_db),
 ):
     """
     从 JWT Token 中解析当前用户
     支持从 Authorization header 或 HttpOnly cookie 中读取 token
     在需要认证的路由中通过 Depends(get_current_user) 使用
     """
-    from app.database.session import get_db as _get_db
     from app.services.user_service import user_service
 
     # 优先从 Authorization header 读取，其次从 cookie 读取
     if not token:
         token = request.cookies.get("access_token")
 
-    _own_db = False
-    if db is None:
-        db_gen = _get_db()
-        db = next(db_gen)
-        _own_db = True
-
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="无效的认证凭据",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    if not token:
+        raise credentials_exception
     try:
-        credentials_exception = HTTPException(
-            status_code=401,
-            detail="无效的认证凭据",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        if not token:
+        payload = decode_access_token(token)
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
             raise credentials_exception
-        try:
-            payload = decode_access_token(token)
-            user_id_str: str = payload.get("sub")
-            if user_id_str is None:
-                raise credentials_exception
-            user_id = int(user_id_str)
-        except (JWTError, ValueError):
-            raise credentials_exception
+        user_id = int(user_id_str)
+    except (JWTError, ValueError):
+        raise credentials_exception
 
-        user = user_service.get_user_by_id(db, user_id)
-        if user is None:
-            raise credentials_exception
-        return user
-    finally:
-        if _own_db:
-            db.close()
+    user = user_service.get_user_by_id(db, user_id)
+    if user is None:
+        raise credentials_exception
+    return user
 
 
 # ── RBAC 权限校验依赖 ──────────────────────────────────
@@ -151,10 +141,8 @@ class RequirePermission:
     async def __call__(
         self,
         current_user=Depends(get_current_user),
-        db: Session = Depends(),
+        db: Session = Depends(get_db),
     ):
-        from app.database.session import get_db as _get_db
-
         # 超级管理员直接放行
         if current_user.is_superuser:
             return current_user
@@ -162,34 +150,24 @@ class RequirePermission:
         # 查询用户是否拥有指定权限
         from app.entity.db_models import UserRole, RolePermission, Permission
 
-        _own_db = False
-        if db is None:
-            db_gen = _get_db()
-            db = next(db_gen)
-            _own_db = True
+        has_permission = (
+            db.query(Permission)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .join(UserRole, UserRole.role_id == RolePermission.role_id)
+            .filter(
+                UserRole.user_id == current_user.id,
+                Permission.code == self.permission_code,
+            )
+            .first()
+        )
 
-        try:
-            has_permission = (
-                db.query(Permission)
-                .join(RolePermission, RolePermission.permission_id == Permission.id)
-                .join(UserRole, UserRole.role_id == RolePermission.role_id)
-                .filter(
-                    UserRole.user_id == current_user.id,
-                    Permission.code == self.permission_code,
-                )
-                .first()
+        if not has_permission:
+            raise HTTPException(
+                status_code=403,
+                detail=f"权限不足，需要权限: {self.permission_code}",
             )
 
-            if not has_permission:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"权限不足，需要权限: {self.permission_code}",
-                )
-
-            return current_user
-        finally:
-            if _own_db:
-                db.close()
+        return current_user
 
 
 class RequireSuperuser:

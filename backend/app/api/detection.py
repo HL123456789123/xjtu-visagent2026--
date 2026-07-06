@@ -11,16 +11,19 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, RequirePermission
+from app.config.settings import settings
 from app.database.session import get_db
-from app.entity.db_models import User, DetectionScene
+from app.entity.db_models import User, DetectionScene, DetectionTask
 from app.entity.schemas import ApiResponse
 from app.services.detection_service import detection_service
+from app.storage.minio_client import MinIOClient
+from app.storage.redis_client import redis_client
 
 router = APIRouter(prefix="/api/detection", tags=["目标检测"])
 
 
-@router.post("/single", response_model=ApiResponse)
+@router.post("/single", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
 async def detect_single(
     scene_id: int = Form(..., description="场景ID"),
     image: UploadFile = File(..., description="图像文件"),
@@ -88,7 +91,7 @@ async def detect_single(
             os.unlink(tmp_path)
 
 
-@router.post("/batch", response_model=ApiResponse)
+@router.post("/batch", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
 async def detect_batch(
     scene_id: int = Form(..., description="场景ID"),
     images: List[UploadFile] = File(..., description="图像文件列表"),
@@ -156,7 +159,7 @@ async def detect_batch(
                 os.unlink(path)
 
 
-@router.post("/folder", response_model=ApiResponse)
+@router.post("/folder", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
 async def detect_folder(
     scene_id: int = Form(..., description="场景ID"),
     folder_path: str = Form(..., description="图片文件夹路径"),
@@ -174,7 +177,6 @@ async def detect_folder(
         raise HTTPException(status_code=404, detail="场景不存在")
 
     # 验证文件夹路径安全性：解析真实路径并检查是否在白名单目录内
-    from app.config.settings import settings
 
     folder = Path(folder_path).resolve()
     if not folder.exists() or not folder.is_dir():
@@ -237,7 +239,7 @@ async def detect_folder(
     )
 
 
-@router.post("/video", response_model=ApiResponse)
+@router.post("/video", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:create"))])
 async def detect_video(
     scene_id: int = Form(..., description="场景ID"),
     video: UploadFile = File(..., description="视频文件"),
@@ -280,7 +282,6 @@ async def detect_video(
         )
 
         # 上传结果视频到 MinIO
-        from app.storage.minio_client import MinIOClient
 
         minio_client = MinIOClient()
         object_name = f"detection/video/{os.path.basename(output_path)}"
@@ -305,12 +306,11 @@ async def detect_video(
             os.unlink(output_path)
 
 
-@router.get("/tasks/{task_id}", response_model=ApiResponse)
+@router.get("/tasks/{task_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:view"))])
 async def get_detection_task(
     task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取检测任务详情"""
-    from app.entity.db_models import DetectionTask
 
     task = (
         db.query(DetectionTask)
@@ -338,7 +338,7 @@ async def get_detection_task(
     )
 
 
-@router.get("/tasks/{task_id}/results", response_model=ApiResponse)
+@router.get("/tasks/{task_id}/results", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:view"))])
 async def get_detection_results(
     task_id: int,
     page: int = 1,
@@ -348,7 +348,6 @@ async def get_detection_results(
 ):
     """获取检测结果"""
     # 先校验任务所有权
-    from app.entity.db_models import DetectionTask
 
     task = (
         db.query(DetectionTask)
@@ -365,7 +364,7 @@ async def get_detection_results(
     return ApiResponse(code=200, data=result)
 
 
-@router.get("/tasks", response_model=ApiResponse)
+@router.get("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:view"))])
 async def get_detection_tasks(
     scene_id: Optional[int] = None,
     page: int = 1,
@@ -381,12 +380,11 @@ async def get_detection_tasks(
     return ApiResponse(code=200, data=result)
 
 
-@router.get("/scenes", response_model=ApiResponse)
+@router.get("/scenes", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:task:view"))])
 async def get_detection_scenes(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取检测场景列表（带 Redis 缓存）"""
-    from app.storage.redis_client import redis_client
 
     # 尝试从缓存获取
     cache_key = "detection_scenes:active"
@@ -416,7 +414,7 @@ async def get_detection_scenes(
     return ApiResponse(code=200, data=result)
 
 
-@router.post("/scenes", response_model=ApiResponse)
+@router.post("/scenes", response_model=ApiResponse, dependencies=[Depends(RequirePermission("detection:scene:create"))])
 async def create_detection_scene(
     name: str = Form(..., description="场景标识"),
     display_name: str = Form(..., description="场景显示名"),
@@ -455,6 +453,9 @@ async def create_detection_scene(
     db.add(scene)
     db.commit()
     db.refresh(scene)
+
+    # 清除场景列表缓存
+    redis_client.cache_delete("scenes", "detection_scenes:active")
 
     return ApiResponse(
         code=200,
