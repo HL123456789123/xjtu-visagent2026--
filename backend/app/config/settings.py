@@ -3,6 +3,7 @@
 使用 pydantic-settings 管理所有配置项，支持从 .env 文件和环境变量读取
 加载优先级：环境变量（系统级别）> .env 文件 > 代码中的默认值
 """
+
 from pydantic_settings import BaseSettings
 
 
@@ -66,6 +67,9 @@ class Settings(BaseSettings):
     # ── 安全配置 ────────────────────────────────────────
     ALLOWED_DETECTION_DIRS: str = "/tmp,/data,/home"
     """允许文件夹检测访问的目录白名单，逗号分隔"""
+
+    COOKIE_SECURE: bool = True
+    """Cookie 安全标志，生产环境需开启 HTTPS"""
 
     # ── CORS 配置 ────────────────────────────────────
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:8080"

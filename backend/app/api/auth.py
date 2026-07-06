@@ -4,7 +4,8 @@
 - POST /api/auth/login 用户登录
 - GET /api/auth/me 获取当前用户信息
 """
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -61,14 +62,14 @@ async def login(request: UserLogin, db: Session = Depends(get_db)):
             "roles": roles,
         },
     }
-    
+
     response = JSONResponse(content=response_data)
     # 设置 HttpOnly cookie，防止 XSS 读取
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # 生产环境应设为 True（需要 HTTPS）
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
