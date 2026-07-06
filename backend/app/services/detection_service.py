@@ -6,6 +6,7 @@
 
 import os
 import tempfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,7 @@ class DetectionService:
     def __init__(self):
         self.models: Dict[tuple, Any] = {}  # (scene_id, model_version_id) -> YOLO model
         self.minio_client = None
+        self._models_lock = threading.Lock()
 
     def load_model(self, scene_id: int, model_path: str, cache_key=None) -> bool:
         """
@@ -56,7 +58,8 @@ class DetectionService:
             if not os.path.exists(model_path):
                 logger.info(f"模型文件未缓存，将由 ultralytics 自动下载: {model_path}")
 
-            self.models[cache_key] = YOLO(model_path)
+            with self._models_lock:
+                self.models[cache_key] = YOLO(model_path)
             logger.info(
                 f"加载模型成功: scene_id={scene_id}, path={model_path}, cache_key={cache_key}"
             )

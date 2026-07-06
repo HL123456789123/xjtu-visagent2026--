@@ -5,6 +5,7 @@ LangGraph Agent 模块
 """
 
 from typing import TypedDict, Annotated, Optional
+import threading
 
 import httpx
 from langchain_core.messages import AIMessage, SystemMessage
@@ -42,25 +43,30 @@ class AgentState(TypedDict):
 
 # LLM 实例缓存，避免每次调用都创建新实例
 _llm_cache = None
+_llm_lock = threading.Lock()
 
 
 def get_llm():
-    """获取 LLM 实例（缓存复用）"""
+    """获取 LLM 实例（缓存复用，线程安全）"""
     global _llm_cache
     if _llm_cache is not None:
         return _llm_cache
 
-    # 创建自定义 httpx 客户端，禁用 HTTP/2 并增加超时
-    http_async_client = httpx.AsyncClient(http2=False, timeout=60.0, follow_redirects=True)
+    with _llm_lock:
+        if _llm_cache is not None:
+            return _llm_cache
 
-    _llm_cache = ChatOpenAI(
-        model=settings.OPENAI_MODEL,
-        openai_api_key=settings.OPENAI_API_KEY,
-        openai_api_base=settings.OPENAI_BASE_URL,
-        temperature=0.7,
-        streaming=True,
-        http_async_client=http_async_client,
-    )
+        # 创建自定义 httpx 客户端，禁用 HTTP/2 并增加超时
+        http_async_client = httpx.AsyncClient(http2=False, timeout=60.0, follow_redirects=True)
+
+        _llm_cache = ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            openai_api_key=settings.OPENAI_API_KEY,
+            openai_api_base=settings.OPENAI_BASE_URL,
+            temperature=0.7,
+            streaming=True,
+            http_async_client=http_async_client,
+        )
     return _llm_cache
 
 
