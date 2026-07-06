@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
 from app.core.security import decode_access_token, get_current_user
+from app.entity.schemas import ApiResponse
 from app.database.session import get_db, SessionLocal
 from app.entity.db_models import User, DetectionScene, ModelVersion, SceneModel
 from app.services.detection_service import detection_service
@@ -99,8 +100,9 @@ async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str
         return
 
     # 验证用户是否存在且活跃
-    db = SessionLocal()
+    db = None
     try:
+        db = SessionLocal()
         user = user_service.get_user_by_id(db, user_id)
         if not user or not user.is_active:
             await websocket.accept()
@@ -233,22 +235,24 @@ async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str
         except Exception:
             pass
     finally:
-        db.close()
+        if db is not None:
+            db.close()
         logger.info(
             f"摄像头会话结束: scene_id={scene_id}, frames={session.frame_count if 'session' in locals() else 0}"
         )
 
 
-@router.get("/scenes", response_model=dict)
+@router.get("/scenes", response_model=ApiResponse)
 async def get_camera_scenes(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取支持摄像头检测的场景列表"""
     scenes = db.query(DetectionScene).filter(DetectionScene.is_active.is_(True)).all()
 
-    return {
-        "scenes": [
+    return ApiResponse(
+        code=200,
+        data=[
             {"id": s.id, "name": s.name, "display_name": s.display_name, "category": s.category}
             for s in scenes
-        ]
-    }
+        ],
+    )

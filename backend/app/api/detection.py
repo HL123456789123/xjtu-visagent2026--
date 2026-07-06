@@ -254,13 +254,12 @@ async def detect_video(
     if not scene:
         raise HTTPException(status_code=404, detail="场景不存在")
 
-    # 保存上传的视频
-    # 获取原始文件扩展名，保持原始格式
+    # 流式保存上传的视频，避免大文件 OOM
     original_suffix = Path(video.filename).suffix if video.filename else ".mp4"
     with tempfile.NamedTemporaryFile(delete=False, suffix=original_suffix) as tmp:
-        content = await video.read()
-        tmp.write(content)
         video_path = tmp.name
+        while chunk := await video.read(1024 * 1024):  # 1MB chunks
+            tmp.write(chunk)
 
     # 输出视频路径：在原始文件名基础上添加 _detected 后缀
     video_stem = Path(video_path).stem
