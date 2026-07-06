@@ -24,16 +24,15 @@ logger = get_logger("model_api")
 router = APIRouter(prefix="/api/models", tags=["模型管理"])
 
 
-def _check_model_ownership(db: Session, model_id: int, user_id: int):
+def _check_model_ownership(db: Session, model_id: int, current_user: User):
     """校验模型所有权，不属于当前用户则抛出 403"""
     model = db.query(Model).filter(Model.id == model_id).first()
     if not model:
         raise HTTPException(status_code=404, detail="模型不存在")
     # 超级管理员直接放行
-    user = db.query(User).filter(User.id == user_id).first()
-    if user and user.is_superuser:
+    if current_user.is_superuser:
         return model
-    if model.created_by is None or model.created_by != user_id:
+    if model.created_by is None or model.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="无权操作该模型")
     return model
 
@@ -51,8 +50,10 @@ async def list_models(
     current_user: User = Depends(get_current_user),
 ):
     """获取模型列表"""
+    # 超级管理员查看所有模型，普通用户仅查看自己的模型
     result = model_service.get_model_list(
         db=db,
+        user_id=None if current_user.is_superuser else current_user.id,
         category=category,
         status=status,
         page=page,
@@ -131,7 +132,7 @@ async def update_model(
     """更新模型信息"""
     import json
 
-    _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
 
     kwargs = {}
     if name is not None:
@@ -169,7 +170,7 @@ async def delete_model(
     current_user: User = Depends(get_current_user),
 ):
     """归档模型（软删除）"""
-    _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
     success = model_service.delete_model(db, model_id)
     if not success:
         raise HTTPException(status_code=404, detail="模型不存在")
@@ -200,7 +201,7 @@ async def set_default_version(
     current_user: User = Depends(get_current_user),
 ):
     """设为默认版本"""
-    _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
     success = model_service.set_default_version(db, model_id, version_id)
     if not success:
         raise HTTPException(status_code=404, detail="版本不存在")
@@ -215,7 +216,7 @@ async def delete_version(
     current_user: User = Depends(get_current_user),
 ):
     """归档模型版本"""
-    _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
     success = model_service.delete_model_version(db, version_id)
     if not success:
         raise HTTPException(status_code=404, detail="版本不存在")
@@ -233,7 +234,7 @@ async def export_model(
     current_user: User = Depends(get_current_user),
 ):
     """导出模型 ZIP 包"""
-    _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
     zip_path = model_service.export_model(db, model_id, version_id)
     if not zip_path or not os.path.exists(zip_path):
         raise HTTPException(status_code=400, detail="导出失败，请检查模型文件是否存在")
@@ -260,7 +261,7 @@ async def import_model(
     """从 ZIP 导入模型版本"""
     import tempfile
 
-    _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
 
     # 保存上传的 ZIP 到临时文件
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:

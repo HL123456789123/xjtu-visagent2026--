@@ -3,7 +3,7 @@ Dashboard 数据统计 API 路由
 提供后端聚合的统计数据，避免前端多次请求和聚合计算
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
+from app.core.tz import now_cst
 from app.database.session import get_db
 from app.entity.db_models import (
     User,
@@ -71,7 +72,7 @@ async def get_dashboard_stats(
         )
 
         # 2. 近7天检测趋势
-        seven_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+        seven_days_ago = now_cst() - timedelta(days=7)
         trend_query = db.query(
             func.date(DetectionTask.created_at).label("date"),
             func.count(DetectionTask.id).label("count"),
@@ -85,16 +86,21 @@ async def get_dashboard_stats(
         # 填充完整7天数据
         trend_data = []
         for i in range(7):
-            date = (datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=6 - i)).strftime("%Y-%m-%d")
+            date = (now_cst() - timedelta(days=6 - i)).strftime("%Y-%m-%d")
             count = next((d.count for d in daily_detections if str(d.date) == date), 0)
             trend_data.append({"date": date, "count": count})
 
         # 3. 各场景检测统计
         scene_query = db.query(
             DetectionScene.display_name, func.count(DetectionTask.id).label("count")
-        ).outerjoin(DetectionTask, DetectionTask.scene_id == DetectionScene.id)
-        if user_filter:
-            scene_query = scene_query.filter(DetectionTask.user_id == user_filter)
+        ).outerjoin(
+            DetectionTask,
+            (DetectionTask.scene_id == DetectionScene.id)
+            & (
+                (user_filter is None) | (DetectionTask.user_id == user_filter)
+            ),
+        )
+        # 注意：将 user_filter 放入 join 条件而非 WHERE，避免 outer join 退化为 inner join
         scene_stats = scene_query.group_by(DetectionScene.id, DetectionScene.display_name).all()
 
         scene_data = [{"name": s.display_name, "count": s.count} for s in scene_stats]

@@ -5,13 +5,13 @@
 
 import uuid
 import json
-from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, AIMessage
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
+from app.core.tz import now_cst
 from app.entity.db_models import ChatSession, ChatMessage
 
 logger = get_logger("chat_service")
@@ -49,7 +49,7 @@ class ChatService:
             title=title or "新对话",
             status="active",
             message_count=0,
-            last_message_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            last_message_at=now_cst(),
         )
         db.add(session)
         db.commit()
@@ -103,7 +103,7 @@ class ChatService:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if session:
             session.message_count += 1
-            session.last_message_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            session.last_message_at = now_cst()
 
         db.commit()
         db.refresh(message)
@@ -124,7 +124,7 @@ class ChatService:
         messages = (
             db.query(ChatMessage)
             .filter(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at.asc())
+            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
             .limit(limit)
             .all()
         )
@@ -181,14 +181,14 @@ class ChatService:
 
         start_time = time.time()
 
+        # 先获取历史消息（不含当前用户消息），再保存用户消息，避免“先存后取再剔除”的冗余逻辑
+        history = self.get_history(db, session_id, limit=20)
+
         # 保存用户消息
         self.save_message(db, session_id, "user", message)
 
-        # 获取历史消息
-        history = self.get_history(db, session_id, limit=20)
-
-        # 构建消息列表
-        messages = self._build_messages_for_agent(history[:-1], message)  # 排除刚保存的用户消息
+        # 构建消息列表：history（旧历史）+ 当前新消息
+        messages = self._build_messages_for_agent(history, message)
 
         # 流式执行 Agent
         full_response = ""

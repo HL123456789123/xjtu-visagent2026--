@@ -8,7 +8,6 @@ import os
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -16,6 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
+from app.core.tz import now_cst
 from app.entity.db_models import Model, ModelVersion, SceneModel, DetectionScene
 
 logger = get_logger("model_service")
@@ -235,7 +235,7 @@ class ModelService:
             if key in allowed_fields:
                 setattr(model, key, value)
 
-        model.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        model.updated_at = now_cst()
         db.commit()
         db.refresh(model)
         logger.info(f"更新模型: id={model_id}")
@@ -248,8 +248,7 @@ class ModelService:
             return False
 
         model.status = "archived"
-        model.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
+        model.updated_at = now_cst()
         # 同时归档所有版本
         db.query(ModelVersion).filter(
             ModelVersion.model_id == model_id, ModelVersion.status == "active"
@@ -357,6 +356,10 @@ class ModelService:
         if not model or not version:
             return None
 
+        if version.status != "active":
+            logger.warning(f"无法导出已归档的版本: version_id={version_id}, status={version.status}")
+            return None
+
         if not os.path.exists(version.model_path):
             logger.error(f"模型文件不存在: {version.model_path}")
             return None
@@ -375,7 +378,7 @@ class ModelService:
                     "class_names": model.class_names,
                     "class_names_cn": model.class_names_cn,
                     "source": version.source,
-                    "exported_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+                    "exported_at": now_cst().isoformat(),
                     "metrics": {
                         "map50": version.map50,
                         "map50_95": version.map50_95,
@@ -481,7 +484,7 @@ class ModelService:
                     model_path=str(dest_path),
                     file_size=file_size,
                     description=description
-                    or f"导入于 {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M')}",
+                    or f"导入于 {now_cst().strftime('%Y-%m-%d %H:%M')}",
                     is_default=(version_count == 0),
                 )
                 db.add(mv)
