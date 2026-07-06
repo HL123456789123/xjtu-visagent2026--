@@ -236,7 +236,9 @@ class TrainingService:
                     # 从 results.csv 读取当前 epoch 的指标并写入数据库
                     self._write_epoch_metric(db, task_id, current_ep, results_csv_path)
 
-                    db.commit()
+                    # 每 5 个 epoch 或最后一个 epoch 批量提交，减少事务开销
+                    if current_ep % 5 == 0 or current_ep >= task.epochs - 1:
+                        db.commit()
                 except Exception:
                     db.rollback()
 
@@ -296,9 +298,16 @@ class TrainingService:
         except Exception as e:
             logger.error(f"训练任务失败: task_id={task_id}, error={e}")
             if task is not None:
-                task.status = "failed"
-                task.error_message = str(e)
-                db.commit()
+                try:
+                    task.status = "failed"
+                    task.error_message = str(e)
+                    db.commit()
+                except Exception as commit_err:
+                    logger.error(f"记录训练失败状态时发生数据库错误: {commit_err}")
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
         finally:
             # 清理
             with self._lock:
@@ -407,10 +416,10 @@ class TrainingService:
             return False
 
         # 保存 checkpoint 路径（YOLO 训练时 last.pt 会自动保存在 runs/train/task_X/weights/ 下）
-        checkpoint_dir = os.path.join("runs", "train", f"task_{task_id}", "weights", "last.pt")
-        if os.path.exists(checkpoint_dir):
-            task.checkpoint_path = checkpoint_dir
-            logger.info(f"已保存 checkpoint 路径: {checkpoint_dir}")
+        checkpoint_path = os.path.join("runs", "train", f"task_{task_id}", "weights", "last.pt")
+        if os.path.exists(checkpoint_path):
+            task.checkpoint_path = checkpoint_path
+            logger.info(f"已保存 checkpoint 路径: {checkpoint_path}")
 
         # 先设置 DB 状态为 paused 并提交，确保工作线程在检查 stop_flag 时
         # 已经能看到正确的状态，避免“先设 flag 再改 status”导致的竞态条件

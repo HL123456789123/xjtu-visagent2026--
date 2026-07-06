@@ -4,6 +4,7 @@
 包括单图检测、批量检测、文件夹检测、视频检测等
 """
 
+import gc
 import os
 import tempfile
 import threading
@@ -69,7 +70,14 @@ class DetectionService:
                     # 缓存已满，淘汰最久未使用的
                     if len(self.models) >= self.MAX_CACHED_MODELS:
                         oldest_key, oldest_model = self.models.popitem(last=False)
+                        # 释放 YOLO 模型占用的资源（含 GPU 显存）
+                        try:
+                            if hasattr(oldest_model, "model"):
+                                oldest_model.model.cpu()
+                        except Exception:
+                            pass
                         del oldest_model
+                        gc.collect()
                         logger.info(f"淘汰模型缓存: {oldest_key}")
                     self.models[cache_key] = YOLO(model_path)
             logger.info(
