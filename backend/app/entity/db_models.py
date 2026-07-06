@@ -8,7 +8,6 @@
 系统运维：operation_logs
 """
 
-from datetime import datetime
 from sqlalchemy import (
     Column,
     Integer,
@@ -23,6 +22,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from app.database.session import Base
+from app.core.tz import now_cst
 
 
 # ══════════════════════════════════════════════════════════════
@@ -44,8 +44,8 @@ class User(Base):
     is_active = Column(Boolean, default=True, comment="是否启用")
     is_superuser = Column(Boolean, default=False, comment="是否超级管理员")
     last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
 
     # 关联
     user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
@@ -68,7 +68,7 @@ class Role(Base):
     display_name = Column(String(100), nullable=False, comment="角色显示名，如 管理员/操作员/访客")
     description = Column(String(500), nullable=True, comment="角色描述")
     is_system = Column(Boolean, default=False, comment="是否系统内置角色（不可删除）")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
 
     # 关联
     user_roles = relationship("UserRole", back_populates="role", cascade="all, delete-orphan")
@@ -106,7 +106,7 @@ class UserRole(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=now_cst)
 
     user = relationship("User", back_populates="user_roles")
     role = relationship("Role", back_populates="user_roles")
@@ -151,8 +151,8 @@ class DetectionScene(Base):
     class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
     is_active = Column(Boolean, default=True, comment="是否启用")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=now_cst)
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst)
 
     # 关联
     detection_tasks = relationship("DetectionTask", back_populates="scene")
@@ -207,7 +207,7 @@ class DetectionTask(Base):
     risk_level = Column(String(20), nullable=True, comment="风险等级：low/medium/high/critical")
     analyzed_at = Column(DateTime, nullable=True, comment="分析完成时间")
 
-    created_at = Column(DateTime, default=datetime.now, index=True, comment="创建时间")
+    created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
     completed_at = Column(DateTime, nullable=True, comment="完成时间")
 
     # 关联
@@ -244,7 +244,7 @@ class DetectionResult(Base):
     inference_time = Column(Float, nullable=True, comment="该图推理耗时（ms）")
     image_width = Column(Integer, nullable=True, comment="图像宽度")
     image_height = Column(Integer, nullable=True, comment="图像高度")
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=now_cst)
 
     # 关联
     task = relationship("DetectionTask", back_populates="results")
@@ -273,8 +273,8 @@ class Model(Base):
     class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
     status = Column(String(20), default="active", comment="状态：active/archived")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
 
     # 关联
     creator = relationship("User", back_populates="models")
@@ -296,7 +296,7 @@ class SceneModel(Base):
         Integer, ForeignKey("models.id"), nullable=False, index=True, comment="模型ID"
     )
     is_default = Column(Boolean, default=False, comment="是否为该场景的默认模型")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
 
     # 关联
     scene = relationship("DetectionScene", back_populates="scene_models")
@@ -339,7 +339,7 @@ class ModelVersion(Base):
     description = Column(Text, nullable=True, comment="版本描述/变更说明")
     file_size = Column(BigInteger, nullable=True, comment="模型文件大小（字节）")
     is_default = Column(Boolean, default=False, comment="是否为该模型的默认版本")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
 
     # 关联
     model = relationship("Model", back_populates="versions")
@@ -396,8 +396,8 @@ class TrainingTask(Base):
     # 错误信息
     error_message = Column(Text, nullable=True, comment="失败错误信息")
 
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
     started_at = Column(DateTime, nullable=True, comment="开始训练时间")
     completed_at = Column(DateTime, nullable=True, comment="训练完成时间")
 
@@ -432,7 +432,7 @@ class TrainingMetric(Base):
 
     # 学习率
     lr = Column(Float, nullable=True, comment="当前学习率")
-    created_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=now_cst)
 
     # 关联
     task = relationship("TrainingTask", back_populates="metrics")
@@ -459,8 +459,8 @@ class ChatSession(Base):
     status = Column(String(20), default="active", comment="状态：active/archived")
     message_count = Column(Integer, default=0, comment="消息数量")
     last_message_at = Column(DateTime, nullable=True, index=True, comment="最后消息时间")
-    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst)
 
     # 关联
     user = relationship("User", back_populates="chat_sessions")
@@ -496,7 +496,7 @@ class ChatMessage(Base):
     # 元信息
     tokens_used = Column(Integer, nullable=True, comment="Token 消耗量")
     latency_ms = Column(Integer, nullable=True, comment="响应耗时（毫秒）")
-    created_at = Column(DateTime, default=datetime.now, index=True, comment="创建时间")
+    created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
 
     # 关联
     session = relationship("ChatSession", back_populates="messages")
@@ -542,7 +542,7 @@ class OperationLog(Base):
     # 结果
     status = Column(String(20), default="success", comment="操作结果：success/failure")
     error_message = Column(Text, nullable=True, comment="失败时的错误信息")
-    created_at = Column(DateTime, default=datetime.now, index=True, comment="创建时间")
+    created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
 
     # 关联
     user = relationship("User", back_populates="operation_logs")

@@ -6,7 +6,7 @@
 - RBAC 权限校验依赖
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 import bcrypt
 from app.config.settings import settings
 from app.database.session import get_db
+from app.core.tz import now_cst
 
 
 def hash_password(password: str) -> str:
@@ -46,7 +47,7 @@ def create_access_token(data: dict) -> str:
         JWT Token 字符串
     """
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = now_cst() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
         to_encode,
