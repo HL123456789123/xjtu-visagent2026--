@@ -48,13 +48,11 @@ def init_redis():
 
 def init_seed():
     """初始化种子数据（检测场景等）"""
-    from app.database.session import SessionLocal, Base, engine
+    from app.database.session import SessionLocal
     from app.database.seed import seed_scenes
 
-    # 创建所有数据库表（如果不存在）
-    logger.info('正在创建数据库表...')
-    Base.metadata.create_all(bind=engine)
-    logger.info('数据库表创建完成')
+    # 数据库表结构由 Alembic 迁移管理，不再使用 create_all
+    # 启动前请确保已执行: alembic upgrade head
 
     db = SessionLocal()
     try:

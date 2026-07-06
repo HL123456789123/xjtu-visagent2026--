@@ -45,6 +45,27 @@ class AgentState(TypedDict):
 _llm_cache = None
 _llm_lock = threading.Lock()
 
+# ReAct Agent 实例缓存，避免每次调用都重新创建
+_agent_cache: dict = {}
+_agent_lock = threading.Lock()
+
+
+def _get_react_agent(agent_name: str):
+    """获取缓存的 ReAct Agent 实例（线程安全）"""
+    if agent_name in _agent_cache:
+        return _agent_cache[agent_name]
+
+    with _agent_lock:
+        if agent_name in _agent_cache:
+            return _agent_cache[agent_name]
+
+        llm = get_llm()
+        tools = get_all_tools()
+        agent = create_react_agent(llm, tools)
+        _agent_cache[agent_name] = agent
+        logger.info(f"创建并缓存 ReAct Agent: {agent_name}")
+        return agent
+
 
 def get_llm():
     """获取 LLM 实例（缓存复用，线程安全）"""
@@ -119,11 +140,7 @@ async def detection_agent_node(state: AgentState) -> dict:
     使用 ReAct Agent 执行检测任务
     """
     try:
-        llm = get_llm()
-        tools = get_all_tools()
-
-        # 创建 ReAct Agent
-        agent = create_react_agent(llm, tools)
+        agent = _get_react_agent("detection_agent")
 
         # 构建消息
         messages = [SystemMessage(content=DETECTION_SYSTEM_PROMPT), *state["messages"]]
@@ -157,11 +174,7 @@ async def analysis_agent_node(state: AgentState) -> dict:
     分析检测结果并生成报告
     """
     try:
-        llm = get_llm()
-        tools = get_all_tools()
-
-        # 创建 ReAct Agent
-        agent = create_react_agent(llm, tools)
+        agent = _get_react_agent("analysis_agent")
 
         # 构建消息
         messages = [SystemMessage(content=ANALYSIS_SYSTEM_PROMPT), *state["messages"]]
@@ -195,11 +208,7 @@ async def qa_agent_node(state: AgentState) -> dict:
     回答用户问题
     """
     try:
-        llm = get_llm()
-        tools = get_all_tools()
-
-        # 创建 ReAct Agent
-        agent = create_react_agent(llm, tools)
+        agent = _get_react_agent("qa_agent")
 
         # 构建消息
         messages = [SystemMessage(content=QA_SYSTEM_PROMPT), *state["messages"]]

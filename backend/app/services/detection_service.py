@@ -8,6 +8,7 @@ import os
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -31,8 +32,10 @@ logger = get_logger("detection_service")
 class DetectionService:
     """检测服务类"""
 
+    MAX_CACHED_MODELS = 5  # 最多缓存 5 个模型
+
     def __init__(self):
-        self.models: Dict[tuple, Any] = {}  # (scene_id, model_version_id) -> YOLO model
+        self.models: OrderedDict = OrderedDict()  # LRU 缓存
         self.minio_client = None
         self._models_lock = threading.Lock()
 
@@ -59,7 +62,16 @@ class DetectionService:
                 logger.info(f"模型文件未缓存，将由 ultralytics 自动下载: {model_path}")
 
             with self._models_lock:
-                self.models[cache_key] = YOLO(model_path)
+                # 如果已缓存，移到末尾（LRU）
+                if cache_key in self.models:
+                    self.models.move_to_end(cache_key)
+                else:
+                    # 缓存已满，淘汰最久未使用的
+                    if len(self.models) >= self.MAX_CACHED_MODELS:
+                        oldest_key, oldest_model = self.models.popitem(last=False)
+                        del oldest_model
+                        logger.info(f"淘汰模型缓存: {oldest_key}")
+                    self.models[cache_key] = YOLO(model_path)
             logger.info(
                 f"加载模型成功: scene_id={scene_id}, path={model_path}, cache_key={cache_key}"
             )
@@ -229,6 +241,106 @@ class DetectionService:
             "image_size": image_size,
         }
 
+    def _detect_batch_sync(
+        self,
+        scene_id: int,
+        image_paths: List[str],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        image_size: int = 640,
+        model_version_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        批量检测（同步版本）—— 利用 YOLO 内置 batch predict 一次性推理
+        可被 asyncio.to_thread 包装以避免阻塞事件循环
+        """
+        if not image_paths:
+            return []
+
+        start_time = time.time()
+        cache_key = (scene_id, model_version_id)
+
+        # 确保模型已加载
+        if cache_key not in self.models:
+            logger.warning(f"模型未缓存，将在同步方法中加载: cache_key={cache_key}")
+            # 同步方法中无法访问 db，需要调用方确保模型已加载
+            if cache_key not in self.models:
+                return [{"image_path": p, "error": "模型未加载", "detections": []} for p in image_paths]
+
+        model = self.models[cache_key]
+
+        # 一次性批量推理
+        try:
+            all_results = model.predict(
+                source=image_paths,
+                conf=conf_threshold,
+                iou=iou_threshold,
+                imgsz=image_size,
+                verbose=False,
+            )
+        except Exception as e:
+            logger.error(f"批量推理失败: {e}")
+            return [{"image_path": p, "error": str(e), "detections": []} for p in image_paths]
+
+        total_inference = (time.time() - start_time) * 1000
+        per_image_time = total_inference / len(image_paths) if image_paths else 0
+
+        # 逐结果解析
+        results = []
+        for i, result in enumerate(all_results):
+            image_path = image_paths[i] if i < len(image_paths) else f"unknown_{i}"
+            detections = []
+            annotated_image_path = None
+
+            try:
+                img_height, img_width = result.orig_shape
+
+                try:
+                    annotated_dir = os.path.join(tempfile.gettempdir(), "visagent_annotated")
+                    os.makedirs(annotated_dir, exist_ok=True)
+                    annotated_image_path = os.path.join(
+                        annotated_dir, f"annotated_{os.path.basename(image_path)}"
+                    )
+                    result.save(filename=annotated_image_path)
+                except Exception as e:
+                    logger.warning(f"保存标注图像失败: {e}")
+
+                for box in result.boxes:
+                    class_id = int(box.cls[0])
+                    class_name = result.names[class_id]
+                    confidence = float(box.conf[0])
+                    bbox = box.xyxy[0].tolist()
+
+                    detections.append(
+                        {
+                            "class_id": class_id,
+                            "class_name": class_name,
+                            "confidence": confidence,
+                            "bbox": bbox,
+                            "image_width": img_width,
+                            "image_height": img_height,
+                        }
+                    )
+            except Exception as e:
+                logger.error(f"解析检测结果失败 {image_path}: {e}")
+                results.append({"image_path": image_path, "error": str(e), "detections": []})
+                continue
+
+            results.append(
+                {
+                    "image_path": image_path,
+                    "annotated_image_path": annotated_image_path,
+                    "detections": detections,
+                    "total_objects": len(detections),
+                    "inference_time": per_image_time,
+                    "conf_threshold": conf_threshold,
+                    "iou_threshold": iou_threshold,
+                    "image_size": image_size,
+                }
+            )
+
+        return results
+
     async def detect_batch(
         self,
         db: Session,
@@ -240,37 +352,27 @@ class DetectionService:
         model_version_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
-        批量检测
-
-        Args:
-            db: 数据库会话
-            scene_id: 场景ID
-            image_paths: 图像路径列表
-            conf_threshold: 置信度阈值
-            iou_threshold: IoU 阈值
-            image_size: 推理图像尺寸
-
-        Returns:
-            检测结果列表
+        批量检测 — 利用 YOLO 内置 batch predict，通过 asyncio.to_thread 避免阻塞事件循环
         """
-        results = []
-        for image_path in image_paths:
-            try:
-                result = await self.detect_single(
-                    db=db,
-                    scene_id=scene_id,
-                    image_path=image_path,
-                    conf_threshold=conf_threshold,
-                    iou_threshold=iou_threshold,
-                    image_size=image_size,
-                    model_version_id=model_version_id,
-                )
-                results.append(result)
-            except Exception as e:
-                logger.error(f"检测失败 {image_path}: {e}")
-                results.append({"image_path": image_path, "error": str(e), "detections": []})
+        import asyncio
 
-        return results
+        # 确保模型已加载（在 async 上下文中操作）
+        cache_key = (scene_id, model_version_id)
+        if cache_key not in self.models:
+            model_path = self.get_default_model_path(db, scene_id, model_version_id)
+            if not self.load_model(scene_id, model_path, cache_key=cache_key):
+                raise ValueError(f"无法加载模型: scene_id={scene_id}")
+
+        # 在线程中执行同步推理，避免阻塞事件循环
+        return await asyncio.to_thread(
+            self._detect_batch_sync,
+            scene_id=scene_id,
+            image_paths=image_paths,
+            conf_threshold=conf_threshold,
+            iou_threshold=iou_threshold,
+            image_size=image_size,
+            model_version_id=model_version_id,
+        )
 
     async def detect_video(
         self,

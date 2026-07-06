@@ -3,6 +3,7 @@
 提供 WebSocket 接口接收视频帧并返回检测结果
 """
 
+import asyncio
 import time
 from typing import Optional
 
@@ -167,64 +168,94 @@ async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str
             {"type": "connected", "scene": scene.display_name, "model": model_path}
         )
 
-        # 主循环：接收帧并检测
-        while session.is_active:
-            # 接收帧
-            frame_data = await session.receive_frame()
-            if frame_data is None:
-                break
+        # 主循环：接收帧并检测（带背压丢帧控制）
+        frame_queue: asyncio.Queue = asyncio.Queue(maxsize=1)
 
-            session.frame_count += 1
-
+        async def receive_frames():
+            """独立接收帧任务，队列满时丢弃旧帧"""
             try:
-                # 解码图像
-                nparr = np.frombuffer(frame_data, np.uint8)
-                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                while True:
+                    data = await session.receive_frame()
+                    if data is None:
+                        await frame_queue.put(None)  # 结束信号
+                        break
+                    if frame_queue.full():
+                        try:
+                            frame_queue.get_nowait()  # 丢弃旧帧
+                        except asyncio.QueueEmpty:
+                            pass
+                    await frame_queue.put(data)
+            except Exception:
+                await frame_queue.put(None)
 
-                if frame is None:
-                    await session.send_json({"type": "error", "message": "图像解码失败"})
-                    continue
+        # 启动帧接收任务
+        recv_task = asyncio.create_task(receive_frames())
 
-                # 执行检测
-                start_time = time.time()
-                results = detection_service.models[cache_key](frame, conf=0.25, iou=0.45)
-                inference_time = (time.time() - start_time) * 1000  # ms
+        try:
+            while session.is_active:
+                # 等待最新帧
+                frame_data = await frame_queue.get()
+                if frame_data is None:
+                    break
 
-                # 解析检测结果
-                detections = []
-                if results and len(results) > 0:
-                    result = results[0]
-                    if result.boxes is not None:
-                        for box in result.boxes:
-                            x1, y1, x2, y2 = box.xyxy[0].tolist()
-                            conf = float(box.conf[0])
-                            cls_id = int(box.cls[0])
-                            cls_name = result.names[cls_id]
+                session.frame_count += 1
 
-                            detections.append(
-                                {
-                                    "bbox": [x1, y1, x2, y2],
-                                    "confidence": conf,
-                                    "class_id": cls_id,
-                                    "class_name": cls_name,
-                                }
-                            )
+                try:
+                    # 解码图像
+                    nparr = np.frombuffer(frame_data, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-                # 发送检测结果
-                await session.send_json(
-                    {
-                        "type": "detection",
-                        "detections": detections,
-                        "total_objects": len(detections),
-                        "inference_time": round(inference_time, 2),
-                        "fps": round(session.get_fps(), 1),
-                        "frame_id": session.frame_count,
-                    }
-                )
+                    if frame is None:
+                        await session.send_json({"type": "error", "message": "图像解码失败"})
+                        continue
 
-            except Exception as e:
-                logger.error(f"帧处理失败: {e}")
-                await session.send_json({"type": "error", "message": f"处理失败: {str(e)}"})
+                    # 执行检测
+                    start_time = time.time()
+                    results = detection_service.models[cache_key](frame, conf=0.25, iou=0.45)
+                    inference_time = (time.time() - start_time) * 1000  # ms
+
+                    # 解析检测结果
+                    detections = []
+                    if results and len(results) > 0:
+                        result = results[0]
+                        if result.boxes is not None:
+                            for box in result.boxes:
+                                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                                conf = float(box.conf[0])
+                                cls_id = int(box.cls[0])
+                                cls_name = result.names[cls_id]
+
+                                detections.append(
+                                    {
+                                        "bbox": [x1, y1, x2, y2],
+                                        "confidence": conf,
+                                        "class_id": cls_id,
+                                        "class_name": cls_name,
+                                    }
+                                )
+
+                    # 发送检测结果
+                    await session.send_json(
+                        {
+                            "type": "detection",
+                            "detections": detections,
+                            "total_objects": len(detections),
+                            "inference_time": round(inference_time, 2),
+                            "fps": round(session.get_fps(), 1),
+                            "frame_id": session.frame_count,
+                        }
+                    )
+
+                except Exception as e:
+                    logger.error(f"帧处理失败: {e}")
+                    await session.send_json({"type": "error", "message": f"处理失败: {str(e)}"})
+
+        finally:
+            recv_task.cancel()
+            try:
+                await recv_task
+            except asyncio.CancelledError:
+                pass
 
     except WebSocketDisconnect:
         logger.info(f"摄像头连接断开: scene_id={scene_id}")
