@@ -495,42 +495,60 @@ class ModelService:
     # ── 场景绑定 ──────────────────────────────────────────
 
     def get_scene_models(self, db: Session, scene_id: int) -> List[Dict[str, Any]]:
-        """获取场景关联的模型列表（含版本信息）"""
+        """获取场景关联的模型列表（含版本信息）— 批量查询避免 N+1"""
         scene_models = db.query(SceneModel).filter(SceneModel.scene_id == scene_id).all()
+        if not scene_models:
+            return []
+
+        # 批量查询所有关联的 Model
+        model_ids = [sm.model_id for sm in scene_models]
+        models = {
+            m.id: m
+            for m in db.query(Model)
+            .filter(Model.id.in_(model_ids), Model.status == "active")
+            .all()
+        }
+
+        # 批量查询所有 ModelVersion，按 model_id 分组
+        all_versions = (
+            db.query(ModelVersion)
+            .filter(ModelVersion.model_id.in_(model_ids), ModelVersion.status == "active")
+            .order_by(ModelVersion.created_at.desc())
+            .all()
+        )
+        versions_by_model: Dict[int, list] = {}
+        for v in all_versions:
+            versions_by_model.setdefault(v.model_id, []).append(v)
+
+        # 组装结果
         result = []
         for sm in scene_models:
-            model = db.query(Model).filter(Model.id == sm.model_id).first()
-            if model and model.status == "active":
-                # 获取模型版本列表
-                versions = (
-                    db.query(ModelVersion)
-                    .filter(ModelVersion.model_id == model.id, ModelVersion.status == "active")
-                    .order_by(ModelVersion.created_at.desc())
-                    .all()
-                )
-                version_list = [
-                    {
-                        "id": v.id,
-                        "version": v.version,
-                        "source": v.source,
-                        "is_default": v.is_default,
-                        "status": v.status,
-                        "map50": v.map50,
-                        "map50_95": v.map50_95,
-                    }
-                    for v in versions
-                ]
-                result.append(
-                    {
-                        "scene_model_id": sm.id,
-                        "model_id": model.id,
-                        "model_name": model.name,
-                        "base_architecture": model.base_architecture,
-                        "category": model.category,
-                        "is_default": sm.is_default,
-                        "versions": version_list,
-                    }
-                )
+            model = models.get(sm.model_id)
+            if not model:
+                continue
+            version_list = [
+                {
+                    "id": v.id,
+                    "version": v.version,
+                    "source": v.source,
+                    "is_default": v.is_default,
+                    "status": v.status,
+                    "map50": v.map50,
+                    "map50_95": v.map50_95,
+                }
+                for v in versions_by_model.get(model.id, [])
+            ]
+            result.append(
+                {
+                    "scene_model_id": sm.id,
+                    "model_id": model.id,
+                    "model_name": model.name,
+                    "base_architecture": model.base_architecture,
+                    "category": model.category,
+                    "is_default": sm.is_default,
+                    "versions": version_list,
+                }
+            )
         return result
 
     def bind_model_to_scene(

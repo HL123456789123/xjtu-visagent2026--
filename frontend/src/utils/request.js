@@ -39,11 +39,13 @@ request.interceptors.response.use(
   (error) => {
     const { response, config } = error
     if (response) {
+      const msg = response.data?.message
+      const detail = response.data?.detail
       switch (response.status) {
         case 401:
           // 登录接口的 401 表示用户名或密码错误，不做 token 过期处理
           if (config?.url?.includes('/auth/login')) {
-            ElMessage.error(response.data?.detail || '用户名或密码错误')
+            ElMessage.error(msg || detail || '用户名或密码错误')
           } else {
             // 其他接口的 401 表示 Token 过期或无效
             ElMessage.error('登录已过期，请重新登录')
@@ -53,25 +55,24 @@ request.interceptors.response.use(
           }
           break
         case 403:
-          ElMessage.error('没有权限访问该资源')
+          ElMessage.error(msg || '没有权限访问该资源')
           break
         case 404:
-          ElMessage.error('请求的资源不存在')
+          ElMessage.error(msg || '请求的资源不存在')
           break
         case 422:
           // Pydantic 验证错误
-          const detail = response.data?.detail
           if (Array.isArray(detail)) {
-            ElMessage.error(detail[0]?.msg || '请求参数错误')
+            ElMessage.error(detail[0]?.msg || msg || '请求参数错误')
           } else {
-            ElMessage.error(detail || '请求参数错误')
+            ElMessage.error(msg || detail || '请求参数错误')
           }
           break
         case 500:
-          ElMessage.error('服务器内部错误')
+          ElMessage.error(msg || '服务器内部错误')
           break
         default:
-          ElMessage.error(response.data?.detail || `请求错误 (${response.status})`)
+          ElMessage.error(msg || detail || `请求错误 (${response.status})`)
       }
     } else {
       // 网络错误

@@ -87,8 +87,10 @@ const router = createRouter({
   routes,
 })
 
-// 全局前置守卫 —— 登录状态检查
-router.beforeEach((to, from, next) => {
+// 全局前置守卫 —— 登录状态检查 + 首次加载验证
+let _verified = false
+
+router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title
     ? `${to.meta.title} - visagent`
@@ -98,6 +100,22 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   const isLoggedIn = userStore.isLoggedIn
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth !== false)
+
+  // 首次加载时验证 cookie 是否仍有效
+  if (requiresAuth && isLoggedIn && !_verified) {
+    try {
+      await userStore.fetchUserInfo()
+      _verified = true
+    } catch {
+      // fetchUserInfo 失败时拦截器已处理跳转，此处直接 return
+      return
+    }
+  }
+
+  // 登出后重置验证标记
+  if (!isLoggedIn) {
+    _verified = false
+  }
 
   if (requiresAuth && !isLoggedIn) {
     // 未登录，跳转到登录页
