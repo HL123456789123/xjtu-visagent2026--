@@ -3,6 +3,7 @@ API 请求日志中间件
 - 记录每次请求的方法、路径、客户端 IP、User-Agent
 - 记录响应状态码、耗时（毫秒）
 """
+
 import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -39,12 +40,7 @@ class RequestLoggerMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         except Exception as e:
             # 记录异常
-            logger.error(
-                f"Request failed | "
-                f"Method: {method} | "
-                f"Path: {path} | "
-                f"Error: {str(e)}"
-            )
+            logger.error(f"Request failed | Method: {method} | Path: {path} | Error: {str(e)}")
             raise
 
         # 计算耗时

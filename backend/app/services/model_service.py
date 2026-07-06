@@ -2,6 +2,7 @@
 模型管理服务模块
 提供 Model 实体的完整 CRUD、版本管理、导入导出等功能
 """
+
 import json
 import os
 import shutil
@@ -57,10 +58,10 @@ class ModelService:
         items = []
         if not models:
             return {"total": total, "page": page, "page_size": page_size, "items": items}
-        
+
         # 批量查询版本数量、场景数量、默认版本，避免 N+1 查询
         model_ids = [m.id for m in models]
-        
+
         # 批量查询活跃版本数量
         version_counts = dict(
             db.query(ModelVersion.model_id, func.count(ModelVersion.id))
@@ -68,7 +69,7 @@ class ModelService:
             .group_by(ModelVersion.model_id)
             .all()
         )
-        
+
         # 批量查询场景绑定数量
         scene_counts = dict(
             db.query(SceneModel.model_id, func.count(SceneModel.id))
@@ -76,7 +77,7 @@ class ModelService:
             .group_by(SceneModel.model_id)
             .all()
         )
-        
+
         # 批量查询默认版本
         default_versions = dict(
             db.query(ModelVersion.model_id, ModelVersion.version)
@@ -87,7 +88,7 @@ class ModelService:
             )
             .all()
         )
-        
+
         for m in models:
             items.append(
                 {
@@ -144,9 +145,7 @@ class ModelService:
         ]
 
         # 关联场景列表（批量查询避免 N+1）
-        scene_models = (
-            db.query(SceneModel).filter(SceneModel.model_id == model_id).all()
-        )
+        scene_models = db.query(SceneModel).filter(SceneModel.model_id == model_id).all()
         scene_list = []
         if scene_models:
             scene_ids = [sm.scene_id for sm in scene_models]
@@ -216,17 +215,20 @@ class ModelService:
         logger.info(f"创建模型: id={model.id}, name={name}")
         return model
 
-    def update_model(
-        self, db: Session, model_id: int, **kwargs
-    ) -> Optional[Model]:
+    def update_model(self, db: Session, model_id: int, **kwargs) -> Optional[Model]:
         """更新模型信息"""
         model = db.query(Model).filter(Model.id == model_id).first()
         if not model:
             return None
 
         allowed_fields = {
-            "name", "description", "base_architecture", "category",
-            "class_names", "class_names_cn", "status",
+            "name",
+            "description",
+            "base_architecture",
+            "category",
+            "class_names",
+            "class_names_cn",
+            "status",
         }
         for key, value in kwargs.items():
             if key in allowed_fields and value is not None:
@@ -296,9 +298,7 @@ class ModelService:
             ],
         }
 
-    def set_default_version(
-        self, db: Session, model_id: int, version_id: int
-    ) -> bool:
+    def set_default_version(self, db: Session, model_id: int, version_id: int) -> bool:
         """设置模型默认版本"""
         version = (
             db.query(ModelVersion)
@@ -335,9 +335,7 @@ class ModelService:
 
     # ── 导入导出 ──────────────────────────────────────────
 
-    def export_model(
-        self, db: Session, model_id: int, version_id: int
-    ) -> Optional[str]:
+    def export_model(self, db: Session, model_id: int, version_id: int) -> Optional[str]:
         """
         导出模型 ZIP 包
 
@@ -467,9 +465,7 @@ class ModelService:
 
                 # 检查是否有版本数量
                 version_count = (
-                    db.query(ModelVersion)
-                    .filter(ModelVersion.model_id == model_id)
-                    .count()
+                    db.query(ModelVersion).filter(ModelVersion.model_id == model_id).count()
                 )
 
                 # 创建版本记录
@@ -480,7 +476,8 @@ class ModelService:
                     status="active",
                     model_path=str(dest_path),
                     file_size=file_size,
-                    description=description or f"导入于 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    description=description
+                    or f"导入于 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                     is_default=(version_count == 0),
                 )
                 db.add(mv)
@@ -497,13 +494,9 @@ class ModelService:
 
     # ── 场景绑定 ──────────────────────────────────────────
 
-    def get_scene_models(
-        self, db: Session, scene_id: int
-    ) -> List[Dict[str, Any]]:
+    def get_scene_models(self, db: Session, scene_id: int) -> List[Dict[str, Any]]:
         """获取场景关联的模型列表（含版本信息）"""
-        scene_models = (
-            db.query(SceneModel).filter(SceneModel.scene_id == scene_id).all()
-        )
+        scene_models = db.query(SceneModel).filter(SceneModel.scene_id == scene_id).all()
         result = []
         for sm in scene_models:
             model = db.query(Model).filter(Model.id == sm.model_id).first()
@@ -566,9 +559,7 @@ class ModelService:
         logger.info(f"绑定模型到场景: scene_id={scene_id}, model_id={model_id}")
         return sm
 
-    def unbind_model_from_scene(
-        self, db: Session, scene_id: int, model_id: int
-    ) -> bool:
+    def unbind_model_from_scene(self, db: Session, scene_id: int, model_id: int) -> bool:
         """解绑模型与场景"""
         sm = (
             db.query(SceneModel)

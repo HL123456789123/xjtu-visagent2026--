@@ -5,6 +5,7 @@
 - 用户认证依赖
 - RBAC 权限校验依赖
 """
+
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -83,7 +84,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=Fals
 async def get_current_user(
     request: Request,
     token: str = Depends(oauth2_scheme),
-    db = None,
+    db=None,
 ):
     """
     从 JWT Token 中解析当前用户
@@ -96,7 +97,7 @@ async def get_current_user(
     # 优先从 Authorization header 读取，其次从 cookie 读取
     if not token:
         token = request.cookies.get("access_token")
-    
+
     _own_db = False
     if db is None:
         db_gen = _get_db()
@@ -135,38 +136,38 @@ async def get_current_user(
 class RequirePermission:
     """
     权限校验依赖工厂
-    
+
     用法：
         @router.delete("/models/{id}", dependencies=[Depends(RequirePermission("model:delete"))])
-    
+
     校验逻辑：
         1. 超级管理员（is_superuser=True）直接放行
         2. 查询用户关联角色拥有的权限编码，匹配则放行
     """
-    
+
     def __init__(self, permission_code: str):
         self.permission_code = permission_code
-    
+
     async def __call__(
         self,
         current_user=Depends(get_current_user),
         db: Session = Depends(),
     ):
         from app.database.session import get_db as _get_db
-        
+
         # 超级管理员直接放行
         if current_user.is_superuser:
             return current_user
-        
+
         # 查询用户是否拥有指定权限
         from app.entity.db_models import UserRole, RolePermission, Permission
-        
+
         _own_db = False
         if db is None:
             db_gen = _get_db()
             db = next(db_gen)
             _own_db = True
-        
+
         try:
             has_permission = (
                 db.query(Permission)
@@ -178,13 +179,13 @@ class RequirePermission:
                 )
                 .first()
             )
-            
+
             if not has_permission:
                 raise HTTPException(
                     status_code=403,
                     detail=f"权限不足，需要权限: {self.permission_code}",
                 )
-            
+
             return current_user
         finally:
             if _own_db:
@@ -194,11 +195,11 @@ class RequirePermission:
 class RequireSuperuser:
     """
     超级管理员校验依赖
-    
+
     用法：
         @router.get("/admin/xxx", dependencies=[Depends(RequireSuperuser())])
     """
-    
+
     async def __call__(self, current_user=Depends(get_current_user)):
         if not current_user.is_superuser:
             raise HTTPException(

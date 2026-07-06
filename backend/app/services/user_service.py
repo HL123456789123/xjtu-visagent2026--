@@ -2,11 +2,11 @@
 用户服务层
 处理用户注册、登录、鉴权等业务逻辑
 """
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.core.security import create_access_token, hash_password, verify_password
 from app.entity.db_models import User, UserRole, Role
-
 
 
 class UserService:
@@ -73,9 +73,7 @@ class UserService:
         Raises:
             HTTPException: 用户名或密码错误
         """
-        user = db.query(User).filter(
-            (User.username == username) | (User.email == username)
-        ).first()
+        user = db.query(User).filter((User.username == username) | (User.email == username)).first()
         if not user:
             raise HTTPException(status_code=401, detail="用户名或密码错误")
 
@@ -92,7 +90,7 @@ class UserService:
     @staticmethod
     def get_user_roles(db: Session, user: User) -> list[str]:
         """获取用户的角色标识列表
-        
+
         直接查询数据库，避免依赖 User 对象的 lazy-loaded 关系，
         防止在 User 对象 detached 后访问 user_roles 时抛出 DetachedInstanceError。
         """

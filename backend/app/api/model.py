@@ -2,6 +2,7 @@
 模型管理 API 路由
 提供模型 CRUD、版本管理、导入导出、场景绑定等接口
 """
+
 import os
 from typing import Optional
 
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/api/models", tags=["模型管理"])
 def _check_model_ownership(db: Session, model_id: int, user_id: int):
     """校验模型所有权，不属于当前用户则抛出 403"""
     from app.entity.db_models import Model
+
     model = db.query(Model).filter(Model.id == model_id).first()
     if not model:
         raise HTTPException(status_code=404, detail="模型不存在")
@@ -124,6 +126,7 @@ async def update_model(
 ):
     """更新模型信息"""
     import json
+
     _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
 
     kwargs = {}
@@ -251,6 +254,7 @@ async def import_model(
 ):
     """从 ZIP 导入模型版本"""
     import tempfile
+
     _check_model_ownership(db, model_id, current_user.id)  # 校验所有权
 
     # 保存上传的 ZIP 到临时文件
