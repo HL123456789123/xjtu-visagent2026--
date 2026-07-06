@@ -61,9 +61,10 @@ def upgrade() -> None:
     
     # 3b. 为现有的 model_versions 创建对应的 Model 记录并回填 model_id
     # 注意：这里使用原始 SQL 进行数据迁移
+    # 使用 DISTINCT ON 替代 DISTINCT，因为 JSON 类型无法直接比较
     op.execute("""
         INSERT INTO models (name, description, base_architecture, category, class_names, status, created_at)
-        SELECT DISTINCT 
+        SELECT 
             mv.model_name,
             '从模型版本迁移创建',
             mv.model_type,
@@ -71,8 +72,18 @@ def upgrade() -> None:
             ds.class_names,
             'active',
             mv.created_at
-        FROM model_versions mv
-        JOIN detection_scenes ds ON mv.scene_id = ds.id
+        FROM (
+            SELECT DISTINCT ON (mv.model_name, mv.model_type, ds.category)
+                mv.model_name,
+                mv.model_type,
+                ds.category,
+                ds.class_names,
+                mv.created_at
+            FROM model_versions mv
+            JOIN detection_scenes ds ON mv.scene_id = ds.id
+            ORDER BY mv.model_name, mv.model_type, ds.category, mv.created_at
+        ) mv
+        JOIN detection_scenes ds ON ds.category = mv.category
     """)
     
     # 回填 model_id（通过 model_name 匹配）
@@ -106,7 +117,7 @@ def upgrade() -> None:
     op.add_column('training_tasks', sa.Column('model_id', sa.Integer(), nullable=True, comment='关联模型'))
     op.add_column('training_tasks', sa.Column('checkpoint_path', sa.String(length=500), nullable=True, comment='checkpoint 文件路径'))
     op.add_column('training_tasks', sa.Column('last_checkpoint_epoch', sa.Integer(), nullable=True, server_default='0', comment='最后保存 checkpoint 的 epoch'))
-    op.add_column('training_tasks', sa.Column('set_as_default', sa.Boolean(), nullable=True, server_default=sa.text('0'), comment='训练完成后是否自动设为默认版本'))
+    op.add_column('training_tasks', sa.Column('set_as_default', sa.Boolean(), nullable=True, server_default=sa.text('false'), comment='训练完成后是否自动设为默认版本'))
     
     # 4b. 添加 base_architecture 列（替代 model_name）
     op.add_column('training_tasks', sa.Column('base_architecture', sa.String(length=50), nullable=True, comment='基础架构'))
@@ -121,9 +132,10 @@ def upgrade() -> None:
     
     # 4c. 为现有的 training_tasks 创建对应的 Model 记录并回填 model_id
     # 查找还没有对应 Model 的 training_tasks
+    # 注意：PostgreSQL 不支持 INSERT OR IGNORE，使用 NOT EXISTS 替代
     op.execute("""
-        INSERT OR IGNORE INTO models (name, description, base_architecture, category, class_names, status, created_at)
-        SELECT DISTINCT 
+        INSERT INTO models (name, description, base_architecture, category, class_names, status, created_at)
+        SELECT 
             '训练模型_' || tt.id,
             '从训练任务迁移创建',
             tt.base_architecture,
@@ -137,6 +149,10 @@ def upgrade() -> None:
             SELECT 1 FROM models m 
             WHERE m.base_architecture = tt.base_architecture 
             AND m.category = ds.category
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM models m2
+            WHERE m2.name = '训练模型_' || tt.id
         )
     """)
     
