@@ -81,7 +81,7 @@ describe('request', () => {
 
 describe("错误上报模块", () => {
   it("应该正确初始化错误上报", async () => {
-    const { setupErrorReporting } = await import("@/utils/errorReporter");
+    const { setupErrorReporting } = await import("@/utils/error_reporter");
     expect(setupErrorReporting).toBeDefined();
     expect(typeof setupErrorReporting).toBe("function");
   });

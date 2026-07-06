@@ -8,7 +8,7 @@
  *   - 将错误信息上报到后端（用于分析和告警）
  *
  * 使用方式（在 main.js 中）：
- *   import { setupErrorReporting } from "@/utils/errorReporter";
+ *   import { setupErrorReporting } from "@/utils/error_reporter";
  *   setupErrorReporting(app);
  */
 import { ElMessage } from "element-plus";

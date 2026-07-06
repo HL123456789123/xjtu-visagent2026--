@@ -1,7 +1,7 @@
 /**
  * SSE (Server-Sent Events) 流式聊天工具
  *
- * Day11 与 LangGraph Agent 通信时使用
+ * 与 LangGraph Agent 通信时使用
  *
  * 使用示例:
  *   const stop = streamChat(

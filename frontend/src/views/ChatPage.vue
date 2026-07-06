@@ -118,7 +118,7 @@ import { ref, onMounted, nextTick, watch } from 'vue'
 import { Plus, ChatDotRound, Delete, Monitor, User, SetUp, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createSessionApi, getSessionsApi, getMessagesApi, deleteSessionApi } from '@/api/chat'
-import { streamChat } from '@/utils/stream'
+import { streamChat } from '@/utils/sse'
 import { renderMarkdown } from '@/utils/markdown'
 
 // 会话列表

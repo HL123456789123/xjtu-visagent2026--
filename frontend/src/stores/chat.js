@@ -1,11 +1,11 @@
 /**
- * 智能体对话状态管理
+ * 对话状态管理
  *
  * 管理对话消息、会话列表、加载状态
  */
 import { defineStore } from 'pinia'
 
-export const useAgentStore = defineStore('agent', {
+export const useChatStore = defineStore('chat', {
   state: () => ({
     // 当前会话 ID
     currentSessionId: null,
