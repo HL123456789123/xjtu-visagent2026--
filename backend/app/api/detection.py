@@ -2,13 +2,11 @@
 检测模块 API 路由
 提供目标检测、场景管理等接口
 """
+import json
 import os
 import tempfile
 from pathlib import Path
 from typing import List, Optional
-import json
-import os
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -29,6 +27,7 @@ async def detect_single(
     conf_threshold: float = Form(0.25, description="置信度阈值"),
     iou_threshold: float = Form(0.45, description="IoU阈值"),
     image_size: int = Form(640, description="推理图像尺寸"),
+    model_version_id: Optional[int] = Form(None, description="指定模型版本ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -52,7 +51,8 @@ async def detect_single(
             image_path=tmp_path,
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
-            image_size=image_size
+            image_size=image_size,
+            model_version_id=model_version_id
         )
         
         # 保存检测结果
@@ -67,7 +67,8 @@ async def detect_single(
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
             image_size=image_size,
-            inference_time=result.get("inference_time", 0)
+            inference_time=result.get("inference_time", 0),
+            model_version_id=model_version_id
         )
         
         return ApiResponse(
@@ -94,6 +95,7 @@ async def detect_batch(
     conf_threshold: float = Form(0.25, description="置信度阈值"),
     iou_threshold: float = Form(0.45, description="IoU阈值"),
     image_size: int = Form(640, description="推理图像尺寸"),
+    model_version_id: Optional[int] = Form(None, description="指定模型版本ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -119,33 +121,30 @@ async def detect_batch(
             image_paths=temp_paths,
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
-            image_size=image_size
+            image_size=image_size,
+            model_version_id=model_version_id
         )
         
-        # 保存检测结果
-        total_objects = 0
-        for result in results:
-            if "error" not in result:
-                await detection_service.save_detection_result(
-                    db=db,
-                    user_id=current_user.id,
-                    scene_id=scene_id,
-                    task_type="batch",
-                    detections=result["detections"],
-                    image_path=result["image_path"],
-                    conf_threshold=conf_threshold,
-                    iou_threshold=iou_threshold,
-                    image_size=image_size,
-                    inference_time=result.get("inference_time", 0)
-                )
-                total_objects += result["total_objects"]
+        # 统一保存为一个 Task + 多个 Results
+        task = await detection_service.save_batch_detection_results(
+            db=db,
+            user_id=current_user.id,
+            scene_id=scene_id,
+            task_type="batch",
+            batch_results=results,
+            conf_threshold=conf_threshold,
+            iou_threshold=iou_threshold,
+            image_size=image_size,
+            model_version_id=model_version_id
+        )
         
         return ApiResponse(
             code=200,
             message="批量检测完成",
             data={
+                "task_id": task.id,
                 "total_images": len(images),
-                "total_objects": total_objects,
+                "total_objects": task.total_objects,
                 "results": results
             }
         )
@@ -164,6 +163,7 @@ async def detect_folder(
     conf_threshold: float = Form(0.25, description="置信度阈值"),
     iou_threshold: float = Form(0.45, description="IoU阈值"),
     image_size: int = Form(640, description="图像尺寸"),
+    model_version_id: Optional[int] = Form(None, description="指定模型版本ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -173,10 +173,18 @@ async def detect_folder(
     if not scene:
         raise HTTPException(status_code=404, detail="场景不存在")
 
-    # 验证文件夹路径
-    folder = Path(folder_path)
+    # 验证文件夹路径安全性：解析真实路径并检查是否在白名单目录内
+    from app.config.settings import settings
+    folder = Path(folder_path).resolve()
     if not folder.exists() or not folder.is_dir():
         raise HTTPException(status_code=400, detail=f"文件夹不存在: {folder_path}")
+
+    allowed_dirs = [Path(d.strip()).resolve() for d in settings.ALLOWED_DETECTION_DIRS.split(",") if d.strip()]
+    if allowed_dirs and not any(folder == d or d in folder.parents for d in allowed_dirs):
+        raise HTTPException(
+            status_code=403,
+            detail=f"不允许访问该目录，仅允许以下目录: {settings.ALLOWED_DETECTION_DIRS}"
+        )
 
     # 支持的图像扩展名
     image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
@@ -189,8 +197,9 @@ async def detect_folder(
         raise HTTPException(status_code=400, detail="文件夹中没有支持的图像文件")
 
     # 加载模型
-    model_path = detection_service.get_default_model_path(db, scene_id)
-    detection_service.load_model(scene_id, model_path)
+    model_path = detection_service.get_default_model_path(db, scene_id, model_version_id)
+    cache_key = (scene_id, model_version_id)
+    detection_service.load_model(scene_id, model_path, cache_key=cache_key)
 
     # 创建检测任务记录
     task = await detection_service.save_detection_result(
@@ -212,7 +221,8 @@ async def detect_folder(
                 image_path=img_path,
                 conf_threshold=conf_threshold,
                 iou_threshold=iou_threshold,
-                image_size=image_size
+                image_size=image_size,
+                model_version_id=model_version_id
             )
             all_detections.append({
                 "file": os.path.basename(img_path),
@@ -247,6 +257,7 @@ async def detect_video(
     conf_threshold: float = Form(0.25, description="置信度阈值"),
     iou_threshold: float = Form(0.45, description="IoU阈值"),
     image_size: int = Form(640, description="推理图像尺寸"),
+    model_version_id: Optional[int] = Form(None, description="指定模型版本ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -281,7 +292,8 @@ async def detect_video(
             output_path=output_path,
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
-            image_size=image_size
+            image_size=image_size,
+            model_version_id=model_version_id
         )
         
         # 上传结果视频到 MinIO
@@ -406,7 +418,7 @@ async def get_detection_scenes(
     
     # 缓存未命中，查询数据库
     scenes = db.query(DetectionScene).filter(
-        DetectionScene.is_active == True
+        DetectionScene.is_active.is_(True)
     ).all()
     
     result = [

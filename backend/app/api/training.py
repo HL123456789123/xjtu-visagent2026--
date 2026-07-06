@@ -2,7 +2,8 @@
 训练模块 API 路由
 提供训练任务管理、数据集上传验证等接口
 """
-from typing import List, Optional
+import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.core.logger import get_logger
 from app.database.session import get_db
-from app.entity.db_models import User, DetectionScene
+from app.entity.db_models import User, Model, ModelVersion
 from app.entity.schemas import ApiResponse
 from app.services.training_service import training_service
 from app.services.data_utils import validate_dataset, split_dataset, generate_data_yaml, convert_voc_to_yolo, convert_coco_to_yolo, convert_labelme_to_yolo
@@ -20,10 +21,21 @@ logger = get_logger("training_api")
 router = APIRouter(prefix="/api/training", tags=["训练管理"])
 
 
+def _get_task_or_403(db: Session, task_id: int, user_id: int):
+    """获取训练任务并校验所有权，不属于当前用户则抛出 403"""
+    from app.entity.db_models import TrainingTask
+    task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="训练任务不存在")
+    if task.user_id != user_id:
+        raise HTTPException(status_code=403, detail="无权操作该训练任务")
+    return task
+
+
 @router.post("/tasks", response_model=ApiResponse)
 async def create_training_task(
-    scene_id: int = Form(..., description="场景ID"),
-    model_name: str = Form("yolov11n", description="基础模型：yolov11n/s/m/l/x"),
+    model_id: int = Form(..., description="模型ID"),
+    base_architecture: str = Form("yolov11n", description="基础架构：yolov11n/s/m/l/x"),
     epochs: int = Form(100, description="训练轮数"),
     img_size: int = Form(640, description="图像尺寸"),
     batch_size: int = Form(16, description="批次大小"),
@@ -32,17 +44,18 @@ async def create_training_task(
     lr0: float = Form(0.01, description="初始学习率"),
     dataset_path: str = Form(..., description="数据集路径"),
     data_yaml: str = Form(..., description="data.yaml 路径"),
+    set_as_default: bool = Form(False, description="训练完成后是否自动设为默认版本"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """创建训练任务"""
-    # 验证场景是否存在
-    scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
-    if not scene:
-        raise HTTPException(status_code=404, detail="场景不存在")
+    # 验证模型是否存在
+    model_obj = db.query(Model).filter(Model.id == model_id).first()
+    if not model_obj:
+        raise HTTPException(status_code=404, detail="模型不存在")
     
     config = {
-        "model_name": model_name,
+        "base_architecture": base_architecture,
         "epochs": epochs,
         "img_size": img_size,
         "batch_size": batch_size,
@@ -50,13 +63,14 @@ async def create_training_task(
         "optimizer": optimizer,
         "lr0": lr0,
         "dataset_path": dataset_path,
-        "data_yaml": data_yaml
+        "data_yaml": data_yaml,
+        "set_as_default": set_as_default
     }
     
     task = training_service.create_training_task(
         db=db,
         user_id=current_user.id,
-        scene_id=scene_id,
+        model_id=model_id,
         config=config
     )
     
@@ -78,6 +92,7 @@ async def start_training(
     current_user: User = Depends(get_current_user)
 ):
     """启动训练任务"""
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     success = training_service.start_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="启动训练失败")
@@ -92,6 +107,7 @@ async def pause_training(
     current_user: User = Depends(get_current_user)
 ):
     """暂停训练任务"""
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     success = training_service.pause_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="暂停训练失败")
@@ -106,6 +122,7 @@ async def cancel_training(
     current_user: User = Depends(get_current_user)
 ):
     """取消训练任务"""
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     success = training_service.cancel_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="取消训练失败")
@@ -120,6 +137,7 @@ async def get_training_task(
     current_user: User = Depends(get_current_user)
 ):
     """获取训练任务详情"""
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     status = training_service.get_training_status(db, task_id)
     if not status:
         raise HTTPException(status_code=404, detail="训练任务不存在")
@@ -134,6 +152,7 @@ async def get_training_status(
     current_user: User = Depends(get_current_user)
 ):
     """获取训练状态"""
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     status = training_service.get_training_status(db, task_id)
     if not status:
         raise HTTPException(status_code=404, detail="训练任务不存在")
@@ -148,6 +167,7 @@ async def get_training_metrics(
     current_user: User = Depends(get_current_user)
 ):
     """获取训练指标"""
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     metrics = training_service.get_training_metrics(db, task_id)
     return ApiResponse(code=200, data=metrics)
 
@@ -165,6 +185,7 @@ async def validate_model(
     
     对训练完成的模型在验证集上进行评估，返回 mAP、precision、recall 等指标
     """
+    _get_task_or_403(db, task_id, current_user.id)  # 校验所有权
     result = training_service.validate_model(
         db=db,
         task_id=task_id,
@@ -185,7 +206,7 @@ async def validate_model(
 
 @router.get("/tasks", response_model=ApiResponse)
 async def get_training_tasks(
-    scene_id: Optional[int] = None,
+    model_id: Optional[int] = None,
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
@@ -196,7 +217,7 @@ async def get_training_tasks(
     result = training_service.get_task_list(
         db=db,
         user_id=current_user.id,
-        scene_id=scene_id,
+        model_id=model_id,
         status=status,
         page=page,
         page_size=page_size
@@ -284,38 +305,34 @@ async def generate_data_yaml_api(
 
 @router.post("/models/upload", response_model=ApiResponse)
 async def upload_model(
-    scene_id: int = Form(..., description="场景ID"),
+    model_id: int = Form(..., description="所属模型ID"),
     model_file: UploadFile = File(..., description="模型文件(.pt)"),
     version: str = Form(..., description="版本号，如 v1.0.0"),
-    model_name: str = Form(..., description="模型名称"),
-    model_type: str = Form("yolov11n", description="模型类型：yolov11n/s/m/l/x"),
-    description: str = Form("", description="模型描述"),
-    is_default: bool = Form(True, description="是否设为默认模型"),
+    description: str = Form("", description="版本描述"),
+    is_default: bool = Form(True, description="是否设为默认版本"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """手动上传训练好的模型文件（适用于 AutoDL 等外部平台训练后导入）"""
-    import os
+    """手动上传模型版本文件（归属于指定模型下）"""
     import shutil
     from pathlib import Path
     from datetime import datetime
-    from app.entity.db_models import ModelVersion
     
-    # 验证场景
-    scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
-    if not scene:
-        raise HTTPException(status_code=404, detail="场景不存在")
+    # 验证模型是否存在
+    model_obj = db.query(Model).filter(Model.id == model_id).first()
+    if not model_obj:
+        raise HTTPException(status_code=404, detail="模型不存在")
     
     # 验证文件类型
     if not model_file.filename.endswith('.pt'):
         raise HTTPException(status_code=400, detail="仅支持 .pt 模型文件")
     
     # 创建模型存储目录
-    models_dir = Path("data/models") / scene.name
+    models_dir = Path("data/models") / model_obj.name
     models_dir.mkdir(parents=True, exist_ok=True)
     
     # 保存模型文件
-    model_filename = f"{model_name}_{version}.pt"
+    model_filename = f"{model_obj.name}_{version}.pt"
     model_path = models_dir / model_filename
     
     with open(model_path, "wb") as buffer:
@@ -323,20 +340,24 @@ async def upload_model(
     
     file_size = model_path.stat().st_size
     
-    # 如果设为默认模型，先取消该场景其他默认模型
+    # 如果设为默认版本，先取消该模型其他默认版本
     if is_default:
         db.query(ModelVersion).filter(
-            ModelVersion.scene_id == scene_id,
-            ModelVersion.is_default == True
+            ModelVersion.model_id == model_id,
+            ModelVersion.is_default.is_(True)
         ).update({"is_default": False})
+    
+    # 获取当前版本数量（用于日志记录）
+    _version_count = db.query(ModelVersion).filter(
+        ModelVersion.model_id == model_id
+    ).count()
     
     # 创建模型版本记录
     model_version = ModelVersion(
-        scene_id=scene_id,
+        model_id=model_id,
         training_task_id=None,  # 手动上传，无关联训练任务
         version=version,
-        model_name=model_name,
-        model_type=model_type,
+        source="upload",
         status="active",
         model_path=str(model_path),
         description=description or f"手动上传于 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
@@ -349,12 +370,11 @@ async def upload_model(
     
     return ApiResponse(
         code=200,
-        message="模型上传成功",
+        message="模型版本上传成功",
         data={
             "id": model_version.id,
-            "scene": scene.display_name,
+            "model": model_obj.name,
             "version": version,
-            "model_name": model_name,
             "model_path": str(model_path),
             "file_size": file_size,
             "is_default": is_default
@@ -494,8 +514,10 @@ async def download_model(
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="模型文件不存在")
     
-    # 生成下载文件名
-    filename = f"{model_version.model_name}_{model_version.version}.pt"
+    # 生成下载文件名（通过关联的 Model 获取名称）
+    model_obj = db.query(Model).filter(Model.id == model_version.model_id).first()
+    model_name = model_obj.name if model_obj else "model"
+    filename = f"{model_name}_{model_version.version}.pt"
     
     logger.info(f"用户 {current_user.username} 下载模型: {filename}")
     

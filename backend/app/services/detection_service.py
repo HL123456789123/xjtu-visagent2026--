@@ -6,19 +6,16 @@
 import os
 import tempfile
 import time
-import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 
 import cv2
-import numpy as np
 from sqlalchemy.orm import Session
 
-from app.config.settings import settings
 from app.core.logger import get_logger
 from app.entity.db_models import (
-    DetectionTask, DetectionResult, DetectionScene, ModelVersion
+    DetectionTask, DetectionResult, DetectionScene, ModelVersion, SceneModel
 )
 from app.storage.minio_client import MinIOClient
 
@@ -29,20 +26,23 @@ class DetectionService:
     """检测服务类"""
     
     def __init__(self):
-        self.models: Dict[int, Any] = {}  # scene_id -> YOLO model
+        self.models: Dict[tuple, Any] = {}  # (scene_id, model_version_id) -> YOLO model
         self.minio_client = None
     
-    def load_model(self, scene_id: int, model_path: str) -> bool:
+    def load_model(self, scene_id: int, model_path: str, cache_key=None) -> bool:
         """
         加载场景对应的模型
         
         Args:
             scene_id: 场景ID
             model_path: 模型文件路径
+            cache_key: 缓存key，默认为 (scene_id, None)
         
         Returns:
             是否加载成功
         """
+        if cache_key is None:
+            cache_key = (scene_id, None)
         try:
             from ultralytics import YOLO
             
@@ -51,35 +51,65 @@ class DetectionService:
             if not os.path.exists(model_path):
                 logger.info(f"模型文件未缓存，将由 ultralytics 自动下载: {model_path}")
             
-            self.models[scene_id] = YOLO(model_path)
-            logger.info(f"加载模型成功: scene_id={scene_id}, path={model_path}")
+            self.models[cache_key] = YOLO(model_path)
+            logger.info(f"加载模型成功: scene_id={scene_id}, path={model_path}, cache_key={cache_key}")
             return True
         except Exception as e:
             logger.error(f"加载模型失败: scene_id={scene_id}, path={model_path}, error={e}")
             return False
     
-    def get_default_model_path(self, db: Session, scene_id: int) -> Optional[str]:
+    def get_default_model_path(self, db: Session, scene_id: int, model_version_id: Optional[int] = None) -> Optional[str]:
         """
         获取场景的默认模型路径
+        
+        查找优先级：
+        1. 指定的 model_version_id
+        2. 场景中 is_default=True 的关联模型
+        3. 模型列表中 is_default=True 的版本
+        4. 回退到预训练模型
         
         Args:
             db: 数据库会话
             scene_id: 场景ID
+            model_version_id: 指定的模型版本ID（可选）
         
         Returns:
             模型路径
         """
-        # 查找默认模型版本
-        model_version = db.query(ModelVersion).filter(
-            ModelVersion.scene_id == scene_id,
-            ModelVersion.is_default == True,
-            ModelVersion.status == "active"
+        # 1. 如果指定了模型版本，直接使用
+        if model_version_id:
+            mv = db.query(ModelVersion).filter(
+                ModelVersion.id == model_version_id,
+                ModelVersion.status == "active"
+            ).first()
+            if mv:
+                return mv.model_path
+            logger.warning(f"指定的模型版本不存在或已归档: model_version_id={model_version_id}")
+        
+        # 2. 通过 SceneModel 关联表查找场景默认模型
+        scene_model = db.query(SceneModel).filter(
+            SceneModel.scene_id == scene_id,
+            SceneModel.is_default.is_(True)
         ).first()
         
-        if model_version:
-            return model_version.model_path
+        if scene_model:
+            # 查找该模型的默认版本
+            mv = db.query(ModelVersion).filter(
+                ModelVersion.model_id == scene_model.model_id,
+                ModelVersion.is_default.is_(True),
+                ModelVersion.status == "active"
+            ).first()
+            if mv:
+                return mv.model_path
+            # 如果没有默认版本，取最新的活跃版本
+            mv = db.query(ModelVersion).filter(
+                ModelVersion.model_id == scene_model.model_id,
+                ModelVersion.status == "active"
+            ).order_by(ModelVersion.created_at.desc()).first()
+            if mv:
+                return mv.model_path
         
-        # 如果没有默认模型，使用预训练模型
+        # 3. 回退到预训练模型
         return "yolo11n.pt"
     
     async def detect_single(
@@ -89,7 +119,8 @@ class DetectionService:
         image_path: str,
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
-        image_size: int = 640
+        image_size: int = 640,
+        model_version_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         单图检测
@@ -101,19 +132,23 @@ class DetectionService:
             conf_threshold: 置信度阈值
             iou_threshold: IoU 阈值
             image_size: 推理图像尺寸
+            model_version_id: 指定的模型版本ID（可选）
         
         Returns:
             检测结果
         """
         start_time = time.time()
         
+        # 使用场景+模型版本组合作为缓存 key
+        cache_key = (scene_id, model_version_id)
+        
         # 确保模型已加载
-        if scene_id not in self.models:
-            model_path = self.get_default_model_path(db, scene_id)
-            if not self.load_model(scene_id, model_path):
+        if cache_key not in self.models:
+            model_path = self.get_default_model_path(db, scene_id, model_version_id)
+            if not self.load_model(scene_id, model_path, cache_key=cache_key):
                 raise ValueError(f"无法加载模型: scene_id={scene_id}")
         
-        model = self.models[scene_id]
+        model = self.models[cache_key]
         
         # 执行检测
         results = model.predict(
@@ -178,7 +213,8 @@ class DetectionService:
         image_paths: List[str],
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
-        image_size: int = 640
+        image_size: int = 640,
+        model_version_id: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         批量检测
@@ -203,7 +239,8 @@ class DetectionService:
                     image_path=image_path,
                     conf_threshold=conf_threshold,
                     iou_threshold=iou_threshold,
-                    image_size=image_size
+                    image_size=image_size,
+                    model_version_id=model_version_id
                 )
                 results.append(result)
             except Exception as e:
@@ -225,7 +262,8 @@ class DetectionService:
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
         image_size: int = 640,
-        progress_callback=None
+        progress_callback=None,
+        model_version_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         视频检测（异步版本）
@@ -257,7 +295,8 @@ class DetectionService:
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
             image_size=image_size,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            model_version_id=model_version_id
         )
         return result
     
@@ -270,7 +309,8 @@ class DetectionService:
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
         image_size: int = 640,
-        progress_callback=None
+        progress_callback=None,
+        model_version_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         视频检测（同步实现）
@@ -289,12 +329,13 @@ class DetectionService:
             检测结果
         """
         # 确保模型已加载
-        if scene_id not in self.models:
-            model_path = self.get_default_model_path(db, scene_id)
-            if not self.load_model(scene_id, model_path):
+        cache_key = (scene_id, model_version_id)
+        if cache_key not in self.models:
+            model_path = self.get_default_model_path(db, scene_id, model_version_id)
+            if not self.load_model(scene_id, model_path, cache_key=cache_key):
                 raise ValueError(f"无法加载模型: scene_id={scene_id}")
         
-        model = self.models[scene_id]
+        model = self.models[cache_key]
         
         # 打开视频
         cap = cv2.VideoCapture(video_path)
@@ -372,7 +413,8 @@ class DetectionService:
         conf_threshold: float = 0.25,
         iou_threshold: float = 0.45,
         image_size: int = 640,
-        inference_time: float = 0
+        inference_time: float = 0,
+        model_version_id: Optional[int] = None
     ) -> DetectionTask:
         """
         保存检测结果到数据库
@@ -388,6 +430,7 @@ class DetectionService:
             conf_threshold: 置信度阈值
             iou_threshold: IoU 阈值
             image_size: 推理图像尺寸
+            model_version_id: 使用的模型版本ID（可选）
         
         Returns:
             检测任务
@@ -406,6 +449,9 @@ class DetectionService:
             image_size=image_size,
             completed_at=datetime.now()
         )
+        # 记录使用的模型版本（如果有的话）
+        if model_version_id:
+            task.model_version_id = model_version_id
         db.add(task)
         db.flush()
         
@@ -448,6 +494,104 @@ class DetectionService:
         db.commit()
         db.refresh(task)
         
+        return task
+    
+    async def save_batch_detection_results(
+        self,
+        db: Session,
+        user_id: int,
+        scene_id: int,
+        task_type: str,
+        batch_results: List[Dict[str, Any]],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        image_size: int = 640,
+        model_version_id: Optional[int] = None
+    ) -> DetectionTask:
+        """
+        批量保存检测结果：创建一个 Task，多个 Results
+        
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            scene_id: 场景ID
+            task_type: 检测类型 (batch/folder)
+            batch_results: 检测结果列表，每个元素包含 image_path, detections, inference_time 等
+            conf_threshold: 置信度阈值
+            iou_threshold: IoU 阈值
+            image_size: 推理图像尺寸
+            model_version_id: 使用的模型版本ID
+        
+        Returns:
+            检测任务
+        """
+        total_objects = sum(len(r.get("detections", [])) for r in batch_results)
+        total_inference = sum(r.get("inference_time", 0) for r in batch_results)
+        
+        # 创建单个检测任务
+        task = DetectionTask(
+            user_id=user_id,
+            scene_id=scene_id,
+            task_type=task_type,
+            status="completed",
+            total_images=len(batch_results),
+            total_objects=total_objects,
+            total_inference_time=total_inference,
+            conf_threshold=conf_threshold,
+            iou_threshold=iou_threshold,
+            image_size=image_size,
+            completed_at=datetime.now()
+        )
+        if model_version_id:
+            task.model_version_id = model_version_id
+        db.add(task)
+        db.flush()
+        
+        # 获取场景的中文类别名映射
+        scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
+        class_names_cn_map = scene.class_names_cn if scene and scene.class_names_cn else {}
+        
+        # 为每张图像保存结果
+        for result in batch_results:
+            if "error" in result:
+                continue
+            
+            image_path = result.get("image_path", "")
+            inference_time = result.get("inference_time", 0)
+            annotated_image_url = None
+            
+            # 上传标注图像到 MinIO
+            annotated_path = result.get("annotated_image_path")
+            if annotated_path and os.path.exists(annotated_path):
+                try:
+                    if self.minio_client is None:
+                        self.minio_client = MinIOClient()
+                    object_name = f"detection/{task.id}/{Path(annotated_path).name}"
+                    annotated_image_url = self.minio_client.upload_file(
+                        object_name, annotated_path
+                    )
+                except Exception as e:
+                    logger.error(f"上传标注图像失败: {e}")
+            
+            for det in result.get("detections", []):
+                class_name = det.get("class_name", "")
+                det_result = DetectionResult(
+                    task_id=task.id,
+                    image_path=image_path,
+                    annotated_image_url=annotated_image_url,
+                    class_name=class_name,
+                    class_name_cn=class_names_cn_map.get(class_name, ""),
+                    class_id=det.get("class_id", 0),
+                    confidence=det.get("confidence", 0),
+                    bbox=det.get("bbox", []),
+                    image_width=det.get("image_width"),
+                    image_height=det.get("image_height"),
+                    inference_time=inference_time
+                )
+                db.add(det_result)
+        
+        db.commit()
+        db.refresh(task)
         return task
     
     def get_task_list(
