@@ -6,14 +6,11 @@
 import csv
 import os
 import threading
-import time
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from sqlalchemy.orm import Session
 
-from app.config.settings import settings
 from app.core.logger import get_logger
 from app.entity.db_models import TrainingTask, TrainingMetric, ModelVersion
 
@@ -33,28 +30,39 @@ class TrainingService:
         """
         恢复因进程重启而中断的训练任务
         
-        将 running 状态的任务标记为 failed，避免任务永远卡住
+        - 有 checkpoint 的 running/paused 任务 → 标记为 paused（可恢复）
+        - 无 checkpoint 的 running 任务 → 标记为 failed
         """
         from app.database.session import SessionLocal
         
         db = SessionLocal()
         try:
-            # 查找所有 running 状态的任务
-            running_tasks = db.query(TrainingTask).filter(
-                TrainingTask.status == "running"
+            # 查找所有 running 或 paused 状态的任务
+            interrupted_tasks = db.query(TrainingTask).filter(
+                TrainingTask.status.in_(["running", "paused"])
             ).all()
             
-            if running_tasks:
-                logger.warning(f"发现 {len(running_tasks)} 个中断的训练任务，正在恢复状态...")
+            if interrupted_tasks:
+                logger.warning(f"发现 {len(interrupted_tasks)} 个中断的训练任务，正在恢复状态...")
                 
-                for task in running_tasks:
-                    task.status = "failed"
-                    task.error_message = "服务重启导致训练中断"
+                recovered = 0
+                failed = 0
+                for task in interrupted_tasks:
+                    # 检查 checkpoint 是否存在
+                    if task.checkpoint_path and os.path.exists(task.checkpoint_path):
+                        task.status = "paused"
+                        task.error_message = "服务重启导致训练中断，可从 checkpoint 恢复"
+                        recovered += 1
+                        logger.info(f"任务 {task.id} ({task.task_uuid}) 标记为 paused（有 checkpoint）")
+                    else:
+                        task.status = "failed"
+                        task.error_message = "服务重启导致训练中断，无 checkpoint 可恢复"
+                        failed += 1
+                        logger.info(f"任务 {task.id} ({task.task_uuid}) 标记为 failed（无 checkpoint）")
                     task.updated_at = datetime.now()
-                    logger.info(f"任务 {task.id} ({task.task_uuid}) 标记为 failed")
                 
                 db.commit()
-                logger.info(f"已恢复 {len(running_tasks)} 个中断任务的状态")
+                logger.info(f"已恢复 {len(interrupted_tasks)} 个中断任务（{recovered} 可恢复，{failed} 失败）")
             else:
                 logger.info("没有发现中断的训练任务")
                 
@@ -68,7 +76,7 @@ class TrainingService:
         self,
         db: Session,
         user_id: int,
-        scene_id: int,
+        model_id: int,
         config: Dict[str, Any]
     ) -> TrainingTask:
         """
@@ -77,7 +85,7 @@ class TrainingService:
         Args:
             db: 数据库会话
             user_id: 用户ID
-            scene_id: 场景ID
+            model_id: 关联模型ID
             config: 训练配置
         
         Returns:
@@ -87,10 +95,10 @@ class TrainingService:
         
         task = TrainingTask(
             user_id=user_id,
-            scene_id=scene_id,
+            model_id=model_id,
             task_uuid=str(uuid.uuid4()),
             status="pending",
-            model_name=config.get("model_name", "yolov11n"),
+            base_architecture=config.get("base_architecture", "yolov11n"),
             epochs=config.get("epochs", 100),
             img_size=config.get("img_size", 640),
             batch_size=config.get("batch_size", 16),
@@ -99,14 +107,15 @@ class TrainingService:
             lr0=config.get("lr0", 0.01),
             dataset_path=config.get("dataset_path"),
             data_yaml=config.get("data_yaml"),
-            dataset_size=config.get("dataset_size", 0)
+            dataset_size=config.get("dataset_size", 0),
+            set_as_default=config.get("set_as_default", False)
         )
         
         db.add(task)
         db.commit()
         db.refresh(task)
         
-        logger.info(f"创建训练任务: task_id={task.id}, scene_id={scene_id}")
+        logger.info(f"创建训练任务: task_id={task.id}, model_id={model_id}")
         return task
     
     def start_training(self, db: Session, task_id: int) -> bool:
@@ -178,11 +187,19 @@ class TrainingService:
                 db.commit()
                 return
             
-            # 加载模型
-            model_name = task.model_name
-            model_path = f"{model_name}.pt"
+            # 加载模型（优先从 checkpoint 恢复）
+            base_arch = task.base_architecture
+            checkpoint_path = task.checkpoint_path
             
-            logger.info(f"加载模型: {model_path}")
+            if checkpoint_path and os.path.exists(checkpoint_path):
+                # 从 checkpoint 恢复训练
+                model_path = checkpoint_path
+                logger.info(f"从 checkpoint 恢复训练: {model_path}")
+            else:
+                # 从预训练模型开始
+                model_path = f"{base_arch}.pt"
+                logger.info(f"加载预训练模型: {model_path}")
+            
             model = YOLO(model_path)
             
             # 准备训练参数
@@ -200,15 +217,49 @@ class TrainingService:
                 "verbose": True
             }
             
+            # 从 checkpoint 恢复时启用 resume 模式
+            if checkpoint_path and os.path.exists(checkpoint_path):
+                train_args["resume"] = True
+                logger.info(f"启用 resume 模式，从 checkpoint 恢复: {checkpoint_path}")
+            
             logger.info(f"开始训练: task_id={task_id}, args={train_args}")
             
-            # 执行训练
-            results = model.train(**train_args)
+            # 设置 YOLO 回调：定期更新 checkpoint epoch
+            def _on_train_epoch_end(trainer):
+                try:
+                    current_ep = getattr(trainer, 'epoch', 0)
+                    task.current_epoch = current_ep
+                    task.last_checkpoint_epoch = current_ep
+                    task.progress = int((current_ep / task.epochs) * 100)
+                    db.commit()
+                except Exception:
+                    db.rollback()
             
-            # 检查是否被取消
+            model.add_callback('on_train_epoch_end', _on_train_epoch_end)
+            
+            # 执行训练
+            _results = model.train(**train_args)
+            
+            # 检查是否被暂停/取消
+            checkpoint_file = os.path.join("runs", "train", f"task_{task_id}", "weights", "last.pt")
             if stop_flag.is_set():
-                task.status = "cancelled"
-                logger.info(f"训练任务已取消: task_id={task_id}")
+                if task.status == "paused":
+                    # 暂停：保留 checkpoint 以便恢复
+                    if os.path.exists(checkpoint_file):
+                        task.checkpoint_path = checkpoint_file
+                        task.last_checkpoint_epoch = task.current_epoch
+                        logger.info(f"训练已暂停，checkpoint 已保存: {checkpoint_file}")
+                    else:
+                        logger.info("训练已暂停，但 checkpoint 文件不存在")
+                else:
+                    # 取消：清理 checkpoint 文件
+                    task.status = "cancelled"
+                    if os.path.exists(checkpoint_file):
+                        os.remove(checkpoint_file)
+                        logger.info(f"已清理取消任务的 checkpoint: {checkpoint_file}")
+                    task.checkpoint_path = None
+                    task.last_checkpoint_epoch = 0
+                    logger.info(f"训练任务已取消: task_id={task_id}")
             else:
                 # 训练完成
                 task.status = "completed"
@@ -216,10 +267,20 @@ class TrainingService:
                 task.progress = 100
                 task.current_epoch = task.epochs
                 
+                # 训练完成，清理 checkpoint
+                if os.path.exists(checkpoint_file):
+                    os.remove(checkpoint_file)
+                task.checkpoint_path = None
+                task.last_checkpoint_epoch = 0
+                
                 # 保存模型版本
                 best_model_path = os.path.join("runs", "train", f"task_{task_id}", "weights", "best.pt")
                 if os.path.exists(best_model_path):
                     self._save_model_version(db, task, best_model_path)
+                
+                # 解析训练日志写入指标数据
+                results_csv = os.path.join("runs", "train", f"task_{task_id}", "results.csv")
+                self.parse_results_csv(db, task_id, results_csv)
                 
                 logger.info(f"训练任务完成: task_id={task_id}")
             
@@ -246,29 +307,34 @@ class TrainingService:
             task: 训练任务
             model_path: 模型文件路径
         """
-        # 获取当前场景的版本数量
+        # 获取当前模型的版本数量
         version_count = db.query(ModelVersion).filter(
-            ModelVersion.scene_id == task.scene_id
+            ModelVersion.model_id == task.model_id
         ).count()
         
+        # 计算文件大小
+        file_size = os.path.getsize(model_path) if os.path.exists(model_path) else None
+        
         version = ModelVersion(
-            scene_id=task.scene_id,
+            model_id=task.model_id,
             training_task_id=task.id,
             version=f"v{version_count + 1}.0.0",
-            model_name=f"{task.model_name}_task_{task.id}",
-            model_type=task.model_name,
+            source="training",
             status="active",
             model_path=model_path,
-            is_default=(version_count == 0)  # 第一个模型设为默认
+            file_size=file_size,
+            is_default=task.set_as_default or (version_count == 0)  # 第一个版本或用户指定
         )
         
         db.add(version)
         db.commit()
-        logger.info(f"保存模型版本: version={version.version}, path={model_path}")
+        logger.info(f"保存模型版本: model_id={task.model_id}, version={version.version}, path={model_path}")
     
     def pause_training(self, db: Session, task_id: int) -> bool:
         """
         暂停训练任务
+        
+        设置停止标志让训练线程自然停止，并保存 checkpoint 路径以便恢复
         
         Args:
             db: 数据库会话
@@ -288,6 +354,12 @@ class TrainingService:
         stop_flag = self.task_stop_flags.get(task_id)
         if stop_flag:
             stop_flag.set()
+        
+        # 保存 checkpoint 路径（YOLO 训练时 last.pt 会自动保存在 runs/train/task_X/weights/ 下）
+        checkpoint_dir = os.path.join("runs", "train", f"task_{task_id}", "weights", "last.pt")
+        if os.path.exists(checkpoint_dir):
+            task.checkpoint_path = checkpoint_dir
+            logger.info(f"已保存 checkpoint 路径: {checkpoint_dir}")
         
         task.status = "paused"
         db.commit()
@@ -320,6 +392,18 @@ class TrainingService:
         
         task.status = "cancelled"
         db.commit()
+        
+        # 注意：checkpoint 文件的实际清理由 _train_worker 线程完成
+        # 这里只清理已暂停任务的历史 checkpoint（线程已停止的情况）
+        if task.checkpoint_path and os.path.exists(task.checkpoint_path):
+            try:
+                cp_path = task.checkpoint_path
+                os.remove(cp_path)
+                task.checkpoint_path = None
+                db.commit()
+                logger.info(f"已清理暂停任务的 checkpoint: {cp_path}")
+            except Exception as e:
+                logger.warning(f"清理 checkpoint 失败: {e}")
         
         logger.info(f"取消训练任务: task_id={task_id}")
         return True
@@ -456,8 +540,6 @@ class TrainingService:
         Returns:
             评估结果字典
         """
-        import threading
-        
         # 获取任务信息
         task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
         if not task:
@@ -547,7 +629,7 @@ class TrainingService:
         self,
         db: Session,
         user_id: Optional[int] = None,
-        scene_id: Optional[int] = None,
+        model_id: Optional[int] = None,
         status: Optional[str] = None,
         page: int = 1,
         page_size: int = 20
@@ -558,7 +640,7 @@ class TrainingService:
         Args:
             db: 数据库会话
             user_id: 用户ID（可选）
-            scene_id: 场景ID（可选）
+            model_id: 模型ID（可选）
             status: 状态（可选）
             page: 页码
             page_size: 每页数量
@@ -570,8 +652,8 @@ class TrainingService:
         
         if user_id:
             query = query.filter(TrainingTask.user_id == user_id)
-        if scene_id:
-            query = query.filter(TrainingTask.scene_id == scene_id)
+        if model_id:
+            query = query.filter(TrainingTask.model_id == model_id)
         if status:
             query = query.filter(TrainingTask.status == status)
         
@@ -589,11 +671,16 @@ class TrainingService:
                     "id": t.id,
                     "task_uuid": t.task_uuid,
                     "status": t.status,
-                    "scene_id": t.scene_id,
-                    "model_name": t.model_name,
+                    "model_id": t.model_id,
+                    "base_architecture": t.base_architecture,
                     "epochs": t.epochs,
                     "current_epoch": t.current_epoch,
                     "progress": t.progress,
+                    "batch_size": t.batch_size,
+                    "lr0": t.lr0,
+                    "device": t.device,
+                    "checkpoint_path": t.checkpoint_path,
+                    "last_checkpoint_epoch": t.last_checkpoint_epoch,
                     "created_at": t.created_at.isoformat() if t.created_at else None
                 }
                 for t in tasks
