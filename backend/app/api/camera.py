@@ -2,9 +2,7 @@
 摄像头实时检测 API 路由
 提供 WebSocket 接口接收视频帧并返回检测结果
 """
-import asyncio
-import base64
-import json
+
 import time
 from typing import Optional
 
@@ -27,7 +25,7 @@ router = APIRouter(prefix="/api/camera", tags=["摄像头检测"])
 
 class CameraSession:
     """摄像头会话管理"""
-    
+
     def __init__(self, websocket: WebSocket, scene_id: int, user_id: int):
         self.websocket = websocket
         self.scene_id = scene_id
@@ -35,11 +33,11 @@ class CameraSession:
         self.is_active = False
         self.frame_count = 0
         self.start_time = time.time()
-    
+
     async def send_json(self, data: dict):
         """发送 JSON 数据"""
         await self.websocket.send_json(data)
-    
+
     async def receive_frame(self) -> Optional[bytes]:
         """接收一帧图像"""
         try:
@@ -47,7 +45,7 @@ class CameraSession:
             return data
         except Exception:
             return None
-    
+
     def get_fps(self) -> float:
         """计算 FPS"""
         elapsed = time.time() - self.start_time
@@ -71,22 +69,18 @@ def _authenticate_websocket_token(token: Optional[str]) -> Optional[int]:
 
 
 @router.websocket("/detect")
-async def camera_detect(
-    websocket: WebSocket,
-    scene_id: int,
-    token: Optional[str] = None
-):
+async def camera_detect(websocket: WebSocket, scene_id: int, token: Optional[str] = None):
     """
     摄像头实时检测 WebSocket 端点
-    
+
     参数：
     - scene_id: 检测场景 ID
     - token: JWT Token（用于身份验证，必传）
-    
+
     协议：
     - 客户端发送：二进制图像帧（JPEG/PNG）
     - 服务端返回：JSON 格式检测结果
-    
+
     返回格式：
     {
         "type": "detection",
@@ -100,113 +94,100 @@ async def camera_detect(
     user_id = _authenticate_websocket_token(token)
     if user_id is None:
         await websocket.accept()
-        await websocket.send_json({
-            "type": "error",
-            "message": "认证失败，请提供有效的 JWT Token"
-        })
+        await websocket.send_json({"type": "error", "message": "认证失败，请提供有效的 JWT Token"})
         await websocket.close(code=4001)
         return
-    
+
     # 验证用户是否存在且活跃
     db = SessionLocal()
     try:
         user = user_service.get_user_by_id(db, user_id)
         if not user or not user.is_active:
             await websocket.accept()
-            await websocket.send_json({
-                "type": "error",
-                "message": "用户不存在或已被禁用"
-            })
+            await websocket.send_json({"type": "error", "message": "用户不存在或已被禁用"})
             await websocket.close(code=4001)
             return
     except Exception:
         await websocket.accept()
-        await websocket.send_json({
-            "type": "error",
-            "message": "认证失败"
-        })
+        await websocket.send_json({"type": "error", "message": "认证失败"})
         await websocket.close(code=4001)
         return
-    
+
     await websocket.accept()
     logger.info(f"摄像头连接建立: scene_id={scene_id}, user_id={user_id}")
-    
+
     try:
-        scene = db.query(DetectionScene).filter(
-            DetectionScene.id == scene_id,
-            DetectionScene.is_active == True
-        ).first()
-        
+        scene = (
+            db.query(DetectionScene)
+            .filter(DetectionScene.id == scene_id, DetectionScene.is_active.is_(True))
+            .first()
+        )
+
         if not scene:
-            await websocket.send_json({
-                "type": "error",
-                "message": f"场景 {scene_id} 不存在"
-            })
+            await websocket.send_json({"type": "error", "message": f"场景 {scene_id} 不存在"})
             await websocket.close()
             return
-        
+
         # 获取默认模型（通过 SceneModel 关联表查找）
-        scene_model = db.query(SceneModel).filter(
-            SceneModel.scene_id == scene_id,
-            SceneModel.is_default == True
-        ).first()
-        
+        scene_model = (
+            db.query(SceneModel)
+            .filter(SceneModel.scene_id == scene_id, SceneModel.is_default.is_(True))
+            .first()
+        )
+
         model_path = "yolo11n.pt"
         if scene_model:
-            model_version = db.query(ModelVersion).filter(
-                ModelVersion.model_id == scene_model.model_id,
-                ModelVersion.is_default == True,
-                ModelVersion.status == "active"
-            ).first()
+            model_version = (
+                db.query(ModelVersion)
+                .filter(
+                    ModelVersion.model_id == scene_model.model_id,
+                    ModelVersion.is_default.is_(True),
+                    ModelVersion.status == "active",
+                )
+                .first()
+            )
             if model_version:
                 model_path = model_version.model_path
-        
+
         # 加载模型
-        if not detection_service.load_model(scene_id, model_path):
-            await websocket.send_json({
-                "type": "error",
-                "message": "模型加载失败"
-            })
+        cache_key = (scene_id, None)
+        if not detection_service.load_model(scene_id, model_path, cache_key=cache_key):
+            await websocket.send_json({"type": "error", "message": "模型加载失败"})
             await websocket.close()
             return
-        
+
         # 创建会话
         session = CameraSession(websocket, scene_id, user_id)
         session.is_active = True
-        
+
         # 发送连接成功消息
-        await session.send_json({
-            "type": "connected",
-            "scene": scene.display_name,
-            "model": model_path
-        })
-        
+        await session.send_json(
+            {"type": "connected", "scene": scene.display_name, "model": model_path}
+        )
+
         # 主循环：接收帧并检测
         while session.is_active:
             # 接收帧
             frame_data = await session.receive_frame()
             if frame_data is None:
                 break
-            
+
             session.frame_count += 1
-            
+
             try:
                 # 解码图像
                 nparr = np.frombuffer(frame_data, np.uint8)
                 frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                
+
                 if frame is None:
-                    await session.send_json({
-                        "type": "error",
-                        "message": "图像解码失败"
-                    })
+                    await session.send_json({"type": "error", "message": "图像解码失败"})
                     continue
-                
+
                 # 执行检测
                 start_time = time.time()
-                results = detection_service.models[scene_id](frame, conf=0.25, iou=0.45)
+                results = detection_service.models[cache_key](frame, conf=0.25, iou=0.45)
                 inference_time = (time.time() - start_time) * 1000  # ms
-                
+
                 # 解析检测结果
                 detections = []
                 if results and len(results) > 0:
@@ -217,65 +198,57 @@ async def camera_detect(
                             conf = float(box.conf[0])
                             cls_id = int(box.cls[0])
                             cls_name = result.names[cls_id]
-                            
-                            detections.append({
-                                "bbox": [x1, y1, x2, y2],
-                                "confidence": conf,
-                                "class_id": cls_id,
-                                "class_name": cls_name
-                            })
-                
+
+                            detections.append(
+                                {
+                                    "bbox": [x1, y1, x2, y2],
+                                    "confidence": conf,
+                                    "class_id": cls_id,
+                                    "class_name": cls_name,
+                                }
+                            )
+
                 # 发送检测结果
-                await session.send_json({
-                    "type": "detection",
-                    "detections": detections,
-                    "total_objects": len(detections),
-                    "inference_time": round(inference_time, 2),
-                    "fps": round(session.get_fps(), 1),
-                    "frame_id": session.frame_count
-                })
-                
+                await session.send_json(
+                    {
+                        "type": "detection",
+                        "detections": detections,
+                        "total_objects": len(detections),
+                        "inference_time": round(inference_time, 2),
+                        "fps": round(session.get_fps(), 1),
+                        "frame_id": session.frame_count,
+                    }
+                )
+
             except Exception as e:
                 logger.error(f"帧处理失败: {e}")
-                await session.send_json({
-                    "type": "error",
-                    "message": f"处理失败: {str(e)}"
-                })
-    
+                await session.send_json({"type": "error", "message": f"处理失败: {str(e)}"})
+
     except WebSocketDisconnect:
         logger.info(f"摄像头连接断开: scene_id={scene_id}")
     except Exception as e:
         logger.error(f"摄像头检测错误: {e}")
         try:
-            await websocket.send_json({
-                "type": "error",
-                "message": str(e)
-            })
-        except:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
             pass
     finally:
         db.close()
-        logger.info(f"摄像头会话结束: scene_id={scene_id}, frames={session.frame_count if 'session' in locals() else 0}")
+        logger.info(
+            f"摄像头会话结束: scene_id={scene_id}, frames={session.frame_count if 'session' in locals() else 0}"
+        )
 
 
 @router.get("/scenes", response_model=dict)
 async def get_camera_scenes(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取支持摄像头检测的场景列表"""
-    scenes = db.query(DetectionScene).filter(
-        DetectionScene.is_active == True
-    ).all()
-    
+    scenes = db.query(DetectionScene).filter(DetectionScene.is_active.is_(True)).all()
+
     return {
         "scenes": [
-            {
-                "id": s.id,
-                "name": s.name,
-                "display_name": s.display_name,
-                "category": s.category
-            }
+            {"id": s.id, "name": s.name, "display_name": s.display_name, "category": s.category}
             for s in scenes
         ]
     }
