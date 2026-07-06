@@ -72,10 +72,12 @@ const routes = [
       },
     ],
   },
-  // 404 重定向到登录页
+  // 404 页面
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/login',
+    name: 'NotFound',
+    component: () => import('@/views/NotFoundPage.vue'),
+    meta: { title: '页面未找到', requiresAuth: false },
   },
 ]
 
