@@ -103,11 +103,6 @@ bun run dev
 
 前端默认运行在 `http://localhost:3000`，Vite 自动将 `/api` 请求代理到后端。
 
-### 3. 首次启动自动完成
-
-- 数据库自动创建（SQLite `data/visagent.db`）
-- 若 `INIT_DEFAULT_ADMIN=true`，自动创建默认管理员（账号/密码见 `init_admin.py`）
-
 ---
 
 
