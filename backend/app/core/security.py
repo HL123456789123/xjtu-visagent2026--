@@ -127,6 +127,7 @@ async def get_current_user(
 def is_super_admin(user, db: Session) -> bool:
     """
     判断用户是否为超级管理员（拥有 super_admin 角色）
+    同一请求内缓存结果，避免重复查库
 
     Args:
         user: 用户对象
@@ -135,6 +136,11 @@ def is_super_admin(user, db: Session) -> bool:
     Returns:
         是否为超级管理员
     """
+    # 检查请求级缓存（附加在 user 对象上）
+    cached = getattr(user, "_is_super_admin", None)
+    if cached is not None:
+        return cached
+
     from app.entity.db_models import UserRole, Role
 
     has_role = (
@@ -146,7 +152,13 @@ def is_super_admin(user, db: Session) -> bool:
         )
         .first()
     )
-    return has_role is not None
+    result = has_role is not None
+    # 缓存到 user 对象，同一请求内不再重复查询
+    try:
+        user._is_super_admin = result
+    except Exception:
+        pass
+    return result
 
 
 # ── RBAC 权限校验依赖 ──────────────────────────────────

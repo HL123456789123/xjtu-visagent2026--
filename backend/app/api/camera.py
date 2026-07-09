@@ -148,6 +148,7 @@ async def camera_detect(
     await websocket.accept()
     logger.info(f"摄像头连接建立: scene_id={scene_id}, user_id={user_id}")
 
+    session = None
     try:
         scene = (
             db.query(DetectionScene)
@@ -300,8 +301,9 @@ async def camera_detect(
     finally:
         if db is not None:
             db.close()
+        frame_count = session.frame_count if session is not None else 0
         logger.info(
-            f"摄像头会话结束: scene_id={scene_id}, frames={session.frame_count if 'session' in locals() else 0}"
+            f"摄像头会话结束: scene_id={scene_id}, frames={frame_count}"
         )
 
 
