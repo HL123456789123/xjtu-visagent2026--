@@ -90,13 +90,11 @@ class TestUserResponse:
             username="testuser",
             email="test@example.com",
             is_active=True,
-            is_superuser=False,
             roles=[],
             created_at=datetime.now(),
         )
         assert data.id == 1
         assert data.is_active is True
-        assert data.is_superuser is False
 
     def test_user_brief_from_attributes(self):
         """UserBrief 从属性创建"""

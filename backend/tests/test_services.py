@@ -23,7 +23,6 @@ class TestUserRegister:
         assert user.email == "test@example.com"
         assert user.hashed_password != "password123"
         assert user.is_active is True
-        assert user.is_superuser is False
 
     def test_register_duplicate_username(self, db):
         """重复用户名注册失败"""

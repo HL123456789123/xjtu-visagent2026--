@@ -39,7 +39,6 @@ class TestAuthAPI:
         assert data["email"] == "new@example.com"
         assert "id" in data
         assert data["is_active"] is True
-        assert data["is_superuser"] is False
 
     def test_register_duplicate_username(self, client, db):
         """重复用户名注册返回 400"""

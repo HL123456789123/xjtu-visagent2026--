@@ -30,7 +30,6 @@ class TestUserModel:
         assert user.username == "testuser"
         assert user.email == "test@example.com"
         assert user.is_active is True
-        assert user.is_superuser is False
         assert user.created_at is not None
 
     def test_username_unique_constraint(self, db):
@@ -48,19 +47,6 @@ class TestUserModel:
         db.add(User(username="user_b", email="same@example.com", hashed_password="hash"))
         with pytest.raises(IntegrityError):
             db.commit()
-
-    def test_superuser_flag(self, db):
-        """超级管理员标记"""
-        user = User(
-            username="admin",
-            email="admin@example.com",
-            hashed_password="hash",
-            is_superuser=True,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        assert user.is_superuser is True
 
     def test_inactive_user(self, db):
         """禁用用户标记"""
