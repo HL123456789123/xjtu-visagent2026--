@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.core.security import get_current_user
+from app.core.security import get_current_user, is_super_admin
 from app.database.session import get_db
 from app.entity.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.services.user_service import user_service
@@ -91,7 +91,7 @@ async def get_current_user_info(
         "phone": current_user.phone,
         "avatar": current_user.avatar,
         "is_active": current_user.is_active,
-        "is_superuser": current_user.is_superuser,
+        "is_superuser": is_super_admin(current_user, db),
         "roles": roles,
         "last_login_at": current_user.last_login_at,
         "created_at": current_user.created_at,
