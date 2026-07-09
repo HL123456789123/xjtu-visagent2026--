@@ -14,7 +14,7 @@ class RoleService:
     @staticmethod
     def get_role_list(db: Session) -> list[dict]:
         """
-        获取所有角色列表
+        获取所有角色列表（批量查询避免 N+1）
 
         Args:
             db: 数据库会话
@@ -23,29 +23,42 @@ class RoleService:
             角色列表（包含权限和用户数）
         """
         roles = db.query(Role).order_by(Role.id).all()
+        role_ids = [r.id for r in roles]
+
+        # 批量查询所有角色的权限
+        perm_map: dict[int, list[str]] = {rid: [] for rid in role_ids}
+        if role_ids:
+            rows = (
+                db.query(RolePermission.role_id, Permission.code)
+                .join(Permission, RolePermission.permission_id == Permission.id)
+                .filter(RolePermission.role_id.in_(role_ids))
+                .all()
+            )
+            for rid, code in rows:
+                perm_map[rid].append(code)
+
+        # 批量查询所有角色的用户数
+        from sqlalchemy import func
+        user_counts: dict[int, int] = {}
+        if role_ids:
+            count_rows = (
+                db.query(UserRole.role_id, func.count(UserRole.user_id))
+                .filter(UserRole.role_id.in_(role_ids))
+                .group_by(UserRole.role_id)
+                .all()
+            )
+            user_counts = {rid: cnt for rid, cnt in count_rows}
 
         result = []
         for role in roles:
-            # 获取角色权限
-            permissions = (
-                db.query(Permission.code)
-                .join(RolePermission, RolePermission.permission_id == Permission.id)
-                .filter(RolePermission.role_id == role.id)
-                .all()
-            )
-            perm_codes = [p[0] for p in permissions]
-
-            # 获取关联用户数
-            user_count = db.query(UserRole).filter(UserRole.role_id == role.id).count()
-
             result.append({
                 "id": role.id,
                 "name": role.name,
                 "display_name": role.display_name,
                 "description": role.description,
                 "is_system": role.is_system,
-                "permissions": perm_codes,
-                "user_count": user_count,
+                "permissions": perm_map.get(role.id, []),
+                "user_count": user_counts.get(role.id, 0),
                 "created_at": role.created_at,
             })
 

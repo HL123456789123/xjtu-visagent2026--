@@ -68,6 +68,7 @@ class UserResponse(BaseModel):
     avatar: Optional[str] = None
     is_active: bool
     roles: list[str] = []
+    permissions: list[str] = []
     last_login_at: Optional[datetime] = None
     created_at: datetime
 

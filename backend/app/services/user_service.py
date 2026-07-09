@@ -6,7 +6,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.core.security import create_access_token, hash_password, verify_password
-from app.entity.db_models import User, UserRole, Role
+from app.entity.db_models import User, UserRole, Role, RolePermission, Permission
 
 
 class UserService:
@@ -103,6 +103,27 @@ class UserService:
         return [role[0] for role in roles]
 
     @staticmethod
+    def get_user_permissions(db: Session, user: User) -> list[str]:
+        """获取用户通过角色关联的所有权限编码列表
+
+        超级管理员返回 None 表示拥有所有权限（前端特殊处理）。
+        """
+        from app.core.security import is_super_admin
+
+        if is_super_admin(user, db):
+            return ["*"]  # 前端约定：'*' 表示拥有所有权限
+
+        perms = (
+            db.query(Permission.code)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .join(UserRole, UserRole.role_id == RolePermission.role_id)
+            .filter(UserRole.user_id == user.id)
+            .distinct()
+            .all()
+        )
+        return [p[0] for p in perms]
+
+    @staticmethod
     def get_user_by_id(db: Session, user_id: int) -> User | None:
         """根据 ID 获取用户，不存在则返回 None"""
         return db.query(User).filter(User.id == user_id).first()
@@ -146,10 +167,22 @@ class UserService:
         # 分页查询
         users = query.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
-        # 组装结果（包含角色信息）
+        # 批量查询所有用户的角色（避免 N+1）
+        user_ids = [u.id for u in users]
+        role_map: dict[int, list[str]] = {uid: [] for uid in user_ids}
+        if user_ids:
+            rows = (
+                db.query(UserRole.user_id, Role.name)
+                .join(Role, UserRole.role_id == Role.id)
+                .filter(UserRole.user_id.in_(user_ids))
+                .all()
+            )
+            for uid, rname in rows:
+                role_map[uid].append(rname)
+
+        # 组装结果
         items = []
         for user in users:
-            roles = UserService.get_user_roles(db, user)
             items.append({
                 "id": user.id,
                 "username": user.username,
@@ -157,7 +190,7 @@ class UserService:
                 "phone": user.phone,
                 "avatar": user.avatar,
                 "is_active": user.is_active,
-                "roles": roles,
+                "roles": role_map.get(user.id, []),
                 "last_login_at": user.last_login_at,
                 "created_at": user.created_at,
             })
