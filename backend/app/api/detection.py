@@ -11,7 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, RequirePermission
+from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.config.settings import settings
 from app.database.session import get_db
 from app.entity.db_models import User, DetectionScene, DetectionTask
@@ -338,7 +338,7 @@ async def get_detection_task(
 
     query = db.query(DetectionTask).filter(DetectionTask.id == task_id)
     # 非超级管理员只能查看自己的任务
-    if not current_user.is_superuser:
+    if not is_super_admin(current_user, db):
         query = query.filter(DetectionTask.user_id == current_user.id)
     task = query.first()
     if not task:
@@ -373,7 +373,7 @@ async def get_detection_results(
     """获取检测结果"""
     # 先校验任务所有权
     query = db.query(DetectionTask).filter(DetectionTask.id == task_id)
-    if not current_user.is_superuser:
+    if not is_super_admin(current_user, db):
         query = query.filter(DetectionTask.user_id == current_user.id)
     task = query.first()
     if not task:

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, RequirePermission
+from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.core.logger import get_logger
 from app.database.session import get_db
 from app.entity.db_models import User, Model, DetectionScene
@@ -30,7 +30,7 @@ def _check_model_ownership(db: Session, model_id: int, current_user: User):
     if not model:
         raise HTTPException(status_code=404, detail="模型不存在")
     # 超级管理员直接放行
-    if current_user.is_superuser:
+    if is_super_admin(current_user, db):
         return model
     if model.created_by is None or model.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="无权操作该模型")
@@ -53,7 +53,7 @@ async def list_models(
     # 超级管理员查看所有模型，普通用户仅查看自己的模型
     result = model_service.get_model_list(
         db=db,
-        user_id=None if current_user.is_superuser else current_user.id,
+        user_id=None if is_super_admin(current_user, db) else current_user.id,
         category=category,
         status=status,
         page=page,

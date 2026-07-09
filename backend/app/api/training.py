@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.core.security import get_current_user, RequirePermission
+from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.core.logger import get_logger
 from app.core.tz import now_cst
 from app.database.session import get_db
@@ -56,7 +56,7 @@ def _get_task_or_403(db: Session, task_id: int, user: User):
     if not task:
         raise HTTPException(status_code=404, detail="训练任务不存在")
     # 超级管理员直接放行
-    if user.is_superuser:
+    if is_super_admin(user, db):
         return task
     if task.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权操作该训练任务")
@@ -502,7 +502,7 @@ async def download_model(
 
     # 校验模型所有权：超级管理员可下载所有模型，其他用户只能下载自己创建的
     model_obj = db.query(Model).filter(Model.id == model_version.model_id).first()
-    if not current_user.is_superuser:
+    if not is_super_admin(current_user, db):
         if not model_obj or model_obj.created_by != current_user.id:
             raise HTTPException(status_code=403, detail="无权下载该模型")
 

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, RequirePermission
+from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.core.logger import get_logger
 from app.core.tz import now_cst
 from app.database.session import get_db
@@ -48,7 +48,7 @@ async def get_dashboard_stats(
     """
     try:
         # 非管理员仅查看自己的数据
-        is_admin = current_user.is_superuser
+        is_admin = is_super_admin(current_user, db)
         user_filter = None if is_admin else current_user.id
 
         # 1. 基础统计

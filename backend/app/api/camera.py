@@ -13,7 +13,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 
 from app.core.logger import get_logger
-from app.core.security import decode_access_token, get_current_user, RequirePermission
+from app.core.security import decode_access_token, get_current_user, RequirePermission, is_super_admin
 from app.entity.schemas import ApiResponse
 from app.database.session import get_db, SessionLocal
 from app.entity.db_models import User, DetectionScene, ModelVersion, SceneModel, UserRole, RolePermission, Permission
@@ -75,7 +75,7 @@ def _check_websocket_permission(db, user_id: int, permission_code: str) -> bool:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return False
-    if user.is_superuser:
+    if is_super_admin(user, db):
         return True
     has_perm = (
         db.query(Permission)
