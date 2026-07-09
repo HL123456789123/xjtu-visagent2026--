@@ -6,6 +6,7 @@
  */
 import { defineStore } from 'pinia'
 import { loginApi, getUserInfoApi, logoutApi } from '@/api/auth'
+import { hasRole, isAdmin, isSuperAdmin } from '@/utils/permission'
 
 const USER_KEY = 'visagent_user'
 
@@ -24,8 +25,16 @@ export const useUserStore = defineStore('user', {
     avatar: (state) => state.user?.avatar || '',
     /** 角色列表 */
     roles: (state) => state.user?.roles || [],
-    /** 是否为超级管理员 */
-    isSuperuser: (state) => state.user?.is_superuser || false,
+    /** 是否为管理员（admin 或 super_admin） */
+    isAdmin: (state) => isAdmin(state.user),
+    /** 是否为超级管理员（通过角色判断） */
+    isSuperAdmin: (state) => isSuperAdmin(state.user),
+    /**
+     * 返回一个函数，用于判断用户是否拥有指定角色
+     * 用法：const userStore = useUserStore()
+     *       userStore.hasRole('admin')
+     */
+    hasRole: (state) => (roleName) => hasRole(state.user, roleName),
   },
 
   actions: {
