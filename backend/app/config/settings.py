@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
 
     @property
-    def REDIS_URL(self) -> str:
+    def redis_url(self) -> str:
         """构造 Redis 连接字符串"""
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
