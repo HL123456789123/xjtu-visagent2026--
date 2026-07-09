@@ -115,8 +115,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Aim, Box, Cpu, ChatDotRound, ArrowRight } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { getDetectionTasksApi } from '@/api/detection'
-import { getTrainingTasksApi } from '@/api/training'
+import { getDashboardStatsApi } from '@/api/dashboard'
 
 // 统计数据
 const stats = ref({
@@ -144,45 +143,31 @@ let modelChart = null
 // 最近活动
 const recentActivities = ref([])
 
+// 后端原始数据缓存
+let _statsData = null
+
 // 加载统计数据
 async function loadStats() {
   try {
-    // 加载检测任务统计
-    const detectionRes = await getDetectionTasksApi({ page: 1, page_size: 1000 })
-    const detections = detectionRes.data?.items || []
-    stats.value.totalDetections = detectionRes.data?.total || 0
-    stats.value.totalObjects = detections.reduce((sum, d) => sum + (d.total_objects || 0), 0)
+    const res = await getDashboardStatsApi()
+    const data = res.data
+    _statsData = data
 
-    // 加载训练任务统计
-    const trainingRes = await getTrainingTasksApi({ page: 1, page_size: 1000 })
-    stats.value.totalModels = trainingRes.data?.total || 0
+    // 概览统计
+    stats.value.totalDetections = data.overview.total_detections || 0
+    stats.value.totalObjects = 0 // 后端暂未聚合，可后续扩展
+    stats.value.totalModels = data.overview.total_models || 0
+    stats.value.totalChats = data.overview.total_sessions || 0
 
-    // 模拟对话次数（实际应从API获取）
-    stats.value.totalChats = 42
-
-    // 生成最近活动
-    generateRecentActivities(detections)
-  } catch (error) {
-    console.error('加载统计数据失败:', error)
-  }
-}
-
-// 生成最近活动
-function generateRecentActivities(detections) {
-  const activities = []
-  
-  // 添加检测活动
-  detections.slice(0, 5).forEach(d => {
-    activities.push({
+    // 最近活动
+    recentActivities.value = (data.recent_detections || []).map(d => ({
       type: 'detection',
       description: `完成${d.task_type === 'single' ? '单图' : d.task_type === 'batch' ? '批量' : '视频'}检测，发现 ${d.total_objects || 0} 个目标`,
       time: d.created_at
-    })
-  })
-
-  // 按时间排序
-  activities.sort((a, b) => new Date(b.time) - new Date(a.time))
-  recentActivities.value = activities.slice(0, 10)
+    }))
+  } catch (error) {
+    console.error('加载统计数据失败:', error)
+  }
 }
 
 // 加载趋势数据
@@ -195,20 +180,17 @@ async function loadTrendData() {
 function renderTrendChart() {
   if (!trendChartRef.value) return
   
-  if (trendChart) trendChart.dispose()
+  if (trendChart) {
+    trendChart.dispose()
+  }
   trendChart = echarts.init(trendChartRef.value)
 
-  // 生成模拟数据
-  const days = trendPeriod.value === 'week' ? 7 : 30
-  const dates = []
-  const values = []
-  
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date()
-    date.setDate(date.getDate() - i)
-    dates.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }))
-    values.push(Math.floor(Math.random() * 50) + 10)
-  }
+  const trend = _statsData?.trend || []
+  const dates = trend.map(t => {
+    const d = new Date(t.date)
+    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  })
+  const values = trend.map(t => t.count)
 
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
@@ -237,6 +219,9 @@ function renderCategoryChart() {
   if (categoryChart) categoryChart.dispose()
   categoryChart = echarts.init(categoryChartRef.value)
 
+  const classDist = _statsData?.class_distribution || []
+  const pieData = classDist.map(c => ({ value: c.count, name: c.name }))
+
   categoryChart.setOption({
     tooltip: { trigger: 'item' },
     legend: { orient: 'vertical', left: 'left' },
@@ -244,12 +229,7 @@ function renderCategoryChart() {
       type: 'pie',
       radius: '60%',
       center: ['50%', '50%'],
-      data: [
-        { value: 35, name: '飞机' },
-        { value: 28, name: '油罐' },
-        { value: 22, name: '立交桥' },
-        { value: 15, name: '操场' }
-      ],
+      data: pieData.length > 0 ? pieData : [{ value: 0, name: '暂无数据' }],
       emphasis: {
         itemStyle: {
           shadowBlur: 10,
@@ -268,13 +248,17 @@ function renderSceneChart() {
   if (sceneChart) sceneChart.dispose()
   sceneChart = echarts.init(sceneChartRef.value)
 
+  const sceneStats = _statsData?.scene_stats || []
+  const names = sceneStats.map(s => s.name)
+  const counts = sceneStats.map(s => s.count)
+
   sceneChart.setOption({
     tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: ['遥感检测', '工业检测', '农业检测', '交通检测'] },
+    xAxis: { type: 'category', data: names.length > 0 ? names : ['暂无'] },
     yAxis: { type: 'value', name: '检测次数' },
     series: [{
       type: 'bar',
-      data: [120, 85, 65, 90],
+      data: counts.length > 0 ? counts : [0],
       itemStyle: {
         color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
           { offset: 0, color: '#409eff' },
@@ -285,30 +269,32 @@ function renderSceneChart() {
   })
 }
 
-// 渲染模型对比图
+// 渲染模型对比图（使用训练任务状态分布代替）
 function renderModelChart() {
   if (!modelChartRef.value) return
   
   if (modelChart) modelChart.dispose()
   modelChart = echarts.init(modelChartRef.value)
 
+  const trainingStatus = _statsData?.training_status || []
+  const statusMap = { pending: '等待中', running: '运行中', paused: '已暂停', completed: '已完成', failed: '失败', cancelled: '已取消' }
+  const names = trainingStatus.map(s => statusMap[s.status] || s.status)
+  const counts = trainingStatus.map(s => s.count)
+
   modelChart.setOption({
     tooltip: { trigger: 'axis' },
-    legend: { data: ['mAP@0.5', 'mAP@0.5:0.95'] },
-    xAxis: { type: 'category', data: ['YOLOv11n', 'YOLOv11s', 'YOLOv11m', 'YOLOv11l'] },
-    yAxis: { type: 'value', name: 'mAP', max: 1 },
-    series: [
-      {
-        name: 'mAP@0.5',
-        type: 'bar',
-        data: [0.72, 0.78, 0.82, 0.85]
-      },
-      {
-        name: 'mAP@0.5:0.95',
-        type: 'bar',
-        data: [0.55, 0.62, 0.68, 0.72]
+    xAxis: { type: 'category', data: names.length > 0 ? names : ['暂无'] },
+    yAxis: { type: 'value', name: '任务数' },
+    series: [{
+      type: 'bar',
+      data: counts.length > 0 ? counts : [0],
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#67c23a' },
+          { offset: 1, color: '#95d475' }
+        ])
       }
-    ]
+    }]
   })
 }
 
