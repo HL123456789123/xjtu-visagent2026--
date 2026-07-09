@@ -81,7 +81,6 @@ const menuItems = [
   { path: '/models', title: '模型管理', icon: Goods },
   { path: '/history', title: '历史记录', icon: Clock },
   { path: '/dashboard', title: '仪表盘', icon: DataAnalysis },
-  { path: '/profile', title: '个人信息', icon: User },
 ]
 
 /** 管理员菜单项 */

@@ -20,7 +20,7 @@
           <el-option label="禁用" :value="false" />
         </el-select>
         <el-button type="primary" @click="loadUsers">
-          <el-icon><Refresh /></el-icon>刷新
+          <el-icon><Search /></el-icon>搜索
         </el-button>
       </div>
     </div>
@@ -124,7 +124,7 @@
         <el-checkbox
           v-for="role in allRoles"
           :key="role.id"
-          :label="role.id"
+          :value="role.id"
           style="display: block; margin-bottom: 8px"
         >
           <span>{{ role.display_name }}</span>
@@ -196,11 +196,11 @@ function getRoleTagType(roleName) {
   const typeMap = {
     super_admin: 'danger',
     admin: 'warning',
-    operator: '',
+    operator: 'info',
     user: 'info',
     viewer: 'info',
   }
-  return typeMap[roleName] || ''
+  return typeMap[roleName] || 'info'
 }
 
 // 格式化时间
@@ -231,8 +231,8 @@ async function loadUsers() {
       params.is_active = filterActive.value
     }
     const res = await getUserListApi(params)
-    users.value = res.items || []
-    total.value = res.total || 0
+    users.value = res.data?.items || []
+    total.value = res.data?.total || 0
   } catch (error) {
     console.error('加载用户列表失败:', error)
     ElMessage.error('加载用户列表失败')
@@ -245,7 +245,7 @@ async function loadUsers() {
 async function loadRoles() {
   try {
     const res = await getRoleListApi()
-    allRoles.value = res || []
+    allRoles.value = res.data || []
   } catch (error) {
     console.error('加载角色列表失败:', error)
   }

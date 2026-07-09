@@ -106,14 +106,15 @@
             </el-checkbox>
           </div>
           <div class="group-items">
-            <el-checkbox
-              v-for="perm in group.permissions"
-              :key="perm.code"
-              v-model="selectedPermissionCodes"
-              :label="perm.code"
-            >
-              {{ perm.name }}
-            </el-checkbox>
+            <el-checkbox-group v-model="selectedPermissionCodes">
+              <el-checkbox
+                v-for="perm in group.permissions"
+                :key="perm.code"
+                :value="perm.code"
+              >
+                {{ perm.name }}
+              </el-checkbox>
+            </el-checkbox-group>
           </div>
         </div>
       </div>
@@ -207,7 +208,7 @@ async function loadRoles() {
   loading.value = true
   try {
     const res = await getRoleListApi()
-    roles.value = res || []
+    roles.value = res.data || []
   } catch (error) {
     console.error('加载角色列表失败:', error)
     ElMessage.error('加载角色列表失败')
@@ -221,7 +222,7 @@ async function loadPermissions() {
   loadingPermissions.value = true
   try {
     const res = await getPermissionListApi()
-    permissionGroups.value = res || []
+    permissionGroups.value = res.data || []
   } catch (error) {
     console.error('加载权限列表失败:', error)
     ElMessage.error('加载权限列表失败')
