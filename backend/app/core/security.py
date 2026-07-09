@@ -121,6 +121,34 @@ async def get_current_user(
     return user
 
 
+# ── RBAC 辅助函数 ─────────────────────────────────────
+
+
+def is_super_admin(user, db: Session) -> bool:
+    """
+    判断用户是否为超级管理员（拥有 super_admin 角色）
+
+    Args:
+        user: 用户对象
+        db: 数据库会话
+
+    Returns:
+        是否为超级管理员
+    """
+    from app.entity.db_models import UserRole, Role
+
+    has_role = (
+        db.query(Role)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .filter(
+            UserRole.user_id == user.id,
+            Role.name == "super_admin",
+        )
+        .first()
+    )
+    return has_role is not None
+
+
 # ── RBAC 权限校验依赖 ──────────────────────────────────
 
 
@@ -132,7 +160,7 @@ class RequirePermission:
         @router.delete("/models/{id}", dependencies=[Depends(RequirePermission("model:delete"))])
 
     校验逻辑：
-        1. 超级管理员（is_superuser=True）直接放行
+        1. 超级管理员（拥有 super_admin 角色）直接放行
         2. 查询用户关联角色拥有的权限编码，匹配则放行
     """
 
@@ -145,7 +173,7 @@ class RequirePermission:
         db: Session = Depends(get_db),
     ):
         # 超级管理员直接放行
-        if current_user.is_superuser:
+        if is_super_admin(current_user, db):
             return current_user
 
         # 查询用户是否拥有指定权限
@@ -179,8 +207,12 @@ class RequireSuperuser:
         @router.get("/admin/xxx", dependencies=[Depends(RequireSuperuser())])
     """
 
-    async def __call__(self, current_user=Depends(get_current_user)):
-        if not current_user.is_superuser:
+    async def __call__(
+        self,
+        current_user=Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ):
+        if not is_super_admin(current_user, db):
             raise HTTPException(
                 status_code=403,
                 detail="权限不足，需要管理员权限",

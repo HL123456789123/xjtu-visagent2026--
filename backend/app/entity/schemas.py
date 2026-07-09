@@ -67,7 +67,6 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     avatar: Optional[str] = None
     is_active: bool
-    is_superuser: bool
     roles: list[str] = []
     last_login_at: Optional[datetime] = None
     created_at: datetime
@@ -102,6 +101,7 @@ class RoleResponse(BaseModel):
     description: Optional[str] = None
     is_system: bool
     permissions: list[str] = []
+    user_count: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -116,6 +116,20 @@ class RoleCreate(BaseModel):
     permission_codes: list[str] = Field(default=[], description="权限编码列表")
 
 
+class RoleUpdate(BaseModel):
+    """更新角色"""
+
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    permission_codes: Optional[list[str]] = None
+
+
+class RolePermissionAssign(BaseModel):
+    """分配角色权限"""
+
+    permission_codes: list[str] = Field(..., description="权限编码列表")
+
+
 class PermissionResponse(BaseModel):
     """权限响应"""
 
@@ -126,6 +140,36 @@ class PermissionResponse(BaseModel):
     description: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class PermissionGroupResponse(BaseModel):
+    """按模块分组的权限响应"""
+
+    module: str
+    permissions: list[PermissionResponse]
+
+
+# --- 管理员用户管理 ---
+
+
+class UserAdminUpdate(BaseModel):
+    """管理员修改用户信息"""
+
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class UserRoleAssign(BaseModel):
+    """分配用户角色"""
+
+    role_ids: list[int] = Field(..., description="角色 ID 列表")
+
+
+class UserStatusUpdate(BaseModel):
+    """启用/禁用用户"""
+
+    is_active: bool = Field(..., description="是否启用")
 
 
 # ══════════════════════════════════════════════════════════════

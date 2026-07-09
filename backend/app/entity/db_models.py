@@ -42,7 +42,6 @@ class User(Base):
     phone = Column(String(20), nullable=True, comment="手机号")
     avatar = Column(String(500), nullable=True, comment="头像 URL")
     is_active = Column(Boolean, default=True, comment="是否启用")
-    is_superuser = Column(Boolean, default=False, comment="是否超级管理员")
     last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
     created_at = Column(DateTime, default=now_cst, comment="创建时间")
     updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")

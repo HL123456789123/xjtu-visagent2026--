@@ -107,6 +107,198 @@ class UserService:
         """根据 ID 获取用户，不存在则返回 None"""
         return db.query(User).filter(User.id == user_id).first()
 
+    @staticmethod
+    def get_user_list(
+        db: Session,
+        page: int = 1,
+        page_size: int = 20,
+        keyword: str | None = None,
+        is_active: bool | None = None,
+    ) -> dict:
+        """
+        分页查询用户列表
+
+        Args:
+            db: 数据库会话
+            page: 页码
+            page_size: 每页数量
+            keyword: 搜索关键字（用户名或邮箱）
+            is_active: 是否启用筛选
+
+        Returns:
+            分页结果字典
+        """
+        query = db.query(User)
+
+        # 关键字搜索
+        if keyword:
+            query = query.filter(
+                (User.username.ilike(f"%{keyword}%")) | (User.email.ilike(f"%{keyword}%"))
+            )
+
+        # 状态筛选
+        if is_active is not None:
+            query = query.filter(User.is_active == is_active)
+
+        # 计算总数
+        total = query.count()
+
+        # 分页查询
+        users = query.order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+
+        # 组装结果（包含角色信息）
+        items = []
+        for user in users:
+            roles = UserService.get_user_roles(db, user)
+            items.append({
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "phone": user.phone,
+                "avatar": user.avatar,
+                "is_active": user.is_active,
+                "roles": roles,
+                "last_login_at": user.last_login_at,
+                "created_at": user.created_at,
+            })
+
+        return {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size,
+            "items": items,
+        }
+
+    @staticmethod
+    def admin_update_user(db: Session, user_id: int, current_user_id: int, **kwargs) -> User:
+        """
+        管理员修改用户信息
+
+        Args:
+            db: 数据库会话
+            user_id: 目标用户 ID
+            current_user_id: 当前操作用户 ID
+            **kwargs: 要更新的字段
+
+        Returns:
+            更新后的用户对象
+
+        Raises:
+            HTTPException: 用户不存在或禁止操作
+        """
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 更新允许的字段
+        allowed_fields = {"email", "phone", "is_active"}
+        for key, value in kwargs.items():
+            if key in allowed_fields and value is not None:
+                setattr(user, key, value)
+
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def assign_user_roles(db: Session, user_id: int, role_ids: list[int]) -> User:
+        """
+        分配用户角色（替换式）
+
+        Args:
+            db: 数据库会话
+            user_id: 用户 ID
+            role_ids: 角色 ID 列表
+
+        Returns:
+            更新后的用户对象
+
+        Raises:
+            HTTPException: 用户不存在或角色不存在
+        """
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 校验角色是否存在
+        roles = db.query(Role).filter(Role.id.in_(role_ids)).all()
+        if len(roles) != len(role_ids):
+            found_ids = {r.id for r in roles}
+            missing_ids = [rid for rid in role_ids if rid not in found_ids]
+            raise HTTPException(status_code=400, detail=f"角色不存在: {missing_ids}")
+
+        # 删除旧角色关联
+        db.query(UserRole).filter(UserRole.user_id == user_id).delete()
+
+        # 添加新角色关联
+        for role_id in role_ids:
+            db.add(UserRole(user_id=user_id, role_id=role_id))
+
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def toggle_user_active(db: Session, user_id: int, is_active: bool, current_user_id: int) -> User:
+        """
+        启用/禁用用户
+
+        Args:
+            db: 数据库会话
+            user_id: 用户 ID
+            is_active: 是否启用
+            current_user_id: 当前操作用户 ID
+
+        Returns:
+            更新后的用户对象
+
+        Raises:
+            HTTPException: 禁止操作自身
+        """
+        if user_id == current_user_id:
+            raise HTTPException(status_code=400, detail="不能禁用自身账号")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        user.is_active = is_active
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def delete_user(db: Session, user_id: int, current_user_id: int) -> bool:
+        """
+        删除用户
+
+        Args:
+            db: 数据库会话
+            user_id: 用户 ID
+            current_user_id: 当前操作用户 ID
+
+        Returns:
+            是否删除成功
+
+        Raises:
+            HTTPException: 禁止删除自身
+        """
+        if user_id == current_user_id:
+            raise HTTPException(status_code=400, detail="不能删除自身账号")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 删除用户角色关联
+        db.query(UserRole).filter(UserRole.user_id == user_id).delete()
+
+        # 删除用户
+        db.delete(user)
+        db.commit()
+        return True
+
 
 # 全局单例
 user_service = UserService()
