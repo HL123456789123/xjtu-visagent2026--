@@ -13,10 +13,11 @@ export function hasPermission(user, permissionCode) {
   if (!user) return false
   // 超级管理员拥有所有权限
   if (isSuperAdmin(user)) return true
-  // 检查权限列表（需要后端返回 permissions 字段，或通过角色推断）
-  // 当前后端仅返回 roles，暂不支持细粒度权限判断
-  // 实际项目中可在登录时获取用户权限列表并存储
-  return false
+  // 检查权限列表（后端 /me 接口返回 permissions 字段）
+  const permissions = user.permissions || []
+  // '*' 表示拥有所有权限（超级管理员标记）
+  if (permissions.includes('*')) return true
+  return permissions.includes(permissionCode)
 }
 
 /**

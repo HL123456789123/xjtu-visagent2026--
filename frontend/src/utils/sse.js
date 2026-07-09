@@ -58,6 +58,7 @@ export function streamChat(url, body, callbacks) {
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder('utf-8')
+      let buffer = '' // 缓冲区，处理跨 chunk 的 SSE 行截断
 
       while (true) {
         const { done, value } = await reader.read()
@@ -66,9 +67,11 @@ export function streamChat(url, body, callbacks) {
           break
         }
 
-        // 解析 SSE 格式
-        const text = decoder.decode(value, { stream: true })
-        const lines = text.split('\n')
+        // 解析 SSE 格式（追加到 buffer 处理跨 chunk 截断）
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        // 最后一行可能不完整，保留到下次处理
+        buffer = lines.pop() || ''
 
         for (const line of lines) {
           if (line.startsWith('data:')) {

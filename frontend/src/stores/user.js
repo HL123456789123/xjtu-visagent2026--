@@ -6,7 +6,7 @@
  */
 import { defineStore } from 'pinia'
 import { loginApi, getUserInfoApi, logoutApi } from '@/api/auth'
-import { hasRole, isAdmin, isSuperAdmin } from '@/utils/permission'
+import { hasRole, isAdmin, isSuperAdmin, hasPermission } from '@/utils/permission'
 
 const USER_KEY = 'visagent_user'
 
@@ -25,6 +25,8 @@ export const useUserStore = defineStore('user', {
     avatar: (state) => state.user?.avatar || '',
     /** 角色列表 */
     roles: (state) => state.user?.roles || [],
+    /** 权限列表 */
+    permissions: (state) => state.user?.permissions || [],
     /** 是否为管理员（admin 或 super_admin） */
     isAdmin: (state) => isAdmin(state.user),
     /** 是否为超级管理员（通过角色判断） */
@@ -35,6 +37,11 @@ export const useUserStore = defineStore('user', {
      *       userStore.hasRole('admin')
      */
     hasRole: (state) => (roleName) => hasRole(state.user, roleName),
+    /**
+     * 判断是否拥有指定权限
+     * 用法：userStore.hasPermission('user:list')
+     */
+    hasPermission: (state) => (code) => hasPermission(state.user, code),
   },
 
   actions: {

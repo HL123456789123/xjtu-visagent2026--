@@ -137,10 +137,9 @@ router.beforeEach(async (to, from, next) => {
     // 已登录则跳转到首页
     next('/')
   } else if (to.meta.permission) {
-    // 需要特定权限的路由，检查用户是否为管理员
-    // 当前后端仅返回 roles，使用角色判断
-    const isAdmin = userStore.isAdmin
-    if (!isAdmin) {
+    // 需要特定权限的路由，使用细粒度权限判断
+    const hasPerm = userStore.hasPermission(to.meta.permission)
+    if (!hasPerm) {
       next({ path: '/404' })
     } else {
       next()
