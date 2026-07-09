@@ -8,7 +8,7 @@
         </el-avatar>
         <div class="profile-name">
           <h2>{{ userStore.username }}</h2>
-          <el-tag v-if="userStore.isSuperuser" type="danger" size="small">超级管理员</el-tag>
+          <el-tag v-if="userStore.isSuperAdmin" type="danger" size="small">超级管理员</el-tag>
           <el-tag v-else type="info" size="small">普通用户</el-tag>
         </div>
       </div>

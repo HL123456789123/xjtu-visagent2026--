@@ -70,6 +70,19 @@ const routes = [
         component: () => import('@/views/ProfilePage.vue'),
         meta: { title: '个人信息', icon: 'User' },
       },
+      // 管理员路由
+      {
+        path: 'admin/users',
+        name: 'UserManage',
+        component: () => import('@/views/admin/UserManagePage.vue'),
+        meta: { title: '用户管理', icon: 'UserFilled', permission: 'user:list' },
+      },
+      {
+        path: 'admin/roles',
+        name: 'RoleManage',
+        component: () => import('@/views/admin/RoleManagePage.vue'),
+        meta: { title: '角色管理', icon: 'Key', permission: 'role:list' },
+      },
     ],
   },
   // 404 页面
@@ -123,6 +136,15 @@ router.beforeEach(async (to, from, next) => {
   } else if ((to.path === '/login' || to.path === '/register') && isLoggedIn) {
     // 已登录则跳转到首页
     next('/')
+  } else if (to.meta.permission) {
+    // 需要特定权限的路由，检查用户是否为管理员
+    // 当前后端仅返回 roles，使用角色判断
+    const isAdmin = userStore.isAdmin
+    if (!isAdmin) {
+      next({ path: '/404' })
+    } else {
+      next()
+    }
   } else {
     next()
   }
