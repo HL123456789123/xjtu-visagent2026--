@@ -5,7 +5,7 @@
 """
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.config.settings import settings
 
 # 创建数据库引擎
@@ -25,8 +25,9 @@ SessionLocal = sessionmaker(
     bind=engine,
 )
 
-# ORM 模型的基类，所有模型都继承自它
-Base = declarative_base()
+# ORM 模型的基类，所有模型都继承自它（SQLAlchemy 2.0 风格）
+class Base(DeclarativeBase):
+    pass
 
 
 def get_db():

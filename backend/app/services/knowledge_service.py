@@ -219,24 +219,22 @@ class KnowledgeService:
         self._initialize()
 
         try:
-            # PgVector 不直接支持按元数据删除
-            # 需要使用原生 SQL
+            import asyncio
             from sqlalchemy import text
+            from app.database.session import engine
 
-            connection = self.vector_store._connection
-            if connection:
-                # 删除指定来源的文档
-                query = text("""
-                    DELETE FROM langchain_pg_embedding
-                    WHERE cmetadata->>'source' = :source
-                """)
-                connection.execute(query, {"source": file_path})
-                connection.commit()
+            def _do_delete():
+                with engine.connect() as conn:
+                    query = text("""
+                        DELETE FROM langchain_pg_embedding
+                        WHERE cmetadata->>'source' = :source
+                    """)
+                    conn.execute(query, {"source": file_path})
+                    conn.commit()
 
-                logger.info(f"删除文档成功: {file_path}")
-                return True
-
-            return False
+            await asyncio.to_thread(_do_delete)
+            logger.info(f"删除文档成功: {file_path}")
+            return True
 
         except Exception as e:
             logger.error(f"删除文档失败 {file_path}: {e}")
@@ -255,23 +253,20 @@ class KnowledgeService:
 
         try:
             from sqlalchemy import text
+            from app.database.session import engine
 
             def _query_stats():
-                connection = self.vector_store._connection
-                if not connection:
-                    return {"total_chunks": 0, "sources": []}
+                with engine.connect() as conn:
+                    count_query = text("SELECT COUNT(*) FROM langchain_pg_embedding")
+                    count = conn.execute(count_query).scalar() or 0
 
-                query = text("SELECT COUNT(*) FROM langchain_pg_embedding")
-                result = connection.execute(query)
-                count = result.scalar()
-
-                query = text("""
-                    SELECT cmetadata->>'source' as source, COUNT(*) as count
-                    FROM langchain_pg_embedding
-                    GROUP BY cmetadata->>'source'
-                """)
-                result = connection.execute(query)
-                sources = [{"source": row[0], "count": row[1]} for row in result]
+                    source_query = text("""
+                        SELECT cmetadata->>'source' as source, COUNT(*) as count
+                        FROM langchain_pg_embedding
+                        GROUP BY cmetadata->>'source'
+                    """)
+                    result = conn.execute(source_query)
+                    sources = [{"source": row[0], "count": row[1]} for row in result]
 
                 return {"total_chunks": count, "sources": sources}
 
