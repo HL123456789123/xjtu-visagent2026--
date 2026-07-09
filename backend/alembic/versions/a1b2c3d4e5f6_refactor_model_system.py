@@ -200,7 +200,8 @@ def upgrade() -> None:
     op.create_index(op.f('ix_training_tasks_model_id'), 'training_tasks', ['model_id'], unique=False)
     
     # 5. 更新 status 列的注释（添加 paused 状态）
-    # SQLite 不支持修改列注释，跳过此步骤
+    # PostgreSQL 支持修改列注释
+    op.execute("COMMENT ON COLUMN training_tasks.status IS '状态：pending/running/paused/completed/failed/cancelled'")
 
 
 def downgrade() -> None:

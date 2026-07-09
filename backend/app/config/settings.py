@@ -27,10 +27,16 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """获取实际数据库连接字符串（支持 DATABASE_URL 环境变量覆盖，方便测试用 SQLite）"""
+        """获取实际数据库连接字符串（支持 DATABASE_URL 环境变量覆盖）"""
         if self.DATABASE_URL:
+            # 验证不使用 SQLite
+            if "sqlite" in self.DATABASE_URL.lower():
+                raise ValueError(
+                    "禁止使用 SQLite 数据库！项目仅支持 PostgreSQL。"
+                    "请配置 PostgreSQL 连接字符串，例如: postgresql://user:pass@localhost:5432/dbname"
+                )
             return self.DATABASE_URL
-        """构造 PostgreSQL 连接字符串"""
+        # 构造 PostgreSQL 连接字符串
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     # ── Redis 配置 ────────────────────────────────────
