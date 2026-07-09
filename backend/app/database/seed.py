@@ -13,15 +13,27 @@ logger = get_logger("seed")
 
 DEFAULT_ROLES = [
     {
+        "name": "super_admin",
+        "display_name": "超级管理员",
+        "description": "系统最高权限角色，拥有所有权限",
+        "is_system": True,
+    },
+    {
         "name": "admin",
         "display_name": "管理员",
-        "description": "系统管理员，拥有所有权限",
+        "description": "业务管理员，可管理用户和业务资源",
         "is_system": True,
     },
     {
         "name": "operator",
         "display_name": "操作员",
         "description": "操作员，可执行检测、训练、模型管理",
+        "is_system": True,
+    },
+    {
+        "name": "user",
+        "display_name": "普通用户",
+        "description": "普通用户，拥有基础业务使用权限",
         "is_system": True,
     },
     {
@@ -33,6 +45,11 @@ DEFAULT_ROLES = [
 ]
 
 DEFAULT_PERMISSIONS = [
+    # 认证模块（用户/角色管理）
+    {"code": "user:list", "name": "查看用户列表", "module": "auth"},
+    {"code": "user:manage", "name": "管理用户", "module": "auth"},
+    {"code": "role:list", "name": "查看角色列表", "module": "auth"},
+    {"code": "role:manage", "name": "管理角色", "module": "auth"},
     # 检测模块
     {"code": "detection:task:create", "name": "创建检测任务", "module": "detection"},
     {"code": "detection:task:view", "name": "查看检测任务", "module": "detection"},
@@ -57,7 +74,15 @@ DEFAULT_PERMISSIONS = [
     {"code": "system:admin", "name": "系统管理", "module": "system"},
 ]
 
-# operator 角色拥有的权限
+# ── 各角色权限配置 ──────────────────────────────────────
+
+# super_admin 拥有所有权限（20个）
+SUPER_ADMIN_PERMISSIONS = [p["code"] for p in DEFAULT_PERMISSIONS]
+
+# admin 拥有除 system:admin 外的所有权限（19个）
+ADMIN_PERMISSIONS = [p["code"] for p in DEFAULT_PERMISSIONS if p["code"] != "system:admin"]
+
+# operator 拥有日常业务操作权限（13个）
 OPERATOR_PERMISSIONS = [
     "detection:task:create",
     "detection:task:view",
@@ -74,7 +99,16 @@ OPERATOR_PERMISSIONS = [
     "system:dashboard",
 ]
 
-# viewer 角色拥有的权限（只读，不含创建/修改资源权限）
+# user 拥有基础使用权限（5个）
+USER_PERMISSIONS = [
+    "detection:task:view",
+    "training:task:view",
+    "model:view",
+    "agent:chat",
+    "knowledge:search",
+]
+
+# viewer 拥有只读权限（6个）
 VIEWER_PERMISSIONS = [
     "detection:task:view",
     "training:task:view",
@@ -83,6 +117,15 @@ VIEWER_PERMISSIONS = [
     "knowledge:search",
     "system:dashboard",
 ]
+
+# 角色权限映射表
+ROLE_PERMISSIONS_MAP = {
+    "super_admin": SUPER_ADMIN_PERMISSIONS,
+    "admin": ADMIN_PERMISSIONS,
+    "operator": OPERATOR_PERMISSIONS,
+    "user": USER_PERMISSIONS,
+    "viewer": VIEWER_PERMISSIONS,
+}
 
 
 DEFAULT_SCENES = [
@@ -365,43 +408,66 @@ def seed_scenes(db_session) -> int:
         RolePermission,
     )
 
-    # ── 初始化角色和权限 ─────────────────────────────
-    existing_perms = db_session.query(Permission).count()
-    if existing_perms == 0:
-        # 创建权限
-        perm_objects = {}
-        for p in DEFAULT_PERMISSIONS:
+    # ── 初始化角色和权限（增量方式） ─────────────────────
+    perm_objects = {p.code: p for p in db_session.query(Permission).all()}
+    
+    # 补充新增权限
+    new_perm_count = 0
+    for p in DEFAULT_PERMISSIONS:
+        if p["code"] not in perm_objects:
             perm = Permission(**p)
             db_session.add(perm)
             db_session.flush()
             perm_objects[p["code"]] = perm
-        logger.info(f"创建 {len(DEFAULT_PERMISSIONS)} 个默认权限")
-
-        # 创建角色
-        for role_data in DEFAULT_ROLES:
+            new_perm_count += 1
+            logger.info(f"新增权限: {p['code']}")
+    
+    if new_perm_count > 0:
+        db_session.commit()
+        logger.info(f"新增 {new_perm_count} 个权限")
+    
+    # 补充新增角色
+    role_objects = {r.name: r for r in db_session.query(Role).all()}
+    new_role_count = 0
+    for role_data in DEFAULT_ROLES:
+        if role_data["name"] not in role_objects:
             role = Role(**role_data)
             db_session.add(role)
             db_session.flush()
-
-            # admin 拥有所有权限
-            if role.name == "admin":
-                for perm in perm_objects.values():
-                    db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
-            elif role.name == "operator":
-                for code in OPERATOR_PERMISSIONS:
-                    if code in perm_objects:
-                        db_session.add(
-                            RolePermission(role_id=role.id, permission_id=perm_objects[code].id)
-                        )
-            elif role.name == "viewer":
-                for code in VIEWER_PERMISSIONS:
-                    if code in perm_objects:
-                        db_session.add(
-                            RolePermission(role_id=role.id, permission_id=perm_objects[code].id)
-                        )
-
+            role_objects[role_data["name"]] = role
+            new_role_count += 1
+            logger.info(f"新增角色: {role_data['display_name']}")
+    
+    if new_role_count > 0:
         db_session.commit()
-        logger.info("默认角色和权限初始化完成")
+        logger.info(f"新增 {new_role_count} 个角色")
+    
+    # 为新增角色分配权限
+    new_role_perm_count = 0
+    for role_name, perm_codes in ROLE_PERMISSIONS_MAP.items():
+        role = role_objects.get(role_name)
+        if not role:
+            continue
+        
+        # 检查该角色已有权限
+        existing_perm_ids = {
+            rp.permission_id 
+            for rp in db_session.query(RolePermission).filter(RolePermission.role_id == role.id).all()
+        }
+        
+        # 补充缺失的权限关联
+        for code in perm_codes:
+            perm = perm_objects.get(code)
+            if perm and perm.id not in existing_perm_ids:
+                db_session.add(RolePermission(role_id=role.id, permission_id=perm.id))
+                new_role_perm_count += 1
+    
+    if new_role_perm_count > 0:
+        db_session.commit()
+        logger.info(f"新增 {new_role_perm_count} 个角色权限关联")
+    
+    if new_perm_count == 0 and new_role_count == 0 and new_role_perm_count == 0:
+        logger.info("角色和权限已存在，跳过初始化")
 
     # ── 初始化检测场景和模型 ───────────────────────────
     existing_count = db_session.query(DetectionScene).count()
