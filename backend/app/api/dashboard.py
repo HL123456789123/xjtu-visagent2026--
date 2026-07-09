@@ -93,13 +93,17 @@ async def get_dashboard_stats(
         # 3. 各场景检测统计
         scene_query = db.query(
             DetectionScene.display_name, func.count(DetectionTask.id).label("count")
-        ).outerjoin(
-            DetectionTask,
-            (DetectionTask.scene_id == DetectionScene.id)
-            & (
-                (user_filter is None) | (DetectionTask.user_id == user_filter)
-            ),
         )
+        if user_filter:
+            scene_query = scene_query.outerjoin(
+                DetectionTask,
+                (DetectionTask.scene_id == DetectionScene.id)
+                & (DetectionTask.user_id == user_filter),
+            )
+        else:
+            scene_query = scene_query.outerjoin(
+                DetectionTask, DetectionTask.scene_id == DetectionScene.id
+            )
         # 注意：将 user_filter 放入 join 条件而非 WHERE，避免 outer join 退化为 inner join
         scene_stats = scene_query.group_by(DetectionScene.id, DetectionScene.display_name).all()
 
