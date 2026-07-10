@@ -1,99 +1,128 @@
 <template>
   <div class="model-page">
-    <!-- 左侧模型列表 -->
-    <div class="model-list-panel">
-      <div class="panel-header">
-        <h3>模型管理</h3>
-        <el-button type="primary" size="small" @click="showCreateDialog = true">
-          <el-icon><Plus /></el-icon>新建模型
-        </el-button>
-      </div>
-
-      <!-- 筛选 -->
-      <div class="filter-section">
-        <el-select v-model="filterCategory" placeholder="分类筛选" clearable size="small" @change="loadModels">
-          <el-option label="通用" value="general" />
-          <el-option label="工业" value="industrial" />
-          <el-option label="安防" value="security" />
-          <el-option label="交通" value="traffic" />
-          <el-option label="农业" value="agriculture" />
-        </el-select>
-        <el-select v-model="filterStatus" placeholder="状态筛选" clearable size="small" @change="loadModels">
-          <el-option label="活跃" value="active" />
-          <el-option label="已归档" value="archived" />
-        </el-select>
-      </div>
-
-      <!-- 模型列表 -->
-      <div class="model-items">
-        <div
-          v-for="model in models"
-          :key="model.id"
-          :class="['model-item', { active: currentModel?.id === model.id }]"
-          @click="selectModel(model)"
-        >
-          <div class="model-info">
-            <div class="model-name">{{ model.name }}</div>
-            <div class="model-meta">
-              <el-tag size="small" :type="model.status === 'active' ? 'success' : 'info'">
-                {{ model.status === 'active' ? '活跃' : '已归档' }}
-              </el-tag>
-              <span class="model-category">{{ model.category }}</span>
-              <span class="version-count">{{ model.version_count || 0 }} 个版本</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="models.length === 0" class="empty-models">
-          <el-icon :size="48"><Goods /></el-icon>
-          <p>暂无模型</p>
-        </div>
-      </div>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <h3>模型管理</h3>
+      <el-button type="primary" @click="showCreateDialog = true">
+        <el-icon><Plus /></el-icon>新建模型
+      </el-button>
     </div>
 
-    <!-- 右侧详情面板 -->
-    <div class="detail-panel">
+    <!-- 筛选 -->
+    <div class="filter-bar">
+      <el-select v-model="filterCategory" placeholder="分类筛选" clearable @change="loadModels">
+        <el-option label="通用" value="general" />
+        <el-option label="工业" value="industrial" />
+        <el-option label="安防" value="security" />
+        <el-option label="交通" value="traffic" />
+        <el-option label="农业" value="agriculture" />
+      </el-select>
+      <el-select v-model="filterStatus" placeholder="状态筛选" clearable @change="loadModels">
+        <el-option label="活跃" value="active" />
+        <el-option label="已归档" value="archived" />
+        <el-option label="已启用" value="enabled" />
+        <el-option label="已禁用" value="disabled" />
+      </el-select>
+    </div>
+
+    <!-- 模型列表 -->
+    <div class="model-table-wrapper">
+      <el-table
+        :data="models"
+        v-loading="loading"
+        stripe
+        style="width: 100%"
+        empty-text="暂无模型"
+      >
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="name" label="模型名称" min-width="160">
+          <template #default="{ row }">
+            <span>{{ row.name }}</span>
+            <el-tag v-if="row.is_enabled === false" size="small" type="danger" style="margin-left: 6px">已禁用</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="category" label="分类" width="100" />
+        <el-table-column prop="base_architecture" label="基础架构" width="110" />
+        <el-table-column label="版本数" width="80">
+          <template #default="{ row }">{{ row.version_count || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="适用场景" min-width="160">
+          <template #default="{ row }">
+            <template v-if="row.scene_names && row.scene_names.length">
+              <el-tag v-for="name in row.scene_names" :key="name" type="success" size="small" style="margin-right: 4px">
+                {{ name }}
+              </el-tag>
+            </template>
+            <span v-else class="text-muted">未绑定</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+              {{ row.status === 'active' ? '活跃' : '已归档' }}
+            </el-tag>
+            <el-tag :type="row.is_enabled !== false ? 'success' : 'danger'" size="small" style="margin-left: 4px">
+              {{ row.is_enabled !== false ? '已启用' : '已禁用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="170">
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="240" fixed="right">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button type="primary" size="small" link @click="showDetail(row)">详情</el-button>
+              <el-button
+                :type="row.is_enabled === false ? 'success' : 'warning'"
+                size="small"
+                link
+                @click="toggleModel(row)"
+              >
+                {{ row.is_enabled === false ? '启用' : '禁用' }}
+              </el-button>
+              <el-button type="primary" size="small" link @click="openEditDialog(row)">编辑</el-button>
+              <el-button type="primary" size="small" link @click="openExportDialog(row)">导出</el-button>
+              <el-button type="danger" size="small" link @click="archiveModel(row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <!-- 模型详情对话框 -->
+    <el-dialog
+      v-model="showDetailDialog"
+      title="模型详情"
+      width="800px"
+      destroy-on-close
+    >
       <template v-if="currentModel">
         <!-- 基本信息 -->
-        <div class="detail-card">
-          <div class="card-header">
-            <h3>{{ currentModel.name }}</h3>
-            <div class="card-actions">
-              <el-button size="small" @click="showEditDialog = true">
-                <el-icon><Edit /></el-icon>编辑
-              </el-button>
-              <el-button
-                v-if="currentModel.status === 'active'"
-                type="danger"
-                size="small"
-                @click="archiveModel"
-              >
-                <el-icon><Delete /></el-icon>归档
-              </el-button>
-            </div>
-          </div>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="模型ID">{{ currentModel.id }}</el-descriptions-item>
-            <el-descriptions-item label="分类">{{ currentModel.category }}</el-descriptions-item>
-            <el-descriptions-item label="基础架构">{{ currentModel.base_architecture }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="currentModel.status === 'active' ? 'success' : 'info'">
-                {{ currentModel.status === 'active' ? '活跃' : '已归档' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="描述" :span="2">{{ currentModel.description || '无' }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间" :span="2">{{ formatTime(currentModel.created_at) }}</el-descriptions-item>
-          </el-descriptions>
-        </div>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="模型ID">{{ currentModel.id }}</el-descriptions-item>
+          <el-descriptions-item label="模型名称">{{ currentModel.name }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ currentModel.category }}</el-descriptions-item>
+          <el-descriptions-item label="基础架构">{{ currentModel.base_architecture }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="currentModel.status === 'active' ? 'success' : 'info'">
+              {{ currentModel.status === 'active' ? '活跃' : '已归档' }}
+            </el-tag>
+            <el-tag :type="currentModel.is_enabled !== false ? 'success' : 'danger'" style="margin-left: 8px">
+              {{ currentModel.is_enabled !== false ? '已启用' : '已禁用' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatTime(currentModel.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="描述" :span="2">{{ currentModel.description || '无' }}</el-descriptions-item>
+        </el-descriptions>
 
         <!-- 版本列表 -->
-        <div class="detail-card">
-          <div class="card-header">
-            <h3>模型版本</h3>
-            <div class="card-actions">
-              <el-button size="small" @click="showImportDialog = true">
-                <el-icon><Upload /></el-icon>导入
-              </el-button>
-            </div>
+        <div class="detail-section">
+          <div class="section-header">
+            <h4>模型版本</h4>
+            <el-button size="small" @click="showImportDialog = true">
+              <el-icon><Upload /></el-icon>导入
+            </el-button>
           </div>
           <el-table :data="versions" stripe>
             <el-table-column prop="version" label="版本号" width="120" />
@@ -104,7 +133,7 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="默认" width="80">
+            <el-table-column label="默认" width="100">
               <template #default="{ row }">
                 <el-tag v-if="row.is_default" type="warning" size="small">默认</el-tag>
                 <el-button v-else size="small" text @click="setDefaultVersion(row.id)">设为默认</el-button>
@@ -122,7 +151,7 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="160">
+            <el-table-column label="操作" width="140">
               <template #default="{ row }">
                 <el-button size="small" text @click="exportVersion(row.id)">导出</el-button>
                 <el-button
@@ -138,9 +167,9 @@
         </div>
 
         <!-- 关联场景 -->
-        <div class="detail-card">
-          <div class="card-header">
-            <h3>关联场景</h3>
+        <div class="detail-section">
+          <div class="section-header">
+            <h4>关联场景</h4>
             <el-button size="small" @click="showBindDialog = true">
               <el-icon><Link /></el-icon>绑定场景
             </el-button>
@@ -160,17 +189,28 @@
             </el-table-column>
           </el-table>
           <div v-if="boundScenes.length === 0" class="empty-scenes">
-            <p>暂未关联任何场景</p>
+            暂未关联任何场景
           </div>
         </div>
       </template>
+    </el-dialog>
 
-      <!-- 空状态 -->
-      <div v-else class="empty-detail">
-        <el-icon :size="64"><Goods /></el-icon>
-        <p>选择模型查看详情</p>
-      </div>
-    </div>
+    <!-- 导出模型对话框 -->
+    <el-dialog v-model="showExportDialog" title="导出模型" width="400px">
+      <p>选择要导出的模型版本：</p>
+      <el-select v-model="exportVersionId" placeholder="选择版本" style="width: 100%">
+        <el-option
+          v-for="v in versions"
+          :key="v.id"
+          :label="`${v.version}${v.is_default ? ' (默认)' : ''}`"
+          :value="v.id"
+        />
+      </el-select>
+      <template #footer>
+        <el-button @click="showExportDialog = false">取消</el-button>
+        <el-button type="primary" @click="doExportVersion" :loading="exporting">导出</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 创建模型对话框 -->
     <el-dialog v-model="showCreateDialog" title="创建模型" width="500px">
@@ -198,6 +238,21 @@
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="模型描述（可选）" />
+        </el-form-item>
+        <el-form-item label="权重文件">
+          <el-upload
+            ref="createUploadRef"
+            :auto-upload="false"
+            :limit="1"
+            accept=".zip"
+            :on-change="handleCreateFileChange"
+            :on-remove="handleCreateFileRemove"
+          >
+            <el-button type="primary" size="small">选择文件</el-button>
+            <template #tip>
+              <div class="el-upload__tip">可选，支持 ZIP 格式模型包；不选则仅创建模型元数据</div>
+            </template>
+          </el-upload>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -283,7 +338,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Plus, Goods, Edit, Delete, Upload, Link } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -292,12 +347,11 @@ import {
   getModelApi,
   updateModelApi,
   deleteModelApi,
-  getModelVersionsApi,
+  toggleModelApi,
   setDefaultVersionApi,
   deleteVersionApi,
   exportModelApi,
   importModelApi,
-  getSceneModelsApi,
   bindModelToSceneApi,
   unbindModelFromSceneApi
 } from '@/api/model'
@@ -305,6 +359,7 @@ import { getScenesApi } from '@/api/detection'
 
 // 模型列表
 const models = ref([])
+const loading = ref(false)
 const currentModel = ref(null)
 const filterCategory = ref('')
 const filterStatus = ref('')
@@ -313,6 +368,14 @@ const filterStatus = ref('')
 const versions = ref([])
 const boundScenes = ref([])
 const allScenes = ref([])
+
+// 详情对话框
+const showDetailDialog = ref(false)
+
+// 导出对话框
+const showExportDialog = ref(false)
+const exportVersionId = ref(null)
+const exporting = ref(false)
 
 // 创建对话框
 const showCreateDialog = ref(false)
@@ -323,6 +386,8 @@ const createForm = ref({
   base_architecture: 'yolo26n',
   description: ''
 })
+const createWeightFile = ref(null)
+const createUploadRef = ref(null)
 
 // 编辑对话框
 const showEditDialog = ref(false)
@@ -342,6 +407,7 @@ const bindIsDefault = ref(false)
 
 // 加载模型列表
 async function loadModels() {
+  loading.value = true
   try {
     const params = { page: 1, page_size: 100 }
     if (filterCategory.value) params.category = filterCategory.value
@@ -350,13 +416,16 @@ async function loadModels() {
     models.value = res.data?.items || []
   } catch (error) {
     console.error('加载模型列表失败:', error)
+  } finally {
+    loading.value = false
   }
 }
 
-// 选择模型
-async function selectModel(model) {
+// 显示详情对话框
+async function showDetail(model) {
   currentModel.value = model
   await loadModelDetail()
+  showDetailDialog.value = true
 }
 
 // 加载模型详情
@@ -372,6 +441,16 @@ async function loadModelDetail() {
   }
 }
 
+// 处理创建时的文件选择
+function handleCreateFileChange(file) {
+  createWeightFile.value = file.raw
+}
+
+// 处理创建时的文件移除
+function handleCreateFileRemove() {
+  createWeightFile.value = null
+}
+
 // 创建模型
 async function createModel() {
   if (!createForm.value.name) {
@@ -380,10 +459,27 @@ async function createModel() {
   }
   creating.value = true
   try {
-    await createModelApi(createForm.value)
-    ElMessage.success('模型创建成功')
+    const res = await createModelApi(createForm.value)
+    const modelId = res.data?.id
+    
+    // 如果选择了权重文件，则导入版本
+    if (createWeightFile.value && modelId) {
+      try {
+        await importModelApi(modelId, { zip_file: createWeightFile.value, description: '创建时导入' })
+        ElMessage.success('模型创建成功，权重已导入')
+      } catch (importError) {
+        ElMessage.warning('模型已创建，但权重导入失败，请稍后在详情中手动导入')
+      }
+    } else {
+      ElMessage.success('模型创建成功')
+    }
+    
     showCreateDialog.value = false
     createForm.value = { name: '', category: 'general', base_architecture: 'yolo26n', description: '' }
+    createWeightFile.value = null
+    if (createUploadRef.value) {
+      createUploadRef.value.clearFiles()
+    }
     loadModels()
   } catch (error) {
     ElMessage.error('创建模型失败')
@@ -392,16 +488,16 @@ async function createModel() {
   }
 }
 
-// 打开编辑对话框时填充数据
-watch(showEditDialog, (val) => {
-  if (val && currentModel.value) {
-    editForm.value = {
-      name: currentModel.value.name,
-      description: currentModel.value.description || '',
-      category: currentModel.value.category
-    }
+// 打开编辑对话框
+function openEditDialog(model) {
+  currentModel.value = model
+  editForm.value = {
+    name: model.name,
+    description: model.description || '',
+    category: model.category
   }
-})
+  showEditDialog.value = true
+}
 
 // 更新模型
 async function updateModel() {
@@ -411,7 +507,9 @@ async function updateModel() {
     ElMessage.success('模型更新成功')
     showEditDialog.value = false
     loadModels()
-    loadModelDetail()
+    if (showDetailDialog.value) {
+      loadModelDetail()
+    }
   } catch (error) {
     ElMessage.error('更新模型失败')
   } finally {
@@ -419,20 +517,73 @@ async function updateModel() {
   }
 }
 
-// 归档模型
-async function archiveModel() {
+// 删除模型
+async function archiveModel(model) {
   try {
-    await ElMessageBox.confirm(`确定归档模型 "${currentModel.value.name}" 吗？`, '提示', {
-      confirmButtonText: '确定',
+    await ElMessageBox.confirm(`确定删除模型 "${model.name}" 吗？删除后不可恢复。`, '警告', {
+      confirmButtonText: '确定删除',
       cancelButtonText: '取消',
-      type: 'warning'
+      type: 'error'
     })
-    await deleteModelApi(currentModel.value.id)
-    ElMessage.success('模型已归档')
-    currentModel.value = null
+    await deleteModelApi(model.id)
+    ElMessage.success('模型已删除')
     loadModels()
   } catch (error) {
-    if (error !== 'cancel') ElMessage.error('归档失败')
+    if (error !== 'cancel') ElMessage.error('删除失败')
+  }
+}
+
+// 切换模型启用/禁用
+async function toggleModel(model) {
+  try {
+    await toggleModelApi(model.id)
+    const action = model.is_enabled === false ? '启用' : '禁用'
+    ElMessage.success(`模型已${action}`)
+    loadModels()
+  } catch (error) {
+    ElMessage.error('操作失败')
+  }
+}
+
+// 打开导出对话框
+function openExportDialog(model) {
+  currentModel.value = model
+  // 加载该模型的版本列表
+  versions.value = model.default_version ? [{ id: model.default_version.id, version: model.default_version.version, is_default: true }] : []
+  exportVersionId.value = model.default_version?.id || null
+  showExportDialog.value = true
+  // 异步加载完整版本列表
+  getModelApi(model.id).then(res => {
+    versions.value = res.data?.versions || []
+    if (!exportVersionId.value && versions.value.length > 0) {
+      const defaultV = versions.value.find(v => v.is_default)
+      exportVersionId.value = defaultV?.id || versions.value[0].id
+    }
+  }).catch(() => {})
+}
+
+// 执行导出
+async function doExportVersion() {
+  if (!exportVersionId.value) {
+    ElMessage.warning('请选择版本')
+    return
+  }
+  exporting.value = true
+  try {
+    const res = await exportModelApi(currentModel.value.id, exportVersionId.value)
+    const blob = new Blob([res], { type: 'application/zip' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${currentModel.value.name}_v${exportVersionId.value}.zip`
+    a.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+    showExportDialog.value = false
+  } catch (error) {
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -463,11 +614,10 @@ async function archiveVersion(versionId) {
   }
 }
 
-// 导出模型版本
+// 导出模型版本（从详情对话框内调用）
 async function exportVersion(versionId) {
   try {
     const res = await exportModelApi(currentModel.value.id, versionId)
-    // 下载文件
     const blob = new Blob([res], { type: 'application/zip' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -567,140 +717,71 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .model-page {
-  display: flex;
+  padding: $spacing-lg;
   height: calc(100vh - #{$header-height} - 40px);
   background: $bg-color;
-}
-
-.model-list-panel {
-  width: 320px;
-  background: #fff;
-  border-right: 1px solid #ebeef5;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
 
-  .panel-header {
-    padding: $spacing-md;
-    border-bottom: 1px solid #ebeef5;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-md;
 
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: $text-primary;
-    }
-  }
-
-  .filter-section {
-    padding: $spacing-sm $spacing-md;
-    border-bottom: 1px solid #ebeef5;
-    display: flex;
-    gap: $spacing-sm;
-
-    .el-select {
-      flex: 1;
-    }
-  }
-
-  .model-items {
-    flex: 1;
-    overflow-y: auto;
-    padding: $spacing-sm;
-  }
-
-  .model-item {
-    padding: $spacing-md;
-    border-radius: $border-radius-md;
-    cursor: pointer;
-    transition: background 0.2s;
-    margin-bottom: $spacing-sm;
-
-    &:hover { background: #f5f7fa; }
-    &.active { background: #ecf5ff; }
-
-    .model-name {
-      font-size: 14px;
-      color: $text-primary;
-      margin-bottom: $spacing-xs;
-      font-weight: 500;
-    }
-
-    .model-meta {
-      display: flex;
-      align-items: center;
-      gap: $spacing-sm;
-
-      .model-category, .version-count {
-        font-size: 12px;
-        color: $text-secondary;
-      }
-    }
-  }
-
-  .empty-models {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 200px;
-    color: $text-secondary;
-
-    p { margin: $spacing-md 0 0; }
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    color: $text-primary;
   }
 }
 
-.detail-panel {
+.filter-bar {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+
+  .el-select {
+    width: 160px;
+  }
+}
+
+.model-table-wrapper {
   flex: 1;
-  padding: $spacing-lg;
-  overflow-y: auto;
-}
-
-.detail-card {
   background: #fff;
   border-radius: $border-radius-lg;
-  padding: $spacing-lg;
-  margin-bottom: $spacing-lg;
+  padding: $spacing-md;
+  overflow: auto;
+}
 
-  .card-header {
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+}
+
+.detail-section {
+  margin-top: $spacing-lg;
+
+  .section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: $spacing-lg;
+    margin-bottom: $spacing-md;
 
-    h3 {
+    h4 {
       margin: 0;
-      font-size: 16px;
+      font-size: 15px;
       color: $text-primary;
-    }
-
-    .card-actions {
-      display: flex;
-      gap: $spacing-sm;
     }
   }
 
   .empty-scenes {
     text-align: center;
-    padding: $spacing-lg;
+    padding: $spacing-md;
     color: $text-secondary;
-  }
-}
-
-.empty-detail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  color: $text-secondary;
-
-  p {
-    margin: $spacing-md 0 0;
-    font-size: 16px;
   }
 }
 </style>

@@ -61,6 +61,14 @@ export function deleteModelApi(modelId) {
 }
 
 /**
+ * 切换模型启用/禁用状态
+ * @param {number} modelId
+ */
+export function toggleModelApi(modelId) {
+  return request.put(`/models/${modelId}/toggle`)
+}
+
+/**
  * 获取模型版本列表
  * @param {number} modelId
  * @param {Object} params - { page, page_size }
