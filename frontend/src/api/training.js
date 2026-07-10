@@ -4,6 +4,13 @@
 import request from '@/utils/request'
 
 /**
+ * 获取可用训练设备列表
+ */
+export function getTrainingDevicesApi() {
+  return request.get('/training/devices')
+}
+
+/**
  * 创建训练任务
  * @param {Object} data - 训练配置
  */
@@ -39,6 +46,14 @@ export function pauseTrainingApi(taskId) {
  */
 export function cancelTrainingApi(taskId) {
   return request.post(`/training/tasks/${taskId}/cancel`)
+}
+
+/**
+ * 删除训练任务
+ * @param {number} taskId
+ */
+export function deleteTrainingTaskApi(taskId) {
+  return request.delete(`/training/tasks/${taskId}`)
 }
 
 /**
