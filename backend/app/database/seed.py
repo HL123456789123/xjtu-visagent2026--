@@ -127,6 +127,16 @@ ROLE_PERMISSIONS_MAP = {
     "viewer": VIEWER_PERMISSIONS,
 }
 
+# ── 默认测试用户 ──────────────────────────────────────
+# 密码规则：用户名首字母大写 + @2026
+DEFAULT_USERS = [
+    {"username": "super", "role": "super_admin"},
+    {"username": "admin", "role": "admin"},
+    {"username": "operator", "role": "operator"},
+    {"username": "user", "role": "user"},
+    {"username": "viewer", "role": "viewer"},
+]
+
 
 DEFAULT_SCENES = [
     {
@@ -469,6 +479,37 @@ def seed_scenes(db_session) -> int:
     if new_perm_count == 0 and new_role_count == 0 and new_role_perm_count == 0:
         logger.info("角色和权限已存在，跳过初始化")
 
+    # ── 初始化默认用户 ─────────────────────────────────
+    from app.entity.db_models import User, UserRole
+    from app.core.security import hash_password
+
+    for user_data in DEFAULT_USERS:
+        username = user_data["username"]
+        role_name = user_data["role"]
+        email = f"{username}@visagent.com"
+        password = f"{username[0].upper()}{username[1:]}@2026"
+
+        existing_user = db_session.query(User).filter(User.username == username).first()
+        if existing_user:
+            continue
+
+        user = User(
+            username=username,
+            email=email,
+            hashed_password=hash_password(password),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        role = role_objects.get(role_name)
+        if role:
+            db_session.add(UserRole(user_id=user.id, role_id=role.id))
+
+        logger.info(f"创建默认用户: {username} ({role_name})")
+
+    db_session.commit()
+
     # ── 初始化检测场景和模型 ───────────────────────────
     existing_count = db_session.query(DetectionScene).count()
     if existing_count > 0:
@@ -496,7 +537,7 @@ def seed_scenes(db_session) -> int:
         model = Model(
             name=model_name,
             description=f"{scene_data['description']}（默认模型）",
-            base_architecture="yolov11n",
+            base_architecture="yolo26n",
             category=scene_data["category"],
             class_names=scene_data["class_names"],
             class_names_cn=scene_data["class_names_cn"],
