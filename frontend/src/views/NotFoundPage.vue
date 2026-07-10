@@ -26,8 +26,7 @@ const goHome = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  background-color: #f5f7fa;
+  min-height: calc(100vh - 120px);
 }
 
 .not-found-content {

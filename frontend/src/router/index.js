@@ -32,37 +32,37 @@ const routes = [
         path: 'chat',
         name: 'Chat',
         component: () => import('@/views/ChatPage.vue'),
-        meta: { title: '智能对话', icon: 'ChatDotRound' },
+        meta: { title: '智能对话', icon: 'ChatDotRound', permission: 'agent:chat' },
       },
       {
         path: 'detection',
         name: 'Detection',
         component: () => import('@/views/DetectionPage.vue'),
-        meta: { title: '目标检测', icon: 'Camera' },
+        meta: { title: '目标检测', icon: 'Camera', permission: 'detection:task:view' },
       },
       {
         path: 'training',
         name: 'Training',
         component: () => import('@/views/TrainingPage.vue'),
-        meta: { title: '模型训练', icon: 'Cpu' },
+        meta: { title: '模型训练', icon: 'Cpu', permission: 'training:task:view' },
       },
       {
         path: 'models',
         name: 'Models',
         component: () => import('@/views/ModelPage.vue'),
-        meta: { title: '模型管理', icon: 'Goods' },
+        meta: { title: '模型管理', icon: 'Goods', permission: 'model:view' },
       },
       {
         path: 'history',
         name: 'History',
         component: () => import('@/views/HistoryPage.vue'),
-        meta: { title: '历史记录', icon: 'Clock' },
+        meta: { title: '历史记录', icon: 'Clock', permission: 'detection:task:view' },
       },
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/DashboardPage.vue'),
-        meta: { title: '仪表盘', icon: 'DataAnalysis' },
+        meta: { title: '仪表盘', icon: 'DataAnalysis', permission: 'system:dashboard' },
       },
       {
         path: 'profile',
@@ -83,14 +83,14 @@ const routes = [
         component: () => import('@/views/admin/RoleManagePage.vue'),
         meta: { title: '角色管理', icon: 'Key', permission: 'role:list' },
       },
+      // 404 页面（已登录用户在 MainLayout 主内容区内显示）
+      {
+        path: ':pathMatch(.*)*',
+        name: 'NotFound',
+        component: () => import('@/views/NotFoundPage.vue'),
+        meta: { title: '页面未找到' },
+      },
     ],
-  },
-  // 404 页面
-  {
-    path: '/:pathMatch(.*)*',
-    name: 'NotFound',
-    component: () => import('@/views/NotFoundPage.vue'),
-    meta: { title: '页面未找到', requiresAuth: false },
   },
 ]
 
