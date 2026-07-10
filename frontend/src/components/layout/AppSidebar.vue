@@ -73,13 +73,13 @@ const activeMenu = computed(() => {
 
 /** 普通菜单项（含权限标识） */
 const menuItems = [
+  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis, permission: 'system:dashboard' },
   { path: '/chat', title: '智能对话', icon: ChatDotRound, permission: 'agent:chat' },
   { path: '/detection', title: '目标检测', icon: Camera, permission: 'detection:task:view' },
-  { path: '/training', title: '模型训练', icon: Cpu, permission: 'training:task:view' },
-  { path: '/datasets', title: '数据集', icon: FolderOpened, permission: 'dataset:view' },
   { path: '/models', title: '模型管理', icon: Goods, permission: 'model:view' },
+  { path: '/training', title: '模型训练', icon: Cpu, permission: 'training:task:view' },
+  { path: '/datasets', title: '数据集管理', icon: FolderOpened, permission: 'dataset:view' },
   { path: '/history', title: '历史记录', icon: Clock, permission: 'detection:task:view' },
-  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis, permission: 'system:dashboard' },
 ]
 
 /** 管理员菜单项（含权限标识） */
