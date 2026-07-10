@@ -95,7 +95,6 @@ async def get_available_devices(current_user: User = Depends(get_current_user)):
 @limiter.limit("10/minute")
 async def create_training_task(
     request: Request,
-    model_id: int = Form(..., description="模型ID"),
     base_architecture: str = Form("yolo26n", description="基础架构：yolo26n/s/m/l/x"),
     epochs: int = Form(100, ge=1, le=1000, description="训练轮数"),
     img_size: int = Form(640, ge=320, le=2048, description="图像尺寸"),
@@ -110,12 +109,7 @@ async def create_training_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """创建训练任务"""
-    # 验证模型是否存在
-    model_obj = db.query(Model).filter(Model.id == model_id).first()
-    if not model_obj:
-        raise HTTPException(status_code=404, detail="模型不存在")
-
+    """创建训练任务（训练成功后自动创建新模型）"""
     # 校验路径安全性
     _validate_training_path(dataset_path, "数据集路径")
     _validate_training_path(data_yaml, "data.yaml 路径")
@@ -135,12 +129,12 @@ async def create_training_task(
     }
 
     task = training_service.create_training_task(
-        db=db, user_id=current_user.id, model_id=model_id, config=config
+        db=db, user_id=current_user.id, config=config
     )
 
     return ApiResponse(
         code=200,
-        message="训练任务创建成功",
+        message="训练任务创建成功，训练完成后将自动创建新模型",
         data={"task_id": task.id, "task_uuid": task.task_uuid, "status": task.status},
     )
 

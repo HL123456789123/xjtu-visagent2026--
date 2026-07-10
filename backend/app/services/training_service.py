@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.logger import get_logger
 from app.core.tz import now_cst
 from app.storage.redis_client import redis_client
-from app.entity.db_models import TrainingTask, TrainingMetric, ModelVersion
+from app.entity.db_models import TrainingTask, TrainingMetric, ModelVersion, Model, SceneModel, Dataset
 
 logger = get_logger("training_service")
 
@@ -82,7 +82,7 @@ class TrainingService:
             db.close()
 
     def create_training_task(
-        self, db: Session, user_id: int, model_id: int, config: Dict[str, Any]
+        self, db: Session, user_id: int, config: Dict[str, Any]
     ) -> TrainingTask:
         """
         创建训练任务
@@ -90,7 +90,6 @@ class TrainingService:
         Args:
             db: 数据库会话
             user_id: 用户ID
-            model_id: 关联模型ID
             config: 训练配置
 
         Returns:
@@ -100,7 +99,7 @@ class TrainingService:
 
         task = TrainingTask(
             user_id=user_id,
-            model_id=model_id,
+            model_id=None,  # 训练任务不再关联已有模型，训练成功后自动创建新模型
             task_uuid=str(uuid.uuid4()),
             status="pending",
             base_architecture=config.get("base_architecture", "yolo26n"),
@@ -121,7 +120,7 @@ class TrainingService:
         db.commit()
         db.refresh(task)
 
-        logger.info(f"创建训练任务: task_id={task.id}, model_id={model_id}")
+        logger.info(f"创建训练任务: task_id={task.id}")
         return task
 
     def start_training(self, db: Session, task_id: int) -> bool:
@@ -323,22 +322,68 @@ class TrainingService:
     def _save_model_version(self, db: Session, task: TrainingTask, model_path: str):
         """
         保存模型版本
+        如果任务没有关联的 model_id，则自动创建新的 Model 和 ModelVersion
+        如果训练任务关联的数据集有场景，则自动绑定模型到该场景
 
         Args:
             db: 数据库会话
             task: 训练任务
             model_path: 模型文件路径
         """
-        # 获取当前模型的版本数量
-        version_count = (
-            db.query(ModelVersion).filter(ModelVersion.model_id == task.model_id).count()
-        )
+        # 如果没有关联模型，创建新的 Model
+        if task.model_id is None:
+            # 使用基础架构名称作为模型名称
+            model_name = f"{task.base_architecture}_model"
+            
+            new_model = Model(
+                user_id=task.user_id,
+                name=model_name,
+                category="general",
+                base_architecture=task.base_architecture,
+                description="由训练任务自动创建",
+                status="active",
+                is_enabled=True,
+            )
+            db.add(new_model)
+            db.flush()  # 获取 new_model.id
+            
+            # 更新任务的 model_id
+            task.model_id = new_model.id
+            db.flush()
+            
+            model_id = new_model.id
+            version_count = 0
+            logger.info(f"自动创建新模型: model_id={model_id}, name={model_name}")
+            
+            # 如果训练任务关联的数据集有场景，自动绑定模型到该场景
+            if task.dataset_id:
+                dataset = db.query(Dataset).filter(Dataset.id == task.dataset_id).first()
+                if dataset and dataset.scene_id:
+                    # 检查是否已存在绑定
+                    existing = db.query(SceneModel).filter(
+                        SceneModel.scene_id == dataset.scene_id,
+                        SceneModel.model_id == model_id
+                    ).first()
+                    if not existing:
+                        scene_model = SceneModel(
+                            scene_id=dataset.scene_id,
+                            model_id=model_id,
+                            is_default=True,  # 第一个绑定的模型设为默认
+                        )
+                        db.add(scene_model)
+                        logger.info(f"自动绑定模型到场景: model_id={model_id}, scene_id={dataset.scene_id}")
+        else:
+            model_id = task.model_id
+            # 获取当前模型的版本数量
+            version_count = (
+                db.query(ModelVersion).filter(ModelVersion.model_id == model_id).count()
+            )
 
         # 计算文件大小
         file_size = os.path.getsize(model_path) if os.path.exists(model_path) else None
 
         version = ModelVersion(
-            model_id=task.model_id,
+            model_id=model_id,
             training_task_id=task.id,
             version=f"v{version_count + 1}.0.0",
             source="training",
@@ -351,7 +396,7 @@ class TrainingService:
         db.add(version)
         db.commit()
         logger.info(
-            f"保存模型版本: model_id={task.model_id}, version={version.version}, path={model_path}"
+            f"保存模型版本: model_id={model_id}, version={version.version}, path={model_path}"
         )
 
     def _write_epoch_metric(self, db: Session, task_id: int, epoch: int, results_csv_path: str):
