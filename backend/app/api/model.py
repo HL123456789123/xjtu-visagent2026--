@@ -177,6 +177,21 @@ async def delete_model(
     return ApiResponse(code=200, message="模型已归档")
 
 
+@router.put("/{model_id}/toggle", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:update"))])
+async def toggle_model_enabled(
+    model_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """切换模型启用/禁用状态"""
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
+    model = model_service.toggle_model_enabled(db, model_id)
+    if not model:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    status_text = "已启用" if model.is_enabled else "已禁用"
+    return ApiResponse(code=200, message=f"模型{status_text}", data={"is_enabled": model.is_enabled})
+
+
 # ── 版本管理 ──────────────────────────────────────────────
 
 

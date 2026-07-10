@@ -43,7 +43,12 @@ class ModelService:
         if category:
             query = query.filter(Model.category == category)
         if status:
-            query = query.filter(Model.status == status)
+            if status == "enabled":
+                query = query.filter(Model.status == "active", Model.is_enabled.is_(True))
+            elif status == "disabled":
+                query = query.filter(Model.status == "active", Model.is_enabled.is_(False))
+            else:
+                query = query.filter(Model.status == status)
         else:
             query = query.filter(Model.status == "active")
 
@@ -78,6 +83,26 @@ class ModelService:
             .all()
         )
 
+        # 批量查询场景名称（用于前端显示）
+        model_scenes = db.query(
+            SceneModel.model_id,
+            DetectionScene.id,
+            DetectionScene.display_name
+        ).join(
+            DetectionScene, SceneModel.scene_id == DetectionScene.id
+        ).filter(
+            SceneModel.model_id.in_(model_ids)
+        ).all()
+
+        # 按 model_id 分组场景名称
+        scene_names_map = {}
+        for row in model_scenes:
+            model_id = row[0]
+            scene_name = row[2]
+            if model_id not in scene_names_map:
+                scene_names_map[model_id] = []
+            scene_names_map[model_id].append(scene_name)
+
         # 批量查询默认版本
         default_versions = dict(
             db.query(ModelVersion.model_id, ModelVersion.version)
@@ -100,8 +125,10 @@ class ModelService:
                     "class_names": m.class_names,
                     "class_names_cn": m.class_names_cn,
                     "status": m.status,
+                    "is_enabled": m.is_enabled,
                     "version_count": version_counts.get(m.id, 0),
                     "scene_count": scene_counts.get(m.id, 0),
+                    "scene_names": scene_names_map.get(m.id, []),
                     "default_version": default_versions.get(m.id),
                     "created_by": m.created_by,
                     "created_at": m.created_at.isoformat() if m.created_at else None,
@@ -175,6 +202,7 @@ class ModelService:
             "class_names": model.class_names,
             "class_names_cn": model.class_names_cn,
             "status": model.status,
+            "is_enabled": model.is_enabled,
             "created_by": model.created_by,
             "created_at": model.created_at.isoformat() if model.created_at else None,
             "updated_at": model.updated_at.isoformat() if model.updated_at else None,
@@ -239,6 +267,20 @@ class ModelService:
         db.commit()
         db.refresh(model)
         logger.info(f"更新模型: id={model_id}")
+        return model
+
+    def toggle_model_enabled(self, db: Session, model_id: int) -> Optional[Model]:
+        """切换模型启用/禁用状态"""
+        model = db.query(Model).filter(Model.id == model_id).first()
+        if not model:
+            return None
+
+        model.is_enabled = not model.is_enabled
+        model.updated_at = now_cst()
+        db.commit()
+        db.refresh(model)
+        status_text = "启用" if model.is_enabled else "禁用"
+        logger.info(f"{status_text}模型: id={model_id}, name={model.name}")
         return model
 
     def delete_model(self, db: Session, model_id: int) -> bool:
@@ -502,17 +544,17 @@ class ModelService:
     # ── 场景绑定 ──────────────────────────────────────────
 
     def get_scene_models(self, db: Session, scene_id: int) -> List[Dict[str, Any]]:
-        """获取场景关联的模型列表（含版本信息）— 批量查询避免 N+1"""
+        """获取场景关联的模型列表（含版本信息）— 批量查询避免 N+1，仅返回已启用模型"""
         scene_models = db.query(SceneModel).filter(SceneModel.scene_id == scene_id).all()
         if not scene_models:
             return []
 
-        # 批量查询所有关联的 Model
+        # 批量查询所有关联的 Model（仅已启用且未归档）
         model_ids = [sm.model_id for sm in scene_models]
         models = {
             m.id: m
             for m in db.query(Model)
-            .filter(Model.id.in_(model_ids), Model.status == "active")
+            .filter(Model.id.in_(model_ids), Model.status == "active", Model.is_enabled.is_(True))
             .all()
         }
 
@@ -545,6 +587,11 @@ class ModelService:
                 }
                 for v in versions_by_model.get(model.id, [])
             ]
+            # 获取默认版本ID
+            default_version = next(
+                (v for v in versions_by_model.get(model.id, []) if v.is_default), None
+            )
+            default_version_id = default_version.id if default_version else None
             result.append(
                 {
                     "scene_model_id": sm.id,
@@ -553,6 +600,7 @@ class ModelService:
                     "base_architecture": model.base_architecture,
                     "category": model.category,
                     "is_default": sm.is_default,
+                    "default_version_id": default_version_id,
                     "versions": version_list,
                 }
             )

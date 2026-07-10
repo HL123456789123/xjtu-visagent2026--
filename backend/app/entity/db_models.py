@@ -271,6 +271,7 @@ class Model(Base):
     class_names = Column(JSON, nullable=False, comment='类别列表，如 ["airplane","helicopter"]')
     class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
     status = Column(String(20), default="active", comment="状态：active/archived")
+    is_enabled = Column(Boolean, default=True, server_default='true', nullable=False, comment="是否启用：启用后才可用于检测")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
     created_at = Column(DateTime, default=now_cst, comment="创建时间")
     updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
@@ -363,6 +364,13 @@ class Dataset(Base):
     num_classes = Column(Integer, default=0, comment="类别数")
     class_names = Column(JSON, nullable=True, comment="类别名称列表")
     format = Column(String(20), default="yolo", comment="标注格式：yolo/voc/coco")
+    scene_id = Column(
+        Integer,
+        ForeignKey("detection_scenes.id"),
+        nullable=True,
+        index=True,
+        comment="关联检测场景",
+    )
     status = Column(
         String(20), default="active", index=True, comment="状态：active/invalid"
     )
@@ -371,6 +379,7 @@ class Dataset(Base):
 
     # 关联
     user = relationship("User", backref="datasets")
+    scene = relationship("DetectionScene", backref="datasets")
 
 
 class TrainingTask(Base):
@@ -383,7 +392,7 @@ class TrainingTask(Base):
         Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户"
     )
     model_id = Column(
-        Integer, ForeignKey("models.id"), nullable=False, index=True, comment="关联模型"
+        Integer, ForeignKey("models.id"), nullable=True, index=True, comment="关联模型（可选，训练成功后自动创建新模型）"
     )
     task_uuid = Column(String(100), unique=True, nullable=False, index=True, comment="任务唯一标识")
     status = Column(
