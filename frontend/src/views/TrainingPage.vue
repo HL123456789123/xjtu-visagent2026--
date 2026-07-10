@@ -7,9 +7,6 @@
         <el-button type="primary" @click="showCreateDialog = true">
           <el-icon><Plus /></el-icon>新建任务
         </el-button>
-        <el-button type="success" @click="showUploadDialog = true">
-          <el-icon><Upload /></el-icon>上传模型
-        </el-button>
       </div>
     </div>
 
@@ -37,7 +34,6 @@
       >
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="base_architecture" label="基础架构" width="120" />
-        <el-table-column prop="model_id" label="模型ID" width="80" />
         <el-table-column prop="epochs" label="轮数" width="70" />
         <el-table-column prop="batch_size" label="批次" width="70" />
         <el-table-column prop="device" label="设备" width="70" />
@@ -144,7 +140,6 @@
               {{ getStatusText(detailTask.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="模型ID">{{ detailTask.model_id }}</el-descriptions-item>
           <el-descriptions-item label="训练轮数">{{ detailTask.epochs }}</el-descriptions-item>
           <el-descriptions-item label="批次大小">{{ detailTask.batch_size }}</el-descriptions-item>
           <el-descriptions-item label="学习率">{{ detailTask.lr0 }}</el-descriptions-item>
@@ -180,16 +175,6 @@
     <!-- 创建任务对话框 -->
     <el-dialog v-model="showCreateDialog" title="创建训练任务" width="500px">
       <el-form :model="createForm" label-width="100px">
-        <el-form-item label="模型" required>
-          <el-select v-model="createForm.model_id" placeholder="选择模型">
-            <el-option
-              v-for="model in models"
-              :key="model.id"
-              :label="model.name"
-              :value="model.id"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item label="基础模型">
           <el-select v-model="createForm.model_name">
             <el-option label="YOLO26n (轻量)" value="yolo26n" />
@@ -246,55 +231,13 @@
       </template>
     </el-dialog>
 
-    <!-- 上传模型对话框 -->
-    <el-dialog v-model="showUploadDialog" title="上传训练模型" width="500px">
-      <el-form :model="uploadForm" label-width="100px">
-        <el-form-item label="模型" required>
-          <el-select v-model="uploadForm.model_id" placeholder="选择模型">
-            <el-option
-              v-for="model in models"
-              :key="model.id"
-              :label="model.name"
-              :value="model.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="模型文件" required>
-          <el-upload
-            :auto-upload="false"
-            :limit="1"
-            accept=".pt"
-            :on-change="handleModelFileChange"
-            :file-list="uploadForm.model_file ? [{ name: uploadForm.model_file.name }] : []"
-          >
-            <el-button type="primary" size="small">选择文件</el-button>
-            <template #tip>
-              <div class="el-upload__tip">支持 .pt 格式的 YOLO 模型文件</div>
-            </template>
-          </el-upload>
-        </el-form-item>
-        <el-form-item label="版本号" required>
-          <el-input v-model="uploadForm.version" placeholder="如 v1.0.0" />
-        </el-form-item>
-        <el-form-item label="模型描述">
-          <el-input v-model="uploadForm.description" type="textarea" :rows="2" placeholder="模型说明（可选）" />
-        </el-form-item>
-        <el-form-item label="设为默认">
-          <el-switch v-model="uploadForm.is_default" />
-          <span class="form-tip">开启后检测时将使用此模型</span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showUploadDialog = false">取消</el-button>
-        <el-button type="primary" @click="uploadModel" :loading="uploading">上传</el-button>
-      </template>
-    </el-dialog>
+
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { Plus, VideoPlay, VideoPause, Upload } from '@element-plus/icons-vue'
+import { Plus, VideoPlay, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as echarts from 'echarts'
 import {
@@ -305,10 +248,8 @@ import {
   cancelTrainingApi,
   deleteTrainingTaskApi,
   getTrainingMetricsApi,
-  uploadModelApi,
   getTrainingDevicesApi
 } from '@/api/training'
-import { getModelsApi } from '@/api/model'
 import { getDatasetsApi } from '@/api/dataset'
 
 const tasks = ref([])
@@ -326,11 +267,9 @@ let mapChart = null
 
 const showCreateDialog = ref(false)
 const creating = ref(false)
-const models = ref([])
 const devices = ref([])
 const datasets = ref([])
 const createForm = ref({
-  model_id: null,
   model_name: 'yolo26n',
   epochs: 100,
   batch_size: 16,
@@ -341,15 +280,7 @@ const createForm = ref({
   data_yaml: ''
 })
 
-const showUploadDialog = ref(false)
-const uploading = ref(false)
-const uploadForm = ref({
-  model_id: null,
-  model_file: null,
-  version: 'v1.0.0',
-  description: '',
-  is_default: true
-})
+
 
 async function loadTasks() {
   loading.value = true
@@ -364,15 +295,6 @@ async function loadTasks() {
     console.error('加载任务失败:', error)
   } finally {
     loading.value = false
-  }
-}
-
-async function loadModels() {
-  try {
-    const res = await getModelsApi({ page: 1, page_size: 100, status: 'active' })
-    models.value = res.data?.items || []
-  } catch (error) {
-    console.error('加载模型列表失败:', error)
   }
 }
 
@@ -487,7 +409,7 @@ async function deleteTask(task) {
 }
 
 async function createTask() {
-  if (!createForm.value.model_id || !createForm.value.dataset_id) {
+  if (!createForm.value.dataset_id) {
     ElMessage.warning('请填写必填项')
     return
   }
@@ -504,33 +426,7 @@ async function createTask() {
   }
 }
 
-function handleModelFileChange(file) {
-  uploadForm.value.model_file = file.raw
-}
 
-async function uploadModel() {
-  if (!uploadForm.value.model_id || !uploadForm.value.model_file || !uploadForm.value.version) {
-    ElMessage.warning('请填写必填项')
-    return
-  }
-  uploading.value = true
-  try {
-    const res = await uploadModelApi(uploadForm.value)
-    ElMessage.success(`模型上传成功：${res.data?.version}`)
-    showUploadDialog.value = false
-    uploadForm.value = {
-      model_id: null,
-      model_file: null,
-      version: 'v1.0.0',
-      description: '',
-      is_default: true
-    }
-  } catch (error) {
-    ElMessage.error('上传模型失败')
-  } finally {
-    uploading.value = false
-  }
-}
 
 async function loadMetrics() {
   if (!detailTask.value) return
@@ -616,7 +512,6 @@ function handleResize() {
 
 onMounted(() => {
   loadTasks()
-  loadModels()
   loadDevices()
   loadDatasets()
   startPolling()
