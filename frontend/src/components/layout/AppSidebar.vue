@@ -19,14 +19,14 @@
         <span>{{ item.title }}</span>
       </el-menu-item>
 
-      <!-- 管理员菜单组 -->
-      <el-sub-menu v-if="isAdmin" index="/admin">
+      <!-- 系统管理菜单组（按权限显示） -->
+      <el-sub-menu v-if="showAdminMenu" index="/admin">
         <template #title>
           <el-icon><Setting /></el-icon>
           <span>系统管理</span>
         </template>
         <el-menu-item
-          v-for="item in adminMenuItems"
+          v-for="item in visibleAdminMenuItems"
           :key="item.path"
           :index="item.path"
         >
@@ -70,27 +70,34 @@ const activeMenu = computed(() => {
   return '/' + path.split('/')[1]
 })
 
-/** 是否为管理员 */
-const isAdmin = computed(() => userStore.isAdmin)
-
-/** 普通菜单项 */
+/** 普通菜单项（含权限标识） */
 const menuItems = [
-  { path: '/chat', title: '智能对话', icon: ChatDotRound },
-  { path: '/detection', title: '目标检测', icon: Camera },
-  { path: '/training', title: '模型训练', icon: Cpu },
-  { path: '/models', title: '模型管理', icon: Goods },
-  { path: '/history', title: '历史记录', icon: Clock },
-  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis },
+  { path: '/chat', title: '智能对话', icon: ChatDotRound, permission: 'agent:chat' },
+  { path: '/detection', title: '目标检测', icon: Camera, permission: 'detection:task:view' },
+  { path: '/training', title: '模型训练', icon: Cpu, permission: 'training:task:view' },
+  { path: '/models', title: '模型管理', icon: Goods, permission: 'model:view' },
+  { path: '/history', title: '历史记录', icon: Clock, permission: 'detection:task:view' },
+  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis, permission: 'system:dashboard' },
 ]
 
-/** 管理员菜单项 */
+/** 管理员菜单项（含权限标识） */
 const adminMenuItems = [
-  { path: '/admin/users', title: '用户管理', icon: UserFilled },
-  { path: '/admin/roles', title: '角色管理', icon: Key },
+  { path: '/admin/users', title: '用户管理', icon: UserFilled, permission: 'user:list' },
+  { path: '/admin/roles', title: '角色管理', icon: Key, permission: 'role:list' },
 ]
 
-/** 可见的普通菜单项（所有登录用户都可见） */
-const visibleMenuItems = computed(() => menuItems)
+/** 可见的普通菜单项（根据用户权限过滤） */
+const visibleMenuItems = computed(() =>
+  menuItems.filter((item) => userStore.hasPermission(item.permission))
+)
+
+/** 可见的管理员菜单项（根据用户权限过滤） */
+const visibleAdminMenuItems = computed(() =>
+  adminMenuItems.filter((item) => userStore.hasPermission(item.permission))
+)
+
+/** 是否显示系统管理菜单组（有任一子权限时显示） */
+const showAdminMenu = computed(() => visibleAdminMenuItems.value.length > 0)
 </script>
 
 <style lang="scss" scoped>
