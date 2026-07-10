@@ -2,8 +2,6 @@
 
 基于 YOLOv11 的视觉目标检测智能体平台，集成 AI 对话、图像/视频检测、模型训练、知识库管理等功能，提供一站式 AI 检测服务。
 
-> **快速体验**：[在线演示](https://visagent.example.com) | [API 文档](https://visagent.example.com/docs) | [视频教程](https://visagent.example.com/tutorial)
-
 ## 技术栈
 
 | 层级       | 技术                                           |
@@ -81,7 +79,7 @@ visagent/
 ├── docker-compose.yml          # 全栈服务编排（PG + Redis + MinIO + 前后端）
 ├── backend/
 │   ├── app/
-│   │   ├── api/                # API 路由层（8 个模块，46 个端点）
+│   │   ├── api/                # API 路由层（10 个模块，72 个端点）
 │   │   │   ├── auth.py         # 认证（注册/登录/登出/当前用户/刷新Token）
 │   │   │   ├── camera.py       # 摄像头场景管理
 │   │   │   ├── chat.py         # 对话会话管理
@@ -89,7 +87,9 @@ visagent/
 │   │   │   ├── detection.py    # 目标检测（单张/批量/文件夹/视频）
 │   │   │   ├── health.py       # 健康检查
 │   │   │   ├── knowledge.py    # 知识库（上传/检索/删除）
-│   │   │   └── training.py     # 模型训练 + 数据集转换 + 模型管理
+│   │   │   ├── model.py        # 模型管理（模型/版本/场景绑定）
+│   │   │   ├── training.py     # 模型训练 + 数据集转换 + 模型管理
+│   │   │   └── admin.py        # 管理后台（用户/角色/权限管理）
 │   │   ├── config/             # 全局配置（pydantic-settings）
 │   │   ├── core/               # 核心工具（安全/JWT/日志/异常）
 │   │   ├── database/           # 数据库（会话/种子数据）
@@ -107,7 +107,7 @@ visagent/
 │   │   │   └── user_service.py       # 用户服务
 │   │   └── storage/            # 外部存储（MinIO + Redis）
 │   ├── alembic/                # 数据库迁移
-│   ├── tests/                  # 测试套件（88 个用例）
+│   ├── tests/                  # 测试套件
 │   ├── main.py                 # 应用入口
 │   ├── Dockerfile              # 后端容器构建
 │   └── pyproject.toml
@@ -123,7 +123,7 @@ visagent/
     │   │   ├── markdown.js        # Markdown 渲染
     │   │   ├── request.js         # Axios 封装（拦截器/Token）
     │   │   └── stream.js          # SSE 流式响应处理
-    │   └── views/               # 页面视图（8 个页面）
+    │   └── views/               # 页面视图（12 个页面）
     │       ├── ChatPage.vue       # 智能对话（多 Agent 协作）
     │       ├── DashboardPage.vue  # 数据看板（ECharts 图表）
     │       ├── DetectionPage.vue  # 目标检测（图片/视频/摄像头）
@@ -131,7 +131,11 @@ visagent/
     │       ├── TrainingPage.vue   # 模型训练管理
     │       ├── LoginPage.vue      # 登录
     │       ├── RegisterPage.vue   # 注册
-    │       └── ProfilePage.vue    # 个人中心
+    │       ├── ProfilePage.vue    # 个人中心
+    │       ├── UserManagePage.vue # 用户管理
+    │       ├── RoleManagePage.vue # 角色管理
+    │       ├── ModelPage.vue      # 模型管理
+    │       └── NotFoundPage.vue   # 404 页面
     ├── Dockerfile              # 前端容器构建（Nginx）
     ├── nginx.conf              # Nginx 反向代理配置
     └── package.json
@@ -172,6 +176,7 @@ visagent/
 - JWT 认证（注册/登录/登出）
 - RBAC 权限模型（用户 → 角色 → 权限）
 - 个人中心（信息查看与修改）
+- 管理后台（用户管理、角色管理）
 
 ### 系统运维
 
@@ -180,7 +185,7 @@ visagent/
 - 数据看板（ECharts 可视化）
 - 健康检查（数据库/Redis/MinIO）
 
-## 数据库模型（14 张表）
+## 数据库模型（16 张表）
 
 | 业务域     | 表名               | 说明           |
 | ---------- | ------------------ | -------------- |
@@ -192,25 +197,29 @@ visagent/
 | 检测业务   | `detection_scenes` | 检测场景配置   |
 |            | `detection_tasks`  | 检测任务记录   |
 |            | `detection_results`| 检测结果明细   |
-| 模型管理   | `training_tasks`   | 训练任务       |
-|            | `training_metrics` | 训练指标       |
+| 模型体系   | `models`           | 模型表         |
 |            | `model_versions`   | 模型版本       |
+|            | `scene_models`     | 场景-模型关联  |
+|            | `training_tasks`   | 训练任务       |
+|            | `training_metrics` | 训练指标       |
 | 智能体对话 | `chat_sessions`    | 对话会话       |
 |            | `chat_messages`    | 对话消息       |
 | 系统运维   | `operation_logs`   | 操作审计日志   |
 
-## API 端点（46 个）
+## API 端点（72 个）
 
 | 模块     | 端点数 | 主要功能                                  |
 | -------- | ------ | ----------------------------------------- |
-| 认证     | 5      | 注册、登录、登出、获取当前用户、刷新Token |
-| 对话     | 6      | 会话 CRUD、消息发送（SSE 流式）           |
-| 检测     | 10     | 单张/批量/文件夹/视频检测、任务管理、场景管理 |
-| 训练     | 14     | 任务生命周期、数据集转换、模型管理        |
-| 知识库   | 5      | 文档上传、语义检索、统计、删除、批量操作 |
-| 摄像头   | 2      | 摄像头场景列表、摄像头配置管理            |
-| 看板     | 3      | 平台统计、用户统计、实时监控              |
+| 认证     | 4      | 注册、登录、登出、获取当前用户            |
+| 对话     | 5      | 会话 CRUD、消息发送（SSE 流式）           |
+| 检测     | 9      | 单张/批量/文件夹/视频检测、任务管理、场景管理 |
+| 训练     | 17     | 任务生命周期、数据集转换、模型管理        |
+| 知识库   | 4      | 文档上传、语义检索、统计、删除            |
+| 模型     | 13     | 模型管理、版本管理、场景绑定              |
+| 摄像头   | 1      | 摄像头场景列表                            |
+| 看板     | 2      | 平台统计、用户统计                        |
 | 健康检查 | 4      | 服务状态、数据库、Redis、MinIO            |
+| 管理后台 | 13     | 用户管理、角色管理、权限管理              |
 
 ## 开发指南
 
@@ -225,7 +234,7 @@ uv run ruff check app/
 # 代码格式化
 uv run ruff format app/
 
-# 运行测试（88 个用例）
+# 运行测试
 uv run pytest
 ```
 
