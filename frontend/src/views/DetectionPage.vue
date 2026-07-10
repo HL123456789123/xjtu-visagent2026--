@@ -20,15 +20,15 @@
         </el-select>
       </div>
 
-      <!-- 模型版本选择 -->
+      <!-- 检测模型选择 -->
       <div class="control-section">
-        <label>模型版本 <span class="optional-hint">（可选）</span></label>
-        <el-select v-model="selectedModelVersion" placeholder="默认使用场景默认模型" clearable>
+        <label>检测模型</label>
+        <el-select v-model="selectedModelId" placeholder="请选择检测模型">
           <el-option
-            v-for="mv in modelVersions"
-            :key="mv.id"
-            :label="`${mv.version}${mv.is_default ? ' (默认)' : ''}`"
-            :value="mv.id"
+            v-for="m in sceneModels"
+            :key="m.model_id"
+            :label="`${m.model_name}${m.is_default ? ' (默认)' : ''}`"
+            :value="m.model_id"
           />
         </el-select>
       </div>
@@ -80,7 +80,7 @@
         type="primary"
         size="large"
         :loading="detecting"
-        :disabled="!selectedScene || fileList.length === 0"
+        :disabled="!selectedScene || !selectedModelId || fileList.length === 0"
         @click="startDetection"
         class="detect-btn"
       >
@@ -93,7 +93,7 @@
         :type="cameraActive ? 'danger' : 'success'"
         size="large"
         @click="toggleCamera"
-        :disabled="!selectedScene"
+        :disabled="!selectedScene || !selectedModelId"
         class="detect-btn"
       >
         <el-icon><VideoCamera /></el-icon>
@@ -201,8 +201,8 @@ import { getSceneModelsApi } from '@/api/model'
 // 场景列表
 const scenes = ref([])
 const selectedScene = ref(null)
-const selectedModelVersion = ref(null)
-const modelVersions = ref([])
+const selectedModelId = ref(null)
+const sceneModels = ref([])
 const detectMode = ref('single')
 const confThreshold = ref(0.25)
 const iouThreshold = ref(0.45)
@@ -245,30 +245,23 @@ async function loadScenes() {
 async function onSceneChange() {
   detectionResult.value = null
   fileList.value = []
-  selectedModelVersion.value = null
-  // 加载场景关联的模型版本
+  selectedModelId.value = null
+  // 加载场景关联的已启用模型
   if (selectedScene.value) {
     try {
       const res = await getSceneModelsApi(selectedScene.value)
-      // 获取每个模型的版本列表
-      const allVersions = []
-      const sceneModels = res.data || []
-      for (const sm of sceneModels) {
-        if (sm.versions) {
-          for (const v of sm.versions) {
-            if (v.status === 'active') {
-              allVersions.push(v)
-            }
-          }
-        }
+      sceneModels.value = res.data || []
+      // 自动选中场景的默认模型
+      const defaultModel = sceneModels.value.find(m => m.is_default)
+      if (defaultModel) {
+        selectedModelId.value = defaultModel.model_id
       }
-      modelVersions.value = allVersions
     } catch (error) {
-      console.error('加载模型版本失败:', error)
-      modelVersions.value = []
+      console.error('加载模型列表失败:', error)
+      sceneModels.value = []
     }
   } else {
-    modelVersions.value = []
+    sceneModels.value = []
   }
 }
 
@@ -295,8 +288,12 @@ async function startDetection() {
       conf_threshold: confThreshold.value,
       iou_threshold: iouThreshold.value
     }
-    if (selectedModelVersion.value) {
-      params.model_version_id = selectedModelVersion.value
+    // 根据选中的模型获取其默认版本ID
+    if (selectedModelId.value) {
+      const selectedModel = sceneModels.value.find(m => m.model_id === selectedModelId.value)
+      if (selectedModel?.default_version_id) {
+        params.model_version_id = selectedModel.default_version_id
+      }
     }
 
     let res
