@@ -24,19 +24,36 @@ logger = get_logger("dataset_api")
 router = APIRouter(prefix="/api/datasets", tags=["数据集管理"])
 
 
+def _get_allowed_dirs() -> list[Path]:
+    """获取白名单目录列表"""
+    return [
+        Path(d.strip()).resolve()
+        for d in settings.ALLOWED_TRAINING_DIRS.split(",")
+        if d.strip()
+    ]
+
+
+def _is_path_allowed(resolved: Path) -> bool:
+    """检查路径是否在白名单内"""
+    return any(
+        str(resolved).startswith(str(allowed))
+        for allowed in _get_allowed_dirs()
+    )
+
+
 def _validate_path(file_path: str, label: str = "路径") -> Path:
     """校验路径是否在白名单目录内，返回 resolved Path"""
     resolved = Path(file_path).resolve()
-    allowed_dirs = [d.strip() for d in settings.ALLOWED_TRAINING_DIRS.split(",") if d.strip()]
+    allowed_dirs = _get_allowed_dirs()
     for allowed in allowed_dirs:
         try:
-            resolved.relative_to(Path(allowed).resolve())
+            resolved.relative_to(allowed)
             return resolved
         except ValueError:
             continue
     raise HTTPException(
         status_code=400,
-        detail=f"{label}不在允许的目录内，允许的目录: {', '.join(allowed_dirs)}",
+        detail=f"{label}不在允许的目录内，允许的目录: {', '.join(str(d) for d in allowed_dirs)}",
     )
 
 
@@ -98,6 +115,131 @@ class DatasetCreateRequest(BaseModel):
     path: str
     yaml_path: str
     format: str = "yolo"
+    scene_id: Optional[int] = None  # 关联检测场景
+
+
+@router.get("/browse", response_model=ApiResponse, dependencies=[Depends(RequirePermission("dataset:create"))])
+async def browse_directory(
+    path: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """浏览服务器目录（白名单内）
+
+    - path 为空时：返回白名单根目录列表
+    - path 非空时：返回该目录下的子目录和 yaml 文件
+    """
+    if not path:
+        # 返回白名单根目录
+        roots = []
+        for d in _get_allowed_dirs():
+            if d.exists():
+                roots.append({"name": d.name or str(d), "path": str(d)})
+        return ApiResponse(code=200, data={"current_path": None, "dirs": roots, "yaml_files": []})
+
+    # 校验路径合法性
+    resolved = Path(path).resolve()
+    if not _is_path_allowed(resolved):
+        raise HTTPException(status_code=403, detail="无权浏览该目录")
+
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="目录不存在")
+
+    if not resolved.is_dir():
+        raise HTTPException(status_code=400, detail="不是目录")
+
+    dirs = []
+    yaml_files = []
+
+    try:
+        for item in sorted(resolved.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+            if item.name.startswith("."):
+                continue
+            if item.is_dir():
+                dirs.append({"name": item.name, "path": str(item)})
+            elif item.suffix.lower() in (".yaml", ".yml"):
+                yaml_files.append({"name": item.name, "path": str(item)})
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="无权限读取该目录")
+
+    return ApiResponse(
+        code=200,
+        data={
+            "current_path": str(resolved),
+            "dirs": dirs,
+            "yaml_files": yaml_files,
+        },
+    )
+
+
+@router.get("/discover", response_model=ApiResponse, dependencies=[Depends(RequirePermission("dataset:create"))])
+async def discover_datasets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """扫描白名单目录，自动发现未注册的数据集
+
+    查找标准：目录下存在 data.yaml 或 data.yml 配置文件
+    递归扫描所有子目录（无深度限制）
+    """
+    discovered = []
+    yaml_names = ("data.yaml", "data.yml")
+    # 记录已处理的目录，避免重复
+    processed_paths = set()
+
+    for root_dir in _get_allowed_dirs():
+        if not root_dir.exists():
+            continue
+        # 递归查找所有 data.yaml / data.yml 文件（无深度限制）
+        for yaml_file in root_dir.rglob("*"):
+            if not yaml_file.is_file() or yaml_file.name.lower() not in yaml_names:
+                continue
+            # 跳过隐藏目录下的文件
+            if any(part.startswith(".") for part in yaml_file.parts):
+                continue
+
+            dataset_path = yaml_file.parent
+            path_str = str(dataset_path)
+
+            # 避免重复
+            if path_str in processed_paths:
+                continue
+            processed_paths.add(path_str)
+
+            # 检查是否已注册
+            existing = db.query(Dataset).filter(Dataset.path == path_str).first()
+            if existing:
+                continue
+
+            # 尝试解析 yaml
+            try:
+                info = _parse_yaml_info(yaml_file)
+                num_images = _count_images(dataset_path)
+                discovered.append({
+                    "path": path_str,
+                    "yaml_path": str(yaml_file),
+                    "name": dataset_path.name,
+                    "num_classes": info["num_classes"],
+                    "class_names": info["class_names"],
+                    "num_images": num_images,
+                })
+            except Exception:
+                # 解析失败的也列出来，但标记为未知
+                discovered.append({
+                    "path": path_str,
+                    "yaml_path": str(yaml_file),
+                    "name": dataset_path.name,
+                    "num_classes": 0,
+                    "class_names": [],
+                    "num_images": 0,
+                    "error": "配置文件解析失败",
+                })
+
+    return ApiResponse(
+        code=200,
+        data={"discovered": discovered, "total": len(discovered)},
+    )
+
+
 
 
 @router.post("/register", response_model=ApiResponse, dependencies=[Depends(RequirePermission("dataset:create"))])
@@ -144,6 +286,7 @@ async def register_dataset(
         num_classes=yaml_info["num_classes"],
         class_names=yaml_info["class_names"],
         format=body.format,
+        scene_id=body.scene_id,
         status="active",
     )
     db.add(dataset)
@@ -164,6 +307,7 @@ async def register_dataset(
             "num_classes": dataset.num_classes,
             "class_names": dataset.class_names,
             "format": dataset.format,
+            "scene_id": dataset.scene_id,
             "status": dataset.status,
         },
     )
@@ -213,6 +357,7 @@ async def list_datasets(
                     "num_classes": d.num_classes,
                     "class_names": d.class_names,
                     "format": d.format,
+                    "scene_id": d.scene_id,
                     "status": d.status,
                     "created_at": d.created_at.isoformat() if d.created_at else None,
                     "updated_at": d.updated_at.isoformat() if d.updated_at else None,
@@ -253,6 +398,7 @@ async def get_dataset(
             "num_classes": dataset.num_classes,
             "class_names": dataset.class_names,
             "format": dataset.format,
+            "scene_id": dataset.scene_id,
             "status": dataset.status,
             "task_count": task_count,
             "created_at": dataset.created_at.isoformat() if dataset.created_at else None,
