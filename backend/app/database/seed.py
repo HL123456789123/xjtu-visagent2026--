@@ -59,6 +59,10 @@ DEFAULT_PERMISSIONS = [
     {"code": "training:task:create", "name": "创建训练任务", "module": "training"},
     {"code": "training:task:manage", "name": "管理训练任务", "module": "training"},
     {"code": "training:task:view", "name": "查看训练任务", "module": "training"},
+    # 数据集模块
+    {"code": "dataset:create", "name": "注册数据集", "module": "dataset"},
+    {"code": "dataset:view", "name": "查看数据集", "module": "dataset"},
+    {"code": "dataset:manage", "name": "管理数据集", "module": "dataset"},
     # 模型模块
     {"code": "model:create", "name": "创建模型", "module": "model"},
     {"code": "model:update", "name": "更新模型", "module": "model"},
@@ -90,6 +94,9 @@ OPERATOR_PERMISSIONS = [
     "training:task:create",
     "training:task:manage",
     "training:task:view",
+    "dataset:create",
+    "dataset:view",
+    "dataset:manage",
     "model:create",
     "model:update",
     "model:view",
@@ -103,6 +110,7 @@ OPERATOR_PERMISSIONS = [
 USER_PERMISSIONS = [
     "detection:task:view",
     "training:task:view",
+    "dataset:view",
     "model:view",
     "agent:chat",
     "knowledge:search",
@@ -112,6 +120,7 @@ USER_PERMISSIONS = [
 VIEWER_PERMISSIONS = [
     "detection:task:view",
     "training:task:view",
+    "dataset:view",
     "model:view",
     "agent:chat",
     "knowledge:search",

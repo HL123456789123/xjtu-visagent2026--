@@ -47,6 +47,12 @@ const routes = [
         meta: { title: '模型训练', icon: 'Cpu', permission: 'training:task:view' },
       },
       {
+        path: 'datasets',
+        name: 'Datasets',
+        component: () => import('@/views/DatasetPage.vue'),
+        meta: { title: '数据集', icon: 'FolderOpened', permission: 'dataset:view' },
+      },
+      {
         path: 'models',
         name: 'Models',
         component: () => import('@/views/ModelPage.vue'),
