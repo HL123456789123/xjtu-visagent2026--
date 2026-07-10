@@ -55,51 +55,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # 后端应用
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: visagent-backend
-    restart: unless-stopped
-    ports:
-      - "8888:8888"
-    environment:
-      DATABASE_URL: postgresql://visagent:visagent@postgres:5432/visagent
-      REDIS_URL: redis://redis:6379/0
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
-    volumes:
-      - ./backend/data:/app/data
-      - ./backend/logs:/app/logs
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/api/health"]
-      interval: 30s
-      timeout: 10s
-      start_period: 10s
-      retries: 3
-
-  # 前端应用
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: visagent-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:80"
-    depends_on:
-      backend:
-        condition: service_healthy
-
 volumes:
   postgres_data:
   redis_data:

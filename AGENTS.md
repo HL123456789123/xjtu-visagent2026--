@@ -2,13 +2,7 @@
 
 
 
-## 数据库
-
-后端项目中必须使用 PostgreSQL 数据库，绝对禁止使用 SQLite 数据库。
-
-
-
-### 后端开发命令（使用 `uv`）
+## 后端开发命令（使用 `uv`）
 
 ```bash
 cd backend
@@ -24,9 +18,6 @@ uv add --dev <package>
 
 # 运行开发服务器（需先配置 .env）
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8888
-
-# 或使用项目脚本
-uv run backend-server
 
 # 代码检查
 uv run ruff check app/
@@ -48,13 +39,17 @@ source .venv/bin/activate
 - `.env.example` → 复制为 `.env`，填写实际值
 - 关键配置项：`OPENAI_API_KEY`（必需）、`SECRET_KEY`（必需）、`DATABASE_URL`、`DEVICE`
 
+### 数据库
+
+- 本项目中数据库只使用 PostgreSQL ，绝对禁止使用 SQLite
+
 ---
 
 
 
 
 
-### 前端开发命令（使用 `bun`）
+## 前端开发命令（使用 `bun`）
 
 ```bash
 cd frontend
@@ -108,11 +103,6 @@ bun run dev
 ```
 
 前端默认运行在 `http://localhost:3000`，Vite 自动将 `/api` 请求代理到后端。
-
-### 3. 首次启动自动完成
-
-- 数据库自动创建（SQLite `data/visagent.db`）
-- 若 `INIT_DEFAULT_ADMIN=true`，自动创建默认管理员（账号/密码见 `init_admin.py`）
 
 ---
 

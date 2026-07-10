@@ -16,6 +16,7 @@ from app.api.camera import router as camera_router
 from app.api.knowledge import router as knowledge_router
 from app.api.model import router as model_router
 from app.api.admin import router as admin_router
+from app.api.dataset import router as dataset_router
 from app.core.logger import setup_logger, get_logger
 from app.core.exceptions import (
     AppException,
@@ -153,7 +154,7 @@ async def _shutdown_cleanup():
 app = FastAPI(
     title="VisAgent",
     version="0.1.0",
-    description="基于 YOLOv11 的目标检测智能体平台 API",
+    description="基于 YOLO26 的目标检测智能体平台 API",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -194,6 +195,7 @@ app.include_router(camera_router)
 app.include_router(knowledge_router)
 app.include_router(model_router)
 app.include_router(admin_router)
+app.include_router(dataset_router)
 
 
 @app.get("/")
@@ -206,6 +208,10 @@ def root():
     }
 
 
+def startup():
+    import uvicorn
+    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8888)
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8888, reload=True)
+    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8888)
