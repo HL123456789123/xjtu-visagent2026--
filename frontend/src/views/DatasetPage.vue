@@ -3,9 +3,14 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <h3>数据集管理</h3>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>注册数据集
-      </el-button>
+      <div class="header-actions">
+        <el-button @click="handleDiscover" :loading="discovering">
+          <el-icon><Search /></el-icon>自动发现
+        </el-button>
+        <el-button type="primary" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>注册数据集
+        </el-button>
+      </div>
     </div>
 
     <!-- 状态筛选 -->
@@ -42,6 +47,14 @@
             <el-tag size="small" type="info">{{ row.format }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="适用场景" width="140">
+          <template #default="{ row }">
+            <el-tag v-if="getSceneName(row.scene_id)" size="small" type="success">
+              {{ getSceneName(row.scene_id) }}
+            </el-tag>
+            <span v-else class="text-muted">未指定</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
             <el-tag :type="row.status === 'active' ? 'success' : 'danger'" size="small">
@@ -60,7 +73,8 @@
               <el-button type="primary" size="small" link @click="showDetail(row)">
                 详情
               </el-button>
-              <el-button type="warning" size="small" link @click="validateDataset(row)">
+              <el-tag v-if="row.status === 'active'" type="success" size="small">已校验</el-tag>
+              <el-button v-else type="warning" size="small" link @click="validateDataset(row)">
                 校验
               </el-button>
               <el-button type="danger" size="small" link @click="deleteDataset(row)">
@@ -73,7 +87,7 @@
     </div>
 
     <!-- 注册数据集对话框 -->
-    <el-dialog v-model="showCreateDialog" title="注册数据集" width="520px">
+    <el-dialog v-model="showCreateDialog" title="注册数据集" width="680px" @close="resetBrowser">
       <el-form :model="createForm" label-width="100px">
         <el-form-item label="名称" required>
           <el-input v-model="createForm.name" placeholder="如：遥感目标检测数据集" />
@@ -81,12 +95,81 @@
         <el-form-item label="描述">
           <el-input v-model="createForm.description" type="textarea" :rows="2" placeholder="数据集说明（可选）" />
         </el-form-item>
+
+        <!-- 目录浏览器 -->
         <el-form-item label="数据集路径" required>
-          <el-input v-model="createForm.path" placeholder="数据集根目录路径，如 /data/my_dataset" />
+          <div class="dir-browser">
+            <!-- 面包屑导航 -->
+            <div class="breadcrumb-bar">
+              <el-button
+                v-if="browserState.currentPath"
+                size="small"
+                text
+                @click="navigateUp"
+              >
+                <el-icon><ArrowUp /></el-icon>上级
+              </el-button>
+              <span class="current-path">{{ browserState.currentPath || '选择根目录' }}</span>
+            </div>
+            <!-- 目录列表 -->
+            <div class="dir-list" v-loading="browserState.loading">
+              <div
+                v-for="dir in browserState.dirs"
+                :key="dir.path"
+                class="dir-item"
+                :class="{ selected: createForm.path === dir.path }"
+                @click="selectDir(dir)"
+                @dblclick="navigateInto(dir)"
+              >
+                <el-icon class="dir-icon"><Folder /></el-icon>
+                <span class="dir-name">{{ dir.name }}</span>
+                <el-button
+                  size="small"
+                  text
+                  class="enter-btn"
+                  @click.stop="navigateInto(dir)"
+                >
+                  进入
+                </el-button>
+              </div>
+              <div v-if="!browserState.dirs.length && !browserState.loading" class="empty-hint">
+                无子目录
+              </div>
+            </div>
+            <!-- 已选路径 -->
+            <div class="selected-path" v-if="createForm.path">
+              <el-tag closable @close="createForm.path = ''">
+                {{ createForm.path }}
+              </el-tag>
+            </div>
+          </div>
         </el-form-item>
+
+        <!-- YAML 文件选择 -->
         <el-form-item label="配置文件" required>
-          <el-input v-model="createForm.yaml_path" placeholder="data.yaml 文件路径" />
+          <div class="yaml-selector">
+            <el-select
+              v-model="createForm.yaml_path"
+              placeholder="选择配置文件"
+              :disabled="!browserState.yamlFiles.length"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="f in browserState.yamlFiles"
+                :key="f.path"
+                :label="f.name"
+                :value="f.path"
+              />
+            </el-select>
+            <div class="yaml-hint" v-if="!createForm.path">
+              请先选择数据集目录
+            </div>
+            <div class="yaml-hint" v-else-if="!browserState.yamlFiles.length">
+              当前目录下未找到 YAML 配置文件
+            </div>
+          </div>
         </el-form-item>
+
         <el-form-item label="标注格式">
           <el-select v-model="createForm.format">
             <el-option label="YOLO" value="yolo" />
@@ -94,11 +177,67 @@
             <el-option label="COCO" value="coco" />
           </el-select>
         </el-form-item>
+
+        <el-form-item label="检测场景">
+          <el-select v-model="createForm.scene_id" placeholder="选择检测场景（可选）" clearable>
+            <el-option
+              v-for="scene in scenes"
+              :key="scene.id"
+              :label="scene.display_name"
+              :value="scene.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
         <el-button type="primary" @click="createDataset" :loading="creating">注册</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 自动发现对话框 -->
+    <el-dialog v-model="showDiscoverDialog" title="发现的数据集" width="720px">
+      <div class="discover-content">
+        <div v-if="discoveredList.length" class="discover-list">
+          <div
+            v-for="item in discoveredList"
+            :key="item.path"
+            class="discover-item"
+          >
+            <div class="discover-info">
+              <div class="discover-name">{{ item.name }}</div>
+              <div class="discover-path">{{ item.path }}</div>
+              <div class="discover-meta">
+                <span v-if="item.num_classes">{{ item.num_classes }} 个类别</span>
+                <span v-if="item.num_images">{{ item.num_images }} 张图片</span>
+                <span v-if="item.error" class="error-text">{{ item.error }}</span>
+              </div>
+              <div class="class-tags" v-if="item.class_names && item.class_names.length">
+                <el-tag
+                  v-for="(name, idx) in item.class_names.slice(0, 5)"
+                  :key="idx"
+                  size="small"
+                  class="class-tag"
+                >
+                  {{ name }}
+                </el-tag>
+                <el-tag v-if="item.class_names.length > 5" size="small" type="info">
+                  +{{ item.class_names.length - 5 }}
+                </el-tag>
+              </div>
+            </div>
+            <el-button
+              type="primary"
+              size="small"
+              @click="quickRegister(item)"
+              :disabled="!!item.error"
+            >
+              注册
+            </el-button>
+          </div>
+        </div>
+        <el-empty v-else description="未发现未注册的数据集" />
+      </div>
     </el-dialog>
 
     <!-- 数据集详情对话框 -->
@@ -113,6 +252,12 @@
           <el-descriptions-item label="图片数量">{{ detailData.num_images }}</el-descriptions-item>
           <el-descriptions-item label="类别数">{{ detailData.num_classes }}</el-descriptions-item>
           <el-descriptions-item label="标注格式">{{ detailData.format }}</el-descriptions-item>
+          <el-descriptions-item label="适用场景">
+            <el-tag v-if="getSceneName(detailData.scene_id)" type="success" size="small">
+              {{ getSceneName(detailData.scene_id) }}
+            </el-tag>
+            <span v-else class="text-muted">未指定</span>
+          </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="detailData.status === 'active' ? 'success' : 'danger'">
               {{ detailData.status === 'active' ? '有效' : '异常' }}
@@ -140,16 +285,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted, watch } from 'vue'
+import { Plus, Search, ArrowUp, Folder } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getDatasetsApi,
   getDatasetApi,
   createDatasetApi,
   deleteDatasetApi,
-  validateDatasetApi
+  validateDatasetApi,
+  browseDirectoryApi,
+  discoverDatasetsApi,
 } from '@/api/dataset'
+import { getScenesApi } from '@/api/detection'
 
 const datasets = ref([])
 const statusFilter = ref('')
@@ -157,16 +305,31 @@ const loading = ref(false)
 
 const showCreateDialog = ref(false)
 const creating = ref(false)
+const scenes = ref([])
 const createForm = ref({
   name: '',
   description: '',
   path: '',
   yaml_path: '',
-  format: 'yolo'
+  format: 'yolo',
+  scene_id: null
 })
 
 const showDetailDialog = ref(false)
 const detailData = ref(null)
+
+// 目录浏览器状态
+const browserState = reactive({
+  currentPath: null,
+  dirs: [],
+  yamlFiles: [],
+  loading: false,
+})
+
+// 自动发现
+const showDiscoverDialog = ref(false)
+const discovering = ref(false)
+const discoveredList = ref([])
 
 async function loadDatasets() {
   loading.value = true
@@ -184,6 +347,91 @@ async function loadDatasets() {
   }
 }
 
+// ========== 目录浏览器 ==========
+
+async function browseDir(path) {
+  browserState.loading = true
+  try {
+    const res = await browseDirectoryApi(path)
+    const data = res.data
+    browserState.currentPath = data.current_path
+    browserState.dirs = data.dirs || []
+    browserState.yamlFiles = data.yaml_files || []
+  } catch (error) {
+    const msg = error.response?.data?.detail || '浏览目录失败'
+    ElMessage.error(msg)
+  } finally {
+    browserState.loading = false
+  }
+}
+
+function selectDir(dir) {
+  createForm.value.path = dir.path
+  // 自动填充名称（如果为空）
+  if (!createForm.value.name) {
+    createForm.value.name = dir.name
+  }
+}
+
+function navigateInto(dir) {
+  browseDir(dir.path)
+}
+
+function navigateUp() {
+  if (!browserState.currentPath) return
+  const parentPath = browserState.currentPath.split('/').slice(0, -1).join('/') || '/'
+  browseDir(parentPath)
+}
+
+function resetBrowser() {
+  browserState.currentPath = null
+  browserState.dirs = []
+  browserState.yamlFiles = []
+}
+
+// 打开对话框时加载根目录
+watch(showCreateDialog, (val) => {
+  if (val) {
+    browseDir() // 加载根目录
+  }
+})
+
+// ========== 自动发现 ==========
+
+async function handleDiscover() {
+  discovering.value = true
+  try {
+    const res = await discoverDatasetsApi()
+    discoveredList.value = res.data?.discovered || []
+    showDiscoverDialog.value = true
+    if (!discoveredList.value.length) {
+      ElMessage.info('未发现未注册的数据集')
+    }
+  } catch (error) {
+    const msg = error.response?.data?.detail || '自动发现失败'
+    ElMessage.error(msg)
+  } finally {
+    discovering.value = false
+  }
+}
+
+function quickRegister(item) {
+  // 填充表单并打开注册对话框
+  createForm.value = {
+    name: item.name,
+    description: '',
+    path: item.path,
+    yaml_path: item.yaml_path,
+    format: 'yolo'
+  }
+  showDiscoverDialog.value = false
+  showCreateDialog.value = true
+  // 加载该目录的 yaml 文件列表
+  browseDir(item.path)
+}
+
+// ========== 其他操作 ==========
+
 async function createDataset() {
   if (!createForm.value.name || !createForm.value.path || !createForm.value.yaml_path) {
     ElMessage.warning('请填写必填项')
@@ -194,13 +442,23 @@ async function createDataset() {
     await createDatasetApi(createForm.value)
     ElMessage.success('数据集注册成功')
     showCreateDialog.value = false
-    createForm.value = { name: '', description: '', path: '', yaml_path: '', format: 'yolo' }
+    createForm.value = { name: '', description: '', path: '', yaml_path: '', format: 'yolo', scene_id: null }
+    resetBrowser()
     loadDatasets()
   } catch (error) {
     const msg = error.response?.data?.detail || '注册失败'
     ElMessage.error(msg)
   } finally {
     creating.value = false
+  }
+}
+
+async function loadScenes() {
+  try {
+    const res = await getScenesApi()
+    scenes.value = res.data || []
+  } catch (error) {
+    console.error('加载场景列表失败:', error)
   }
 }
 
@@ -253,8 +511,15 @@ function formatTime(timestamp) {
   return new Date(timestamp).toLocaleString('zh-CN')
 }
 
+function getSceneName(sceneId) {
+  if (!sceneId) return ''
+  const scene = scenes.value.find(s => s.id === sceneId)
+  return scene?.display_name || ''
+}
+
 onMounted(() => {
   loadDatasets()
+  loadScenes()
 })
 </script>
 
@@ -278,6 +543,11 @@ onMounted(() => {
     margin: 0;
     font-size: 18px;
     color: $text-primary;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: $spacing-sm;
   }
 }
 
@@ -308,6 +578,151 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: $spacing-xs;
+}
+
+// ========== 目录浏览器 ==========
+.dir-browser {
+  width: 100%;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+
+  .current-path {
+    font-size: 13px;
+    color: #606266;
+    word-break: break-all;
+  }
+}
+
+.dir-list {
+  min-height: 120px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.dir-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: #f5f7fa;
+  }
+
+  &.selected {
+    background: #ecf5ff;
+  }
+
+  .dir-icon {
+    color: #e6a23c;
+    margin-right: 8px;
+  }
+
+  .dir-name {
+    flex: 1;
+    font-size: 14px;
+  }
+
+  .enter-btn {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  &:hover .enter-btn {
+    opacity: 1;
+  }
+}
+
+.empty-hint {
+  text-align: center;
+  padding: 20px;
+  color: #909399;
+  font-size: 13px;
+}
+
+.selected-path {
+  padding: 8px 12px;
+  background: #f0f9eb;
+  border-top: 1px solid #e1f3d8;
+}
+
+.yaml-selector {
+  width: 100%;
+
+  .yaml-hint {
+    font-size: 12px;
+    color: #909399;
+    margin-top: 4px;
+  }
+}
+
+// ========== 自动发现 ==========
+.discover-content {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.discover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.discover-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  transition: box-shadow 0.2s;
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.discover-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.discover-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.discover-path {
+  font-size: 12px;
+  color: #909399;
+  word-break: break-all;
+  margin-bottom: 6px;
+}
+
+.discover-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 6px;
+
+  .error-text {
+    color: #f56c6c;
+  }
 }
 
 .class-tags {

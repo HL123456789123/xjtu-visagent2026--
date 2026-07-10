@@ -42,3 +42,18 @@ export function deleteDatasetApi(id) {
 export function validateDatasetApi(id) {
   return request.post(`/datasets/${id}/validate`)
 }
+
+/**
+ * 浏览服务器目录
+ * @param {string} [path] - 目录路径，为空时返回白名单根目录
+ */
+export function browseDirectoryApi(path) {
+  return request.get('/datasets/browse', { params: path ? { path } : {} })
+}
+
+/**
+ * 自动发现未注册的数据集
+ */
+export function discoverDatasetsApi() {
+  return request.get('/datasets/discover')
+}
