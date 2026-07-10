@@ -188,7 +188,7 @@ class ModelService:
         user_id: int,
         name: str,
         description: Optional[str] = None,
-        base_architecture: str = "yolov11n",
+        base_architecture: str = "yolo26n",
         category: str = "general",
         class_names: Optional[list] = None,
         class_names_cn: Optional[dict] = None,

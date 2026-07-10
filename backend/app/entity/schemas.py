@@ -248,7 +248,7 @@ class TrainingTaskResponse(BaseModel):
     model_id: int
     task_uuid: str
     status: str
-    base_architecture: str = "yolov11n"
+    base_architecture: str = "yolo26n"
     epochs: int = 100
     current_epoch: int = 0
     progress: int = 0
@@ -333,7 +333,7 @@ class ModelCreate(BaseModel):
     """创建模型"""
     name: str = Field(..., min_length=2, max_length=100, description="模型名称")
     description: str = ""
-    base_architecture: str = "yolov11n"
+    base_architecture: str = "yolo26n"
     category: str = "general"
     class_names: list[str] = Field(..., description="类别列表")
     class_names_cn: Optional[dict] = Field(None, description="类别中文名映射")
@@ -355,7 +355,7 @@ class ModelResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
-    base_architecture: str = "yolov11n"
+    base_architecture: str = "yolo26n"
     category: str
     class_names: list[str]
     class_names_cn: Optional[dict] = None

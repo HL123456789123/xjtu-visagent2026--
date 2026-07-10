@@ -207,7 +207,7 @@ class TestTrainingModels:
         user = User(username="trainuser", email="train@example.com", hashed_password="hash")
         model = Model(
             name="测试训练模型",
-            base_architecture="yolov11n",
+            base_architecture="yolo26n",
             category="industry",
             class_names=["item"],
         )
@@ -218,7 +218,7 @@ class TestTrainingModels:
             user_id=user.id,
             model_id=model.id,
             task_uuid="uuid-12345",
-            base_architecture="yolov11n",
+            base_architecture="yolo26n",
             epochs=100,
             batch_size=16,
         )
@@ -228,7 +228,7 @@ class TestTrainingModels:
 
         assert task.id is not None
         assert task.status == "pending"
-        assert task.base_architecture == "yolov11n"
+        assert task.base_architecture == "yolo26n"
         assert task.task_uuid == "uuid-12345"
 
     def test_training_metric(self, db):
@@ -236,7 +236,7 @@ class TestTrainingModels:
         user = User(username="metricuser", email="metric@example.com", hashed_password="hash")
         model = Model(
             name="测试指标模型",
-            base_architecture="yolov11s",
+            base_architecture="yolo26s",
             category="traffic",
             class_names=["car"],
         )
@@ -245,7 +245,7 @@ class TestTrainingModels:
 
         task = TrainingTask(
             user_id=user.id, model_id=model.id, task_uuid="uuid-metric",
-            base_architecture="yolov11s",
+            base_architecture="yolo26s",
         )
         db.add(task)
         db.flush()

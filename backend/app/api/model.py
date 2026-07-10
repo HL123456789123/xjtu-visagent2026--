@@ -66,7 +66,7 @@ async def list_models(
 async def create_model(
     name: str = Form(..., description="模型名称"),
     description: str = Form("", description="模型描述"),
-    base_architecture: str = Form("yolov11n", description="基础架构"),
+    base_architecture: str = Form("yolo26n", description="基础架构"),
     category: str = Form("general", description="模型分类"),
     class_names: str = Form("[]", description="类别列表 JSON"),
     class_names_cn: str = Form("{}", description="类别中文名 JSON"),

@@ -4,7 +4,7 @@
       <div class="login-header">
         <img src="/favicon.svg" alt="logo" class="login-logo" />
         <h2>visagent</h2>
-        <p>基于 YOLOv11 的目标检测智能体平台</p>
+        <p>基于 YOLO26 的目标检测智能体平台</p>
       </div>
 
       <el-form

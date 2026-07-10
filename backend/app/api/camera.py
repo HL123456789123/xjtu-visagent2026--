@@ -118,9 +118,7 @@ async def camera_detect(
     # JWT 身份验证
     user_id = _authenticate_websocket_token(token)
     if user_id is None:
-        await websocket.accept()
-        await websocket.send_json({"type": "error", "message": "认证失败，请提供有效的 JWT Token"})
-        await websocket.close(code=4001)
+        await websocket.close(code=4001, reason="认证失败，请提供有效的 JWT Token")
         return
 
     # 验证用户是否存在且活跃
@@ -129,20 +127,14 @@ async def camera_detect(
         db = SessionLocal()
         user = user_service.get_user_by_id(db, user_id)
         if not user or not user.is_active:
-            await websocket.accept()
-            await websocket.send_json({"type": "error", "message": "用户不存在或已被禁用"})
-            await websocket.close(code=4001)
+            await websocket.close(code=4001, reason="用户不存在或已被禁用")
             return
         # 检查检测权限
         if not _check_websocket_permission(db, user_id, "detection:task:create"):
-            await websocket.accept()
-            await websocket.send_json({"type": "error", "message": "权限不足，需要 detection:task:create 权限"})
-            await websocket.close(code=4003)
+            await websocket.close(code=4003, reason="权限不足，需要 detection:task:create 权限")
             return
     except Exception:
-        await websocket.accept()
-        await websocket.send_json({"type": "error", "message": "认证失败"})
-        await websocket.close(code=4001)
+        await websocket.close(code=4001, reason="认证失败")
         return
 
     await websocket.accept()
@@ -168,7 +160,7 @@ async def camera_detect(
             .first()
         )
 
-        model_path = "yolo11n.pt"
+        model_path = "yolo26n.pt"
         if scene_model:
             model_version = (
                 db.query(ModelVersion)

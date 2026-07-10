@@ -4,6 +4,7 @@ Pydantic Schema 模型测试：请求验证、序列化、约束
 import pytest
 from pydantic import ValidationError
 from datetime import datetime
+from app.core.tz import now_cst
 from app.entity.schemas import (
     UserRegister, UserLogin, TokenResponse, UserResponse, UserBrief,
     UserUpdate, ChangePassword, RoleResponse, RoleCreate,
@@ -91,7 +92,7 @@ class TestUserResponse:
             email="test@example.com",
             is_active=True,
             roles=[],
-            created_at=datetime.now(),
+            created_at=now_cst(),
         )
         assert data.id == 1
         assert data.is_active is True
@@ -163,7 +164,7 @@ class TestRoleSchema:
             display_name="管理员",
             is_system=True,
             permissions=["detection:task:create"],
-            created_at=datetime.now(),
+            created_at=now_cst(),
         )
         assert data.is_system is True
         assert "detection:task:create" in data.permissions

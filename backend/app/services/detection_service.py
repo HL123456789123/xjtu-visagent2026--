@@ -1,6 +1,6 @@
 """
 检测服务模块
-提供 YOLOv11 目标检测的完整业务逻辑
+提供 YOLO26 目标检测的完整业务逻辑
 包括单图检测、批量检测、文件夹检测、视频检测等
 """
 
@@ -58,7 +58,7 @@ class DetectionService:
         try:
             from ultralytics import YOLO
 
-            # ultralytics 支持自动下载预训练模型（如 yolo11n.pt），
+            # ultralytics 支持自动下载预训练模型（如 yolo26n.pt），
             # 本地文件不存在时由 YOLO() 内部处理下载，此处不做预检查
             if not os.path.exists(model_path):
                 logger.info(f"模型文件未缓存，将由 ultralytics 自动下载: {model_path}")
@@ -153,7 +153,7 @@ class DetectionService:
                 return mv.model_path
 
         # 3. 回退到预训练模型
-        return "yolo11n.pt"
+        return "yolo26n.pt"
 
     async def detect_single(
         self,

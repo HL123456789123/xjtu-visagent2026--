@@ -189,11 +189,11 @@
         </el-form-item>
         <el-form-item label="基础架构">
           <el-select v-model="createForm.base_architecture">
-            <el-option label="YOLOv11n (轻量)" value="yolov11n" />
-            <el-option label="YOLOv11s (小型)" value="yolov11s" />
-            <el-option label="YOLOv11m (中型)" value="yolov11m" />
-            <el-option label="YOLOv11l (大型)" value="yolov11l" />
-            <el-option label="YOLOv11x (超大)" value="yolov11x" />
+            <el-option label="YOLO26n (轻量)" value="yolo26n" />
+            <el-option label="YOLO26s (小型)" value="yolo26s" />
+            <el-option label="YOLO26m (中型)" value="yolo26m" />
+            <el-option label="YOLO26l (大型)" value="yolo26l" />
+            <el-option label="YOLO26x (超大)" value="yolo26x" />
           </el-select>
         </el-form-item>
         <el-form-item label="描述">
@@ -320,7 +320,7 @@ const creating = ref(false)
 const createForm = ref({
   name: '',
   category: 'general',
-  base_architecture: 'yolov11n',
+  base_architecture: 'yolo26n',
   description: ''
 })
 
@@ -383,7 +383,7 @@ async function createModel() {
     await createModelApi(createForm.value)
     ElMessage.success('模型创建成功')
     showCreateDialog.value = false
-    createForm.value = { name: '', category: 'general', base_architecture: 'yolov11n', description: '' }
+    createForm.value = { name: '', category: 'general', base_architecture: 'yolo26n', description: '' }
     loadModels()
   } catch (error) {
     ElMessage.error('创建模型失败')

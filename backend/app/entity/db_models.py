@@ -262,7 +262,7 @@ class Model(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), unique=True, nullable=False, comment="模型名称，如 遥感飞机检测模型")
     description = Column(Text, nullable=True, comment="模型描述")
-    base_architecture = Column(String(50), default="yolov11n", comment="基础架构：yolov11n/s/m/l/x")
+    base_architecture = Column(String(50), default="yolo26n", comment="基础架构：yolo26n/s/m/l/x")
     category = Column(
         String(50),
         nullable=False,
@@ -346,6 +346,33 @@ class ModelVersion(Base):
     detection_tasks = relationship("DetectionTask", back_populates="model_version")
 
 
+class Dataset(Base):
+    """数据集表"""
+
+    __tablename__ = "datasets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="注册用户"
+    )
+    name = Column(String(100), nullable=False, comment="数据集名称")
+    description = Column(Text, nullable=True, comment="描述")
+    path = Column(String(500), nullable=False, comment="数据集根目录路径")
+    yaml_path = Column(String(500), nullable=False, comment="data.yaml 路径")
+    num_images = Column(Integer, default=0, comment="图片数量")
+    num_classes = Column(Integer, default=0, comment="类别数")
+    class_names = Column(JSON, nullable=True, comment="类别名称列表")
+    format = Column(String(20), default="yolo", comment="标注格式：yolo/voc/coco")
+    status = Column(
+        String(20), default="active", index=True, comment="状态：active/invalid"
+    )
+    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
+
+    # 关联
+    user = relationship("User", backref="datasets")
+
+
 class TrainingTask(Base):
     """模型训练任务表"""
 
@@ -367,7 +394,7 @@ class TrainingTask(Base):
     )
 
     # 训练配置
-    base_architecture = Column(String(50), default="yolov11n", comment="基础架构：yolov11n/s/m/l/x")
+    base_architecture = Column(String(50), default="yolo26n", comment="基础架构：yolo26n/s/m/l/x")
     epochs = Column(Integer, default=100, comment="训练轮数")
     img_size = Column(Integer, default=640, comment="图像尺寸")
     batch_size = Column(Integer, default=16, comment="批次大小")
@@ -385,6 +412,9 @@ class TrainingTask(Base):
     last_checkpoint_epoch = Column(Integer, default=0, comment="最后保存 checkpoint 的 epoch")
 
     # 数据集信息
+    dataset_id = Column(
+        Integer, ForeignKey("datasets.id"), nullable=True, index=True, comment="关联数据集"
+    )
     dataset_path = Column(String(500), nullable=True, comment="数据集路径")
     dataset_size = Column(Integer, nullable=True, comment="数据集图像数量")
     data_yaml = Column(String(500), nullable=True, comment="data.yaml 路径")
@@ -403,6 +433,7 @@ class TrainingTask(Base):
     # 关联
     user = relationship("User", back_populates="training_tasks")
     model = relationship("Model", back_populates="training_tasks")
+    dataset = relationship("Dataset", backref="training_tasks")
     metrics = relationship("TrainingMetric", back_populates="task", cascade="all, delete-orphan")
     model_versions = relationship("ModelVersion", back_populates="training_task")
 

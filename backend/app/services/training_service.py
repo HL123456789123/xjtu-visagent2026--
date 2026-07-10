@@ -1,6 +1,6 @@
 """
 训练服务模块
-提供 YOLOv11 模型训练的完整业务逻辑
+提供 YOLO26 模型训练的完整业务逻辑
 包括创建训练任务、启动/暂停/取消训练、获取训练状态和指标
 """
 
@@ -103,13 +103,14 @@ class TrainingService:
             model_id=model_id,
             task_uuid=str(uuid.uuid4()),
             status="pending",
-            base_architecture=config.get("base_architecture", "yolov11n"),
+            base_architecture=config.get("base_architecture", "yolo26n"),
             epochs=config.get("epochs", 100),
             img_size=config.get("img_size", 640),
             batch_size=config.get("batch_size", 16),
             device=config.get("device", "cpu"),
             optimizer=config.get("optimizer", "SGD"),
             lr0=config.get("lr0", 0.01),
+            dataset_id=config.get("dataset_id"),
             dataset_path=config.get("dataset_path"),
             data_yaml=config.get("data_yaml"),
             dataset_size=config.get("dataset_size", 0),
@@ -480,6 +481,56 @@ class TrainingService:
                 logger.warning(f"清理 checkpoint 失败: {e}")
 
         logger.info(f"取消训练任务: task_id={task_id}")
+        return True
+
+    def delete_training_task(self, db: Session, task_id: int) -> bool:
+        """
+        删除训练任务
+
+        仅允许删除非运行中的任务（pending/paused/completed/failed/cancelled）
+        同时清理关联的 checkpoint 文件和训练指标
+
+        Args:
+            db: 数据库会话
+            task_id: 任务ID
+
+        Returns:
+            是否成功删除
+        """
+        task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+        if not task:
+            return False
+
+        # 运行中的任务不允许删除，需先取消
+        if task.status == "running":
+            logger.warning(f"无法删除运行中的任务: task_id={task_id}")
+            return False
+
+        # 停止线程（针对 paused 状态可能残留的线程）
+        with self._lock:
+            stop_flag = self.task_stop_flags.get(task_id)
+        if stop_flag:
+            stop_flag.set()
+
+        # 清理 checkpoint 文件
+        if task.checkpoint_path and os.path.exists(task.checkpoint_path):
+            try:
+                os.remove(task.checkpoint_path)
+                logger.info(f"已清理 checkpoint: {task.checkpoint_path}")
+            except Exception as e:
+                logger.warning(f"清理 checkpoint 失败: {e}")
+
+        # 清理关联的训练指标
+        db.query(TrainingMetric).filter(TrainingMetric.task_id == task_id).delete()
+
+        # 清理缓存
+        self._invalidate_training_cache(task_id)
+
+        # 删除任务记录
+        db.delete(task)
+        db.commit()
+
+        logger.info(f"删除训练任务: task_id={task_id}")
         return True
 
     def _invalidate_training_cache(self, task_id: int) -> None:

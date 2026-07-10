@@ -63,20 +63,49 @@ def _get_task_or_403(db: Session, task_id: int, user: User):
     return task
 
 
+@router.get("/devices", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
+async def get_available_devices(current_user: User = Depends(get_current_user)):
+    """获取当前可用的训练设备列表"""
+    import torch
+
+    devices = [{"value": "cpu", "label": "CPU", "description": "使用处理器训练"}]
+
+    # CUDA GPU
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            name = torch.cuda.get_device_name(i)
+            devices.append({
+                "value": str(i),
+                "label": f"GPU {i}",
+                "description": name,
+            })
+
+    # Apple Silicon MPS
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        devices.append({
+            "value": "mps",
+            "label": "MPS",
+            "description": "Apple Silicon GPU 加速",
+        })
+
+    return ApiResponse(code=200, data=devices)
+
+
 @router.post("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 @limiter.limit("10/minute")
 async def create_training_task(
     request: Request,
     model_id: int = Form(..., description="模型ID"),
-    base_architecture: str = Form("yolov11n", description="基础架构：yolov11n/s/m/l/x"),
+    base_architecture: str = Form("yolo26n", description="基础架构：yolo26n/s/m/l/x"),
     epochs: int = Form(100, ge=1, le=1000, description="训练轮数"),
     img_size: int = Form(640, ge=320, le=2048, description="图像尺寸"),
     batch_size: int = Form(16, ge=1, le=256, description="批次大小"),
-    device: str = Form("cpu", description="训练设备：0/1/cpu"),
+    device: str = Form("cpu", description="训练设备：0/1/cpu/mps"),
     optimizer: str = Form("SGD", description="优化器：SGD/Adam/AdamW"),
     lr0: float = Form(0.01, ge=0.0001, le=0.1, description="初始学习率"),
     dataset_path: str = Form(..., description="数据集路径"),
     data_yaml: str = Form(..., description="data.yaml 路径"),
+    dataset_id: Optional[int] = Form(None, description="关联数据集ID"),
     set_as_default: bool = Form(False, description="训练完成后是否自动设为默认版本"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -99,6 +128,7 @@ async def create_training_task(
         "device": device,
         "optimizer": optimizer,
         "lr0": lr0,
+        "dataset_id": dataset_id,
         "dataset_path": dataset_path,
         "data_yaml": data_yaml,
         "set_as_default": set_as_default,
@@ -152,6 +182,19 @@ async def cancel_training(
         raise HTTPException(status_code=400, detail="取消训练失败")
 
     return ApiResponse(code=200, message="训练任务已取消")
+
+
+@router.delete("/tasks/{task_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
+async def delete_training_task(
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """删除训练任务"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
+    success = training_service.delete_training_task(db, task_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="删除训练失败，运行中的任务需先取消再删除")
+
+    return ApiResponse(code=200, message="训练任务已删除")
 
 
 @router.get("/tasks/{task_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
