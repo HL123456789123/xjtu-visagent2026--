@@ -68,6 +68,15 @@ def init_seed():
         db.close()
 
 
+def _recover_training_tasks():
+    """恢复因进程重启而中断的训练任务状态"""
+    try:
+        from app.services.training_service import training_service
+        training_service._recover_interrupted_tasks()
+    except Exception as e:
+        logger.error(f"训练任务恢复失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """应用生命周期管理"""
@@ -77,6 +86,8 @@ async def lifespan(_app: FastAPI):
     init_minio()
     init_redis()
     init_seed()
+    # 在种子数据初始化完成后，恢复中断的训练任务
+    _recover_training_tasks()
     yield
     # 关闭时执行：优雅清理资源
     logger.info("正在关闭服务...")

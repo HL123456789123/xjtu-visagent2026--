@@ -118,7 +118,7 @@ async def get_current_user(
     user = user_service.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
-    # 预计算 super_admin 状态并缓存到 request.state，避免后续重复查库
+    # 预计算 super_admin 状态并缓存到 user 对象，避免后续重复查库
     from app.entity.db_models import UserRole, Role
     _has_super_admin_role = (
         db.query(UserRole)
@@ -129,8 +129,7 @@ async def get_current_user(
         )
         .first()
     ) is not None
-    request.state._is_super_admin = _has_super_admin_role
-    # 同时设置到 user 对象，供 is_super_admin 函数读取
+    # 设置到 user 对象，供 is_super_admin 函数读取
     object.__setattr__(user, "_is_super_admin", _has_super_admin_role)
     return user
 

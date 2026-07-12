@@ -87,7 +87,7 @@ async def get_dashboard_stats(
         trend_data = []
         for i in range(7):
             date = (now_cst() - timedelta(days=6 - i)).strftime("%Y-%m-%d")
-            count = next((d.count for d in daily_detections if str(d.date) == date), 0)
+            count = next((d.count for d in daily_detections if d.date.strftime("%Y-%m-%d") == date), 0)
             trend_data.append({"date": date, "count": count})
 
         # 3. 各场景检测统计

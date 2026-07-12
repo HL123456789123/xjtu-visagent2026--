@@ -245,7 +245,7 @@ class TrainingTaskResponse(BaseModel):
     """训练任务响应"""
     id: int
     user_id: int
-    model_id: int
+    model_id: Optional[int] = None
     task_uuid: str
     status: str
     base_architecture: str = "yolo26n"

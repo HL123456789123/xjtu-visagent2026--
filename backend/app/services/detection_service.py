@@ -424,10 +424,17 @@ class DetectionService:
         """
         import asyncio
 
+        # 在 async 上下文中确保模型已加载（避免将 db Session 传递到线程）
+        cache_key = (scene_id, model_version_id)
+        if cache_key not in self.models:
+            model_path = self.get_default_model_path(db, scene_id, model_version_id)
+            loaded = await asyncio.to_thread(self.load_model, scene_id, model_path, cache_key)
+            if not loaded:
+                raise ValueError(f"无法加载模型: scene_id={scene_id}")
+
         # 在线程中执行同步的视频处理
         result = await asyncio.to_thread(
             self._detect_video_sync,
-            db=db,
             scene_id=scene_id,
             video_path=video_path,
             output_path=output_path,
@@ -441,7 +448,6 @@ class DetectionService:
 
     def _detect_video_sync(
         self,
-        db: Session,
         scene_id: int,
         video_path: str,
         output_path: str,
@@ -454,8 +460,9 @@ class DetectionService:
         """
         视频检测（同步实现）
 
+        注意：调用方（detect_video）需确保模型已加载到缓存中
+
         Args:
-            db: 数据库会话
             scene_id: 场景ID
             video_path: 视频路径
             output_path: 输出视频路径
@@ -467,12 +474,10 @@ class DetectionService:
         Returns:
             检测结果
         """
-        # 确保模型已加载
+        # 确保模型已加载（模型应由调用方预先加载到缓存）
         cache_key = (scene_id, model_version_id)
         if cache_key not in self.models:
-            model_path = self.get_default_model_path(db, scene_id, model_version_id)
-            if not self.load_model(scene_id, model_path, cache_key=cache_key):
-                raise ValueError(f"无法加载模型: scene_id={scene_id}")
+            raise ValueError(f"模型未加载，请先调用 detect_video: scene_id={scene_id}")
 
         model = self.models[cache_key]
 

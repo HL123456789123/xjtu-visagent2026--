@@ -26,8 +26,7 @@ class TrainingService:
         self.active_tasks: Dict[int, threading.Thread] = {}
         self.task_stop_flags: Dict[int, threading.Event] = {}
         self._lock = threading.Lock()
-        # 启动时恢复中断的任务状态
-        self._recover_interrupted_tasks()
+        # 恢复逻辑由 main.py lifespan 中调用，避免在模块导入时操作数据库
 
     def _recover_interrupted_tasks(self):
         """
