@@ -118,6 +118,19 @@ async def get_current_user(
     user = user_service.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
+    # 预计算 super_admin 状态并缓存到 request.state，避免后续重复查库
+    _has_super_admin_role = (
+        db.query(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .filter(
+            UserRole.user_id == user.id,
+            Role.name == "super_admin",
+        )
+        .first()
+    ) is not None
+    request.state._is_super_admin = _has_super_admin_role
+    # 同时设置到 user 对象，供 is_super_admin 函数读取
+    object.__setattr__(user, "_is_super_admin", _has_super_admin_role)
     return user
 
 
@@ -153,11 +166,8 @@ def is_super_admin(user, db: Session) -> bool:
         .first()
     )
     result = has_role is not None
-    # 缓存到 user 对象，同一请求内不再重复查询
-    try:
-        user._is_super_admin = result
-    except Exception:
-        pass
+    # 缓存到 user 对象（使用 object.__setattr__ 避免 SQLAlchemy 警告）
+    object.__setattr__(user, "_is_super_admin", result)
     return result
 
 

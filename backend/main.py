@@ -209,10 +209,6 @@ def root():
     }
 
 
-def startup():
-    import uvicorn
-    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8888)
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8888)
