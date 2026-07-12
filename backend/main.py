@@ -17,7 +17,7 @@ from app.api.knowledge import router as knowledge_router
 from app.api.model import router as model_router
 from app.api.admin import router as admin_router
 from app.api.dataset import router as dataset_router
-from app.core.logger import setup_logger, get_logger
+from app.core.logger import setup_logger
 from app.core.exceptions import (
     AppException,
     app_exception_handler,
@@ -180,8 +180,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
+    expose_headers=["X-Request-Id"],
 )
 
 # ── 注册路由 ─────────────────────────────────────────
