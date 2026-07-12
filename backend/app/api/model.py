@@ -110,9 +110,20 @@ async def get_model(
     current_user: User = Depends(get_current_user),
 ):
     """获取模型详情（含版本列表和关联场景）"""
+    # 先查询模型是否存在
+    model_obj = db.query(Model).filter(Model.id == model_id).first()
+    if not model_obj:
+        raise HTTPException(status_code=404, detail="模型不存在")
+
+    # 非超级管理员只能查看自己的模型
+    if not is_super_admin(current_user, db):
+        if model_obj.created_by is not None and model_obj.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="无权查看该模型")
+
     detail = model_service.get_model_detail(db, model_id)
     if not detail:
         raise HTTPException(status_code=404, detail="模型不存在")
+
     return ApiResponse(code=200, data=detail)
 
 
