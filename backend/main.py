@@ -86,18 +86,39 @@ async def lifespan(_app: FastAPI):
 
 def _validate_security_config():
     """校验安全配置，防止使用不安全的默认值"""
-    insecure_jwt_values = {"", "your-super-secret-key-change-in-production"}
-    if settings.JWT_SECRET_KEY in insecure_jwt_values:
+    insecure_jwt_values = {"", "your-super-secret-key-change-in-production", "visagent-dev-secret-key-2026"}
+
+    # 1. JWT 密钥校验
+    if settings.JWT_SECRET_KEY in insecure_jwt_values or len(settings.JWT_SECRET_KEY) < 32:
         if not settings.DEBUG:
             logger.error(
                 "安全错误: JWT_SECRET_KEY 未配置或使用了不安全的默认值，"
-                "请在 .env 中配置强密钥！非 DEBUG 模式下拒绝启动。"
+                "请在 .env 中配置强密钥（至少 32 字符）！非 DEBUG 模式下拒绝启动。"
             )
             raise SystemExit(1)
         else:
             logger.warning(
                 "安全警告: JWT_SECRET_KEY 未配置或使用了不安全的默认值，请在 .env 中配置强密钥！"
             )
+
+    # 2. 数据库/MinIO 默认密码校验（非 DEBUG 模式下拒绝启动）
+    insecure_defaults = {
+        "DB_PASSWORD": ("visagent", settings.DB_PASSWORD),
+        "MINIO_SECRET_KEY": ("minioadmin", settings.MINIO_SECRET_KEY),
+    }
+    for field_name, (default_val, current_val) in insecure_defaults.items():
+        if current_val == default_val:
+            if not settings.DEBUG:
+                logger.error(
+                    f"安全错误: {field_name} 仍为默认值 '{default_val}'，"
+                    f"请在 .env 中配置强密码！非 DEBUG 模式下拒绝启动。"
+                )
+                raise SystemExit(1)
+            else:
+                logger.warning(
+                    f"安全警告: {field_name} 使用了默认值 '{default_val}'，生产环境务必修改！"
+                )
+
     if settings.DEBUG:
         logger.warning("调试模式已开启 (DEBUG=True)，生产环境请务必关闭")
 

@@ -73,8 +73,8 @@ class Settings(BaseSettings):
     LANGCHAIN_PROJECT: str = "visagent"
 
     # ── 安全配置 ────────────────────────────────────────
-    ALLOWED_DETECTION_DIRS: str = "/tmp,/data,/home"
-    """允许文件夹检测访问的目录白名单，逗号分隔"""
+    ALLOWED_DETECTION_DIRS: str = "/tmp"
+    """允许文件夹检测访问的目录白名单，逗号分隔（生产环境请通过 .env 配置）"""
 
     ALLOWED_TRAINING_DIRS: str = "/tmp,/data,/home"
     """允许训练任务访问的目录白名单，逗号分隔"""

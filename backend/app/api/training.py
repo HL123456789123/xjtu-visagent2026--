@@ -550,6 +550,14 @@ async def download_model(
 
     # 检查模型文件是否存在
     model_path = model_version.model_path
+
+    # 路径安全校验：防止路径穿越攻击
+    allowed_prefixes = ("data/models/", "runs/")
+    resolved_path = Path(model_path).resolve()
+    if not any(str(resolved_path).startswith(prefix) for prefix in allowed_prefixes):
+        logger.warning(f"模型下载路径不在允许范围内: {model_path}")
+        raise HTTPException(status_code=403, detail="模型文件路径不合法")
+
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="模型文件不存在")
 

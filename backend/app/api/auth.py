@@ -38,7 +38,8 @@ async def register(request: Request, body: UserRegister, db: Session = Depends(g
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: UserLogin, db: Session = Depends(get_db)):
     """
     用户登录
     - 设置 HttpOnly cookie 存储 JWT token
@@ -46,8 +47,8 @@ async def login(request: UserLogin, db: Session = Depends(get_db)):
     """
     user = user_service.login(
         db=db,
-        username=request.username,
-        password=request.password,
+        username=body.username,
+        password=body.password,
     )
 
     access_token = user_service.create_access_token_for_user(user)
