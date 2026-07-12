@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import threading
 from typing import List, Dict, Any
 from pathlib import Path
 
@@ -22,38 +23,44 @@ class KnowledgeService:
         self.vector_store = None
         self.text_splitter = None
         self._initialized = False
+        self._init_lock = threading.Lock()
 
     def _initialize(self):
-        """延迟初始化，避免启动时加载依赖"""
+        """延迟初始化，避免启动时加载依赖（线程安全）"""
         if self._initialized:
             return
 
-        try:
-            from langchain.text_splitter import RecursiveCharacterTextSplitter
-            from langchain_openai import OpenAIEmbeddings
+        with self._init_lock:
+            # 双重检查，避免并发初始化
+            if self._initialized:
+                return
 
-            # 初始化 Embeddings
-            self.embeddings = OpenAIEmbeddings(
-                openai_api_key=settings.OPENAI_API_KEY, openai_api_base=settings.OPENAI_BASE_URL
-            )
+            try:
+                from langchain.text_splitter import RecursiveCharacterTextSplitter
+                from langchain_openai import OpenAIEmbeddings
 
-            # 初始化文本分割器
-            self.text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
-                length_function=len,
-                separators=["\n\n", "\n", "。", "！", "？", ".", "!", "?", " "],
-            )
+                # 初始化 Embeddings
+                self.embeddings = OpenAIEmbeddings(
+                    openai_api_key=settings.OPENAI_API_KEY, openai_api_base=settings.OPENAI_BASE_URL
+                )
 
-            # 初始化向量存储
-            self._init_vector_store()
+                # 初始化文本分割器
+                self.text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    length_function=len,
+                    separators=["\n\n", "\n", "。", "！", "？", ".", "!", "?", " "],
+                )
 
-            self._initialized = True
-            logger.info("知识库服务初始化完成")
+                # 初始化向量存储
+                self._init_vector_store()
 
-        except Exception as e:
-            logger.error(f"知识库服务初始化失败: {e}")
-            raise
+                self._initialized = True
+                logger.info("知识库服务初始化完成")
+
+            except Exception as e:
+                logger.error(f"知识库服务初始化失败: {e}")
+                raise
 
     def _init_vector_store(self):
         """初始化向量存储"""
@@ -227,13 +234,12 @@ class KnowledgeService:
             from app.database.session import engine
 
             def _do_delete():
-                with engine.connect() as conn:
+                with engine.begin() as conn:
                     query = text("""
                         DELETE FROM langchain_pg_embedding
                         WHERE cmetadata->>'source' = :source
                     """)
                     conn.execute(query, {"source": file_path})
-                    conn.commit()
 
             await asyncio.to_thread(_do_delete)
             logger.info(f"删除文档成功: {file_path}")
