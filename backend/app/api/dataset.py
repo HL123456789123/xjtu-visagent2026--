@@ -35,8 +35,9 @@ def _get_allowed_dirs() -> list[Path]:
 
 def _is_path_allowed(resolved: Path) -> bool:
     """检查路径是否在白名单内"""
+    resolved_str = str(resolved)
     return any(
-        str(resolved).startswith(str(allowed))
+        resolved_str == str(allowed) or resolved_str.startswith(str(allowed) + '/')
         for allowed in _get_allowed_dirs()
     )
 
