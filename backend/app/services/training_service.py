@@ -238,7 +238,8 @@ class TrainingService:
                     # 每 5 个 epoch 或最后一个 epoch 批量提交，减少事务开销
                     if current_ep % 5 == 0 or current_ep >= task.epochs - 1:
                         db.commit()
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"训练回调 epoch={current_ep} 写入失败: {e}")
                     db.rollback()
 
             model.add_callback("on_train_epoch_end", _on_train_epoch_end)
@@ -512,19 +513,20 @@ class TrainingService:
 
         task.status = "cancelled"
         self._invalidate_training_cache(task_id)
-        db.commit()
 
         # 注意：checkpoint 文件的实际清理由 _train_worker 线程完成
         # 这里只清理已暂停任务的历史 checkpoint（线程已停止的情况）
+        # 文件清理在 commit 前完成，避免中间窗口工作线程修改状态
         if task.checkpoint_path and os.path.exists(task.checkpoint_path):
             try:
                 cp_path = task.checkpoint_path
                 os.remove(cp_path)
                 task.checkpoint_path = None
-                db.commit()
                 logger.info(f"已清理暂停任务的 checkpoint: {cp_path}")
             except Exception as e:
                 logger.warning(f"清理 checkpoint 失败: {e}")
+
+        db.commit()
 
         logger.info(f"取消训练任务: task_id={task_id}")
         return True

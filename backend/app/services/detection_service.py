@@ -186,15 +186,17 @@ class DetectionService:
         cache_key = (scene_id, model_version_id)
 
         # 确保模型已加载（load_model 是同步操作，通过 to_thread 避免阻塞事件循环）
-        if cache_key not in self.models:
+        with self._models_lock:
+            model = self.models.get(cache_key)
+        if model is None:
             model_path = self.get_default_model_path(db, scene_id, model_version_id)
             import asyncio
 
             loaded = await asyncio.to_thread(self.load_model, scene_id, model_path, cache_key)
             if not loaded:
                 raise ValueError(f"无法加载模型: scene_id={scene_id}")
-
-        model = self.models[cache_key]
+            with self._models_lock:
+                model = self.models.get(cache_key)
 
         # 执行检测（同步阻塞操作，委托到线程池）
         import asyncio
