@@ -156,10 +156,12 @@ class UserService:
         """
         query = db.query(User)
 
-        # 关键字搜索
+        # 关键字搜索（转义 LIKE 通配符，防止用户输入 % 或 _ 导致非预期匹配）
         if keyword:
+            escaped = keyword.replace("%", "\\%").replace("_", "\\_")
             query = query.filter(
-                (User.username.ilike(f"%{keyword}%")) | (User.email.ilike(f"%{keyword}%"))
+                (User.username.ilike(f"%{escaped}%", escape="\\"))
+                | (User.email.ilike(f"%{escaped}%", escape="\\"))
             )
 
         # 状态筛选
