@@ -130,6 +130,7 @@ async def get_current_user(
         .first()
     ) is not None
     # 设置到 user 对象，供 is_super_admin 函数读取
+    # TODO: 考虑迁移到 request.state 缓存，避免 object.__setattr__ hack SQLAlchemy 实例
     object.__setattr__(user, "_is_super_admin", _has_super_admin_role)
     return user
 
