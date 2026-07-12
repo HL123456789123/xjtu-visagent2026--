@@ -329,8 +329,9 @@ class TrainingService:
         """
         # 如果没有关联模型，创建新的 Model
         if task.model_id is None:
-            # 使用基础架构名称作为模型名称
-            model_name = f"{task.base_architecture}_model"
+            # 使用时间戳后缀生成唯一模型名，避免 unique 约束冲突
+            timestamp = now_cst().strftime("%Y%m%d%H%M%S")
+            model_name = f"{task.base_architecture}_model_{timestamp}"
             
             new_model = Model(
                 created_by=task.user_id,
