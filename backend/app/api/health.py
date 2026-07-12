@@ -49,7 +49,7 @@ async def database_health():
             detail={
                 "status": "unhealthy",
                 "database": "postgresql",
-                "message": f"数据库连接失败: {str(e)}",
+                "message": "数据库连接异常，请查看日志",
             },
         )
 
@@ -103,6 +103,6 @@ async def minio_health():
             detail={
                 "status": "unhealthy",
                 "minio": "disconnected",
-                "message": f"MinIO 连接失败: {str(e)}",
+                "message": "MinIO 连接异常，请查看日志",
             },
         )
