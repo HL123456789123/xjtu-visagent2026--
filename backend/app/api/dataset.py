@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.core.security import get_current_user, RequirePermission
+from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.core.logger import get_logger
 from app.database.session import get_db
 from app.entity.db_models import User, Dataset
@@ -326,7 +326,6 @@ async def list_datasets(
     query = db.query(Dataset)
 
     # 非超级管理员只能看自己的
-    from app.core.security import is_super_admin
     if not is_super_admin(current_user, db):
         query = query.filter(Dataset.user_id == current_user.id)
 
