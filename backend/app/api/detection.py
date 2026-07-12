@@ -183,9 +183,9 @@ async def detect_folder(
     if not scene:
         raise HTTPException(status_code=404, detail="场景不存在")
 
-    # 验证文件夹路径安全性：解析真实路径并检查是否在白名单目录内
+    # 验证文件夹路径安全性：解析真实路径（包括符号链接）并检查是否在白名单目录内
 
-    folder = Path(folder_path).resolve()
+    folder = Path(os.path.realpath(folder_path))
     if not folder.exists() or not folder.is_dir():
         raise HTTPException(status_code=400, detail=f"文件夹不存在: {folder_path}")
 
