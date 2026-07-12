@@ -11,10 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, R
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.config.settings import settings
 from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.core.logger import get_logger
 from app.core.tz import now_cst
+from app.core.path_validator import validate_training_path
 from app.database.session import get_db
 from app.entity.db_models import User, Model, ModelVersion, TrainingTask
 from app.entity.schemas import ApiResponse
@@ -32,22 +32,6 @@ from app.services.data_utils import (
 logger = get_logger("training_api")
 
 router = APIRouter(prefix="/api/training", tags=["训练管理"])
-
-
-def _validate_training_path(file_path: str, label: str = "路径"):
-    """校验训练相关路径是否在白名单目录内"""
-    resolved = Path(file_path).resolve()
-    allowed_dirs = [d.strip() for d in settings.ALLOWED_TRAINING_DIRS.split(",") if d.strip()]
-    for allowed in allowed_dirs:
-        try:
-            resolved.relative_to(Path(allowed).resolve())
-            return  # 路径在白名单内
-        except ValueError:
-            continue
-    raise HTTPException(
-        status_code=400,
-        detail=f"{label}不在允许的目录内，允许的目录: {', '.join(allowed_dirs)}",
-    )
 
 
 def _get_task_or_403(db: Session, task_id: int, user: User):
@@ -111,8 +95,8 @@ async def create_training_task(
 ):
     """创建训练任务（训练成功后自动创建新模型）"""
     # 校验路径安全性
-    _validate_training_path(dataset_path, "数据集路径")
-    _validate_training_path(data_yaml, "data.yaml 路径")
+    validate_training_path(dataset_path, "数据集路径")
+    validate_training_path(data_yaml, "data.yaml 路径")
 
     config = {
         "base_architecture": base_architecture,
@@ -281,6 +265,8 @@ async def validate_dataset_api(
     current_user: User = Depends(get_current_user),
 ):
     """验证数据集"""
+    validate_training_path(images_dir, "图像目录路径")
+    validate_training_path(labels_dir, "标注目录路径")
     class_list = [name.strip() for name in class_names.split(",")]
     result = validate_dataset(images_dir, labels_dir, class_list)
 
@@ -298,6 +284,9 @@ async def split_dataset_api(
     current_user: User = Depends(get_current_user),
 ):
     """划分数据集"""
+    validate_training_path(images_dir, "图像目录路径")
+    validate_training_path(labels_dir, "标注目录路径")
+    validate_training_path(output_dir, "输出目录路径")
     try:
         stats = split_dataset(
             images_dir=images_dir,
@@ -321,6 +310,8 @@ async def generate_data_yaml_api(
     current_user: User = Depends(get_current_user),
 ):
     """生成 data.yaml 配置文件"""
+    validate_training_path(output_path, "输出文件路径")
+    validate_training_path(dataset_dir, "数据集根目录")
     class_list = [name.strip() for name in class_names.split(",")]
 
     try:
@@ -344,7 +335,6 @@ async def upload_model(
     current_user: User = Depends(get_current_user),
 ):
     """手动上传模型版本文件（归属于指定模型下）"""
-    import shutil
     from pathlib import Path
 
     # 验证模型是否存在
@@ -356,31 +346,32 @@ async def upload_model(
     if not model_file.filename.endswith(".pt"):
         raise HTTPException(status_code=400, detail="仅支持 .pt 模型文件")
 
-    # 验证文件大小（最大 500MB）
+    # 验证文件大小（最大 500MB）—— 流式写入临时文件避免内存耗尽
     MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
-    file_size = 0
-    file_content = await model_file.read()
-    file_size = len(file_content)
-    if file_size > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=400,
-            detail=f"文件大小超过限制，最大允许 500MB，当前文件大小: {file_size / (1024*1024):.2f}MB"
-        )
-    # 重置文件指针以便后续写入
-    await model_file.seek(0)
 
     # 创建模型存储目录
     models_dir = Path("data/models") / model_obj.name
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    # 保存模型文件
+    # 保存模型文件（流式写入，避免一次性读入内存）
     model_filename = f"{model_obj.name}_{version}.pt"
     model_path = models_dir / model_filename
 
+    file_size = 0
+    chunk_size = 1024 * 1024  # 1MB 分块
     with open(model_path, "wb") as buffer:
-        shutil.copyfileobj(model_file.file, buffer)
+        while chunk := await model_file.read(chunk_size):
+            file_size += len(chunk)
+            if file_size > MAX_FILE_SIZE:
+                buffer.close()
+                os.remove(model_path)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"文件大小超过限制，最大允许 500MB，当前已写入: {file_size / (1024*1024):.2f}MB"
+                )
+            buffer.write(chunk)
 
-    file_size = model_path.stat().st_size
+    logger.info(f"模型文件已保存: {model_path}, 大小: {file_size / (1024*1024):.2f}MB")
 
     # 如果设为默认版本，先取消该模型其他默认版本
     if is_default:
@@ -472,6 +463,9 @@ async def convert_coco_to_yolo_api(
     """COCO JSON → YOLO TXT 格式转换"""
     import tempfile
     import os
+
+    validate_training_path(image_dir, "图像目录路径")
+    validate_training_path(output_dir, "输出目录路径")
 
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         tmp.write(await coco_file.read())

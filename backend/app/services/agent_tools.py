@@ -82,6 +82,10 @@ async def detect_objects(image_path: str, scene_name: str, conf_threshold: float
     try:
         from app.entity.db_models import DetectionScene
         from app.services.detection_service import detection_service
+        from app.core.path_validator import validate_detection_path
+
+        # 校验图像路径安全性
+        validate_detection_path(image_path, "图像文件路径")
 
         with _agent_db() as db:
             # 查找场景

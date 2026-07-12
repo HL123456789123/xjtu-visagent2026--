@@ -334,7 +334,7 @@ class TrainingService:
             model_name = f"{task.base_architecture}_model"
             
             new_model = Model(
-                user_id=task.user_id,
+                created_by=task.user_id,
                 name=model_name,
                 category="general",
                 base_architecture=task.base_architecture,

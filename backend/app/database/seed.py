@@ -500,10 +500,7 @@ def seed_scenes(db_session) -> int:
 
         existing_user = db_session.query(User).filter(User.username == username).first()
         if existing_user:
-            # 同步更新密码和邮箱，确保与种子配置一致
-            existing_user.hashed_password = hash_password(password)
-            existing_user.email = email
-            logger.info(f"更新默认用户密码: {username}")
+            logger.info(f"默认用户已存在，跳过: {username}")
             continue
 
         user = User(
