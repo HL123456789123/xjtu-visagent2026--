@@ -19,6 +19,7 @@ from app.database.session import get_db
 from app.entity.db_models import User, Dataset
 from app.entity.schemas import ApiResponse
 from app.core.rate_limiter import limiter
+from app.storage.redis_client import redis_client
 
 logger = get_logger("dataset_api")
 
@@ -89,7 +90,7 @@ def _parse_yaml_info(yaml_path: Path) -> dict:
 
 
 def _count_images(dataset_path: Path) -> int:
-    """统计数据集目录下的图片数量"""
+    """统计数据集目录下的图片数量（限制扫描深度，避免性能问题）"""
     if not dataset_path.exists():
         raise HTTPException(status_code=400, detail=f"数据集目录不存在: {dataset_path}")
 
@@ -98,15 +99,10 @@ def _count_images(dataset_path: Path) -> int:
 
     # 查找 images 子目录
     images_dir = dataset_path / "images"
-    if images_dir.is_dir():
-        for f in images_dir.rglob("*"):
-            if f.suffix.lower() in image_extensions:
-                count += 1
-    else:
-        # 如果没有 images 子目录，直接统计根目录
-        for f in dataset_path.rglob("*"):
-            if f.suffix.lower() in image_extensions:
-                count += 1
+    scan_dir = images_dir if images_dir.is_dir() else dataset_path
+    for f in _walk_with_depth_limit(scan_dir, max_depth=3):
+        if f.suffix.lower() in image_extensions:
+            count += 1
 
     return count
 
@@ -205,7 +201,14 @@ async def discover_datasets(
 
     查找标准：目录下存在 data.yaml 或 data.yml 配置文件
     递归扫描所有子目录（无深度限制）
+    结果缓存 5 分钟，减少重复扫描开销
     """
+    # 尝试从 Redis 缓存获取
+    cache_key = "dataset_discover"
+    cached = redis_client.cache_get(cache_key)
+    if cached:
+        return ApiResponse(code=200, data=cached)
+
     discovered = []
     yaml_names = ("data.yaml", "data.yml")
     # 记录已处理的目录，避免重复
@@ -259,9 +262,13 @@ async def discover_datasets(
                     "error": "配置文件解析失败",
                 })
 
+    result = {"discovered": discovered, "total": len(discovered)}
+    # 写入缓存，5 分钟 TTL
+    redis_client.cache_set(cache_key, result, ex=300)
+
     return ApiResponse(
         code=200,
-        data={"discovered": discovered, "total": len(discovered)},
+        data=result,
     )
 
 
