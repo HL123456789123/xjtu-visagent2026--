@@ -403,7 +403,6 @@ async def get_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="数据集不存在")
 
-    from app.core.security import is_super_admin
     if not is_super_admin(current_user, db) and dataset.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权查看该数据集")
 
@@ -442,7 +441,6 @@ async def delete_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="数据集不存在")
 
-    from app.core.security import is_super_admin
     if not is_super_admin(current_user, db) and dataset.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权删除该数据集")
 
@@ -474,7 +472,6 @@ async def validate_dataset(
     if not dataset:
         raise HTTPException(status_code=404, detail="数据集不存在")
 
-    from app.core.security import is_super_admin
     if not is_super_admin(current_user, db) and dataset.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权操作该数据集")
 

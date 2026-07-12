@@ -375,6 +375,7 @@ class ModelVersionResponse(BaseModel):
     version: str
     source: str = "training"
     status: str = "active"
+    model_path: Optional[str] = None
     minio_url: Optional[str] = None
     map50: Optional[float] = None
     map50_95: Optional[float] = None

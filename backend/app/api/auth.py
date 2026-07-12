@@ -15,6 +15,7 @@ from app.core.rate_limiter import limiter
 from app.database.session import get_db
 from app.entity.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.services.user_service import user_service
+from app.middleware.request_logger import log_operation
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -33,6 +34,20 @@ async def register(request: Request, body: UserRegister, db: Session = Depends(g
         username=body.username,
         email=body.email,
         password=body.password,
+    )
+    log_operation(
+        db=db,
+        user_id=user.id,
+        username=user.username,
+        module="auth",
+        action="create",
+        target_type="user",
+        target_id=user.id,
+        description=f"用户注册: {user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        request_method=request.method,
+        request_path=str(request.url.path),
     )
     return user
 
@@ -79,6 +94,23 @@ async def login(request: Request, body: UserLogin, db: Session = Depends(get_db)
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
     )
+
+    # 记录登录操作日志
+    log_operation(
+        db=db,
+        user_id=user.id,
+        username=user.username,
+        module="auth",
+        action="login",
+        target_type="user",
+        target_id=user.id,
+        description=f"用户登录: {user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        request_method=request.method,
+        request_path=str(request.url.path),
+    )
+
     return response
 
 

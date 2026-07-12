@@ -56,12 +56,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         f"Path: {request.url.path} | "
         f"Method: {request.method}"
     )
+    # 统一 detail 格式：非字符串类型转为字符串，避免返回原始 dict/list 对象
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "code": exc.status_code,
             "message": exc.detail if isinstance(exc.detail, str) else "请求错误",
-            "detail": exc.detail,
+            "detail": detail,
         },
     )
 
