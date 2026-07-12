@@ -38,48 +38,46 @@ class TrainingService:
         """
         from app.database.session import SessionLocal
 
-        db = SessionLocal()
-        try:
-            # 查找所有 running 或 paused 状态的任务
-            interrupted_tasks = (
-                db.query(TrainingTask).filter(TrainingTask.status.in_(["running", "paused"])).all()
-            )
-
-            if interrupted_tasks:
-                logger.warning(f"发现 {len(interrupted_tasks)} 个中断的训练任务，正在恢复状态...")
-
-                recovered = 0
-                failed = 0
-                for task in interrupted_tasks:
-                    # 检查 checkpoint 是否存在
-                    if task.checkpoint_path and os.path.exists(task.checkpoint_path):
-                        task.status = "paused"
-                        task.error_message = "服务重启导致训练中断，可从 checkpoint 恢复"
-                        recovered += 1
-                        logger.info(
-                            f"任务 {task.id} ({task.task_uuid}) 标记为 paused（有 checkpoint）"
-                        )
-                    else:
-                        task.status = "failed"
-                        task.error_message = "服务重启导致训练中断，无 checkpoint 可恢复"
-                        failed += 1
-                        logger.info(
-                            f"任务 {task.id} ({task.task_uuid}) 标记为 failed（无 checkpoint）"
-                        )
-                    task.updated_at = now_cst()
-
-                db.commit()
-                logger.info(
-                    f"已恢复 {len(interrupted_tasks)} 个中断任务（{recovered} 可恢复，{failed} 失败）"
+        with SessionLocal() as db:
+            try:
+                # 查找所有 running 或 paused 状态的任务
+                interrupted_tasks = (
+                    db.query(TrainingTask).filter(TrainingTask.status.in_(["running", "paused"])).all()
                 )
-            else:
-                logger.info("没有发现中断的训练任务")
 
-        except Exception as e:
-            logger.error(f"恢复中断任务失败: {e}")
-            db.rollback()
-        finally:
-            db.close()
+                if interrupted_tasks:
+                    logger.warning(f"发现 {len(interrupted_tasks)} 个中断的训练任务，正在恢复状态...")
+
+                    recovered = 0
+                    failed = 0
+                    for task in interrupted_tasks:
+                        # 检查 checkpoint 是否存在
+                        if task.checkpoint_path and os.path.exists(task.checkpoint_path):
+                            task.status = "paused"
+                            task.error_message = "服务重启导致训练中断，可从 checkpoint 恢复"
+                            recovered += 1
+                            logger.info(
+                                f"任务 {task.id} ({task.task_uuid}) 标记为 paused（有 checkpoint）"
+                            )
+                        else:
+                            task.status = "failed"
+                            task.error_message = "服务重启导致训练中断，无 checkpoint 可恢复"
+                            failed += 1
+                            logger.info(
+                                f"任务 {task.id} ({task.task_uuid}) 标记为 failed（无 checkpoint）"
+                            )
+                        task.updated_at = now_cst()
+
+                    db.commit()
+                    logger.info(
+                        f"已恢复 {len(interrupted_tasks)} 个中断任务（{recovered} 可恢复，{failed} 失败）"
+                    )
+                else:
+                    logger.info("没有发现中断的训练任务")
+
+            except Exception as e:
+                logger.error(f"恢复中断任务失败: {e}")
+                db.rollback()
 
     def create_training_task(
         self, db: Session, user_id: int, config: Dict[str, Any]
@@ -382,10 +380,14 @@ class TrainingService:
         # 计算文件大小
         file_size = os.path.getsize(model_path) if os.path.exists(model_path) else None
 
+        # 使用时间戳生成唯一版本号，避免删除后版本号冲突
+        from datetime import datetime
+        version_str = datetime.now().strftime("v%Y%m%d%H%M%S")
+
         version = ModelVersion(
             model_id=model_id,
             training_task_id=task.id,
-            version=f"v{version_count + 1}.0.0",
+            version=version_str,
             source="training",
             status="active",
             model_path=model_path,
