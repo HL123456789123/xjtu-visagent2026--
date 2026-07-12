@@ -356,6 +356,19 @@ async def upload_model(
     if not model_file.filename.endswith(".pt"):
         raise HTTPException(status_code=400, detail="仅支持 .pt 模型文件")
 
+    # 验证文件大小（最大 500MB）
+    MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
+    file_size = 0
+    file_content = await model_file.read()
+    file_size = len(file_content)
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"文件大小超过限制，最大允许 500MB，当前文件大小: {file_size / (1024*1024):.2f}MB"
+        )
+    # 重置文件指针以便后续写入
+    await model_file.seek(0)
+
     # 创建模型存储目录
     models_dir = Path("data/models") / model_obj.name
     models_dir.mkdir(parents=True, exist_ok=True)

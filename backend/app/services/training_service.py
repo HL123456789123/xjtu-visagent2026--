@@ -381,8 +381,7 @@ class TrainingService:
         file_size = os.path.getsize(model_path) if os.path.exists(model_path) else None
 
         # 使用时间戳生成唯一版本号，避免删除后版本号冲突
-        from datetime import datetime
-        version_str = datetime.now().strftime("v%Y%m%d%H%M%S")
+        version_str = now_cst().strftime("v%Y%m%d%H%M%S")
 
         version = ModelVersion(
             model_id=model_id,
