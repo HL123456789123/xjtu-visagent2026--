@@ -142,6 +142,17 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode='after')
+    def check_security_critical(self) -> 'Settings':
+        """启动前校验关键安全配置，缺失则阻止启动"""
+        # JWT_SECRET_KEY 不能为空
+        if not self.JWT_SECRET_KEY:
+            raise ValueError(
+                "JWT_SECRET_KEY 未配置！请在 .env 文件中设置 JWT_SECRET_KEY，"
+                "例如: JWT_SECRET_KEY=your-strong-random-secret-key"
+            )
+        return self
+
+    @model_validator(mode='after')
     def check_default_passwords(self) -> 'Settings':
         """检测并警告使用默认密码的风险"""
         default_passwords = {
