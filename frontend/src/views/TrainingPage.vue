@@ -251,6 +251,7 @@ import {
   getTrainingDevicesApi
 } from '@/api/training'
 import { getDatasetsApi } from '@/api/dataset'
+import { formatTime } from '@/utils/format'
 
 const tasks = ref([])
 const statusFilter = ref('')
@@ -349,6 +350,10 @@ async function startTask(task) {
     await startTrainingApi(task.id)
     ElMessage.success('任务已启动')
     loadTasks()
+    // 重新开始轮询
+    if (!pollingTimer.value) {
+      startPolling()
+    }
   } catch (error) {
     ElMessage.error('启动任务失败')
   }
@@ -368,6 +373,10 @@ async function resumeTask(task) {
   try {
     await startTrainingApi(task.id)
     ElMessage.success('任务已恢复')
+    // 重新开始轮询
+    if (!pollingTimer.value) {
+      startPolling()
+    }
     loadTasks()
   } catch (error) {
     ElMessage.error('恢复任务失败')
@@ -488,11 +497,6 @@ function getStatusText(status) {
   return map[status] || status
 }
 
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString('zh-CN')
-}
-
 function startPolling() {
   pollingTimer.value = setInterval(() => {
     const hasRunning = tasks.value.some(t => t.status === 'running')
@@ -501,6 +505,10 @@ function startPolling() {
       if (showDetailDialog.value && detailTask.value?.status === 'running') {
         loadMetrics()
       }
+    } else {
+      // 没有运行中的任务时，停止轮询以节省资源
+      clearInterval(pollingTimer.value)
+      pollingTimer.value = null
     }
   }, 5000)
 }

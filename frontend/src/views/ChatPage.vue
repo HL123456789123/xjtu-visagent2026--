@@ -120,6 +120,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { createSessionApi, getSessionsApi, getMessagesApi, deleteSessionApi } from '@/api/chat'
 import { streamChat } from '@/utils/sse'
 import { renderMarkdown } from '@/utils/markdown'
+import { formatTime } from '@/utils/format'
 
 // 会话列表
 const sessions = ref([])
@@ -204,9 +205,15 @@ async function sendMessage() {
 
   // 如果没有会话，先创建
   if (!currentSession.value) {
-    await createSession()
-    // 创建会话成功后，currentSession.value 已经被设置
-    doSendMessage(message)
+    try {
+      await createSession()
+      // 创建会话失败则中止
+      if (!currentSession.value) return
+      doSendMessage(message)
+    } catch (error) {
+      ElMessage.error('创建会话失败')
+      return
+    }
   } else {
     doSendMessage(message)
   }
@@ -292,12 +299,7 @@ function scrollToBottom() {
   })
 }
 
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
+// 使用公共的 formatTime 函数
 
 // 监听消息变化，自动滚动
 watch(messages, () => {
@@ -318,14 +320,14 @@ onMounted(() => {
 
 .session-list {
   width: 280px;
-  background: #fff;
-  border-right: 1px solid #ebeef5;
+  background: $bg-color-white;
+  border-right: 1px solid $border-color;
   display: flex;
   flex-direction: column;
 
   .session-header {
     padding: $spacing-md;
-    border-bottom: 1px solid #ebeef5;
+    border-bottom: 1px solid $border-color;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -353,11 +355,11 @@ onMounted(() => {
     transition: background 0.2s;
 
     &:hover {
-      background: #f5f7fa;
+      background: $bg-color;
     }
 
     &.active {
-      background: #ecf5ff;
+      background: $bg-color-light-blue;
       color: $primary-color;
     }
 
@@ -374,12 +376,12 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: $bg-color-white;
 }
 
 .chat-header {
   padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid $border-color;
 
   h3 {
     margin: 0;
@@ -428,7 +430,7 @@ onMounted(() => {
 
     .message-content {
       background: $primary-color;
-      color: #fff;
+      color: $bg-color-white;
       border-radius: $border-radius-lg $border-radius-lg 0 $border-radius-lg;
     }
   }
@@ -437,7 +439,7 @@ onMounted(() => {
     justify-content: flex-start;
 
     .message-content {
-      background: #f5f7fa;
+      background: $bg-color;
       color: $text-primary;
       border-radius: $border-radius-lg $border-radius-lg $border-radius-lg 0;
     }
@@ -455,12 +457,12 @@ onMounted(() => {
 
   &.ai-avatar {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #fff;
+    color: $bg-color-white;
   }
 
   &.user-avatar {
     background: $primary-color;
-    color: #fff;
+    color: $bg-color-white;
   }
 }
 
@@ -503,8 +505,8 @@ onMounted(() => {
     }
 
     :deep(pre) {
-      background: #1e1e1e;
-      color: #d4d4d4;
+      background: $code-bg;
+      color: $code-text;
       padding: $spacing-md;
       border-radius: $border-radius-md;
       overflow-x: auto;
@@ -542,7 +544,7 @@ onMounted(() => {
 
 .input-area {
   padding: $spacing-md $spacing-lg;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid $border-color;
   display: flex;
   gap: $spacing-md;
 
