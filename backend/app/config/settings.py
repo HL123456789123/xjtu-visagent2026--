@@ -5,6 +5,8 @@
 """
 
 from pydantic_settings import BaseSettings
+from pydantic import model_validator, field_validator
+import warnings
 
 
 class Settings(BaseSettings):
@@ -94,6 +96,70 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+    @field_validator('DB_PORT')
+    @classmethod
+    def validate_db_port(cls, v: int) -> int:
+        """验证数据库端口范围"""
+        if not (1 <= v <= 65535):
+            raise ValueError('数据库端口必须在 1-65535 之间')
+        return v
+
+    @field_validator('REDIS_PORT')
+    @classmethod
+    def validate_redis_port(cls, v: int) -> int:
+        """验证 Redis 端口范围"""
+        if not (1 <= v <= 65535):
+            raise ValueError('Redis 端口必须在 1-65535 之间')
+        return v
+
+    @field_validator('ACCESS_TOKEN_EXPIRE_MINUTES')
+    @classmethod
+    def validate_token_expire(cls, v: int) -> int:
+        """验证 Token 过期时间"""
+        if v < 1:
+            raise ValueError('Token 过期时间必须大于 0 分钟')
+        if v > 1440:  # 24 小时
+            warnings.warn('Token 过期时间超过 24 小时，可能存在安全风险', UserWarning)
+        return v
+
+    @field_validator('OPENAI_BASE_URL')
+    @classmethod
+    def validate_openai_url(cls, v: str) -> str:
+        """验证 OpenAI API URL 格式"""
+        if v and not v.startswith(('http://', 'https://')):
+            raise ValueError('OpenAI API URL 必须以 http:// 或 https:// 开头')
+        return v
+
+    @field_validator('MAX_CACHED_MODELS')
+    @classmethod
+    def validate_max_cached_models(cls, v: int) -> int:
+        """验证模型缓存数量"""
+        if v < 1:
+            raise ValueError('模型缓存数量必须大于 0')
+        if v > 20:
+            warnings.warn('模型缓存数量超过 20，可能导致内存占用过高', UserWarning)
+        return v
+
+    @model_validator(mode='after')
+    def check_default_passwords(self) -> 'Settings':
+        """检测并警告使用默认密码的风险"""
+        default_passwords = {
+            'DB_PASSWORD': ('visagent', self.DB_PASSWORD),
+            'MINIO_SECRET_KEY': ('minioadmin', self.MINIO_SECRET_KEY),
+        }
+        
+        warnings_list = []
+        for field, (default, current) in default_passwords.items():
+            if current == default:
+                warnings_list.append(f"{field} 使用了默认值 '{default}'，这会导致安全风险！")
+        
+        if warnings_list:
+            warning_msg = "\n⚠️ 安全警告：" + "\n".join(warnings_list)
+            warning_msg += "\n请在 .env 文件中设置强密码，生产环境务必修改默认密码。"
+            warnings.warn(warning_msg, UserWarning, stacklevel=2)
+        
+        return self
 
 
 # 创建全局单例，其他模块直接 import 使用
