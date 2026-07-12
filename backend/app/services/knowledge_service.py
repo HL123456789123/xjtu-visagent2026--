@@ -4,6 +4,7 @@
 使用 PgVector 作为向量存储
 """
 
+import asyncio
 from typing import List, Dict, Any
 from pathlib import Path
 
@@ -190,8 +191,10 @@ class KnowledgeService:
         self._initialize()
 
         try:
-            # 执行相似性搜索
-            results = self.vector_store.similarity_search_with_score(query, k=k)
+            # 执行相似性搜索（同步操作，委托到线程池避免阻塞事件循环）
+            results = await asyncio.to_thread(
+                self.vector_store.similarity_search_with_score, query, k=k
+            )
 
             formatted_results = []
             for doc, score in results:

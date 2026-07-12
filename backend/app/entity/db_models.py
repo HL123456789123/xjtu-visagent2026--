@@ -41,7 +41,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False, comment="加密密码")
     phone = Column(String(20), nullable=True, comment="手机号")
     avatar = Column(String(500), nullable=True, comment="头像 URL")
-    is_active = Column(Boolean, default=True, comment="是否启用")
+    is_active = Column(Boolean, default=True, server_default='true', comment="是否启用")
     last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
     created_at = Column(DateTime, default=now_cst, comment="创建时间")
     updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
@@ -53,6 +53,7 @@ class User(Base):
     chat_sessions = relationship("ChatSession", back_populates="user")
     operation_logs = relationship("OperationLog", back_populates="user")
     models = relationship("Model", back_populates="creator")
+    datasets = relationship("Dataset", back_populates="user")
 
 
 class Role(Base):
@@ -156,6 +157,7 @@ class DetectionScene(Base):
     # 关联
     detection_tasks = relationship("DetectionTask", back_populates="scene")
     scene_models = relationship("SceneModel", back_populates="scene", cascade="all, delete-orphan")
+    datasets = relationship("Dataset", back_populates="scene")
 
 
 class DetectionTask(Base):
@@ -378,8 +380,9 @@ class Dataset(Base):
     updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
 
     # 关联
-    user = relationship("User", backref="datasets")
-    scene = relationship("DetectionScene", backref="datasets")
+    user = relationship("User", back_populates="datasets")
+    scene = relationship("DetectionScene", back_populates="datasets")
+    training_tasks = relationship("TrainingTask", back_populates="dataset")
 
 
 class TrainingTask(Base):
@@ -442,7 +445,7 @@ class TrainingTask(Base):
     # 关联
     user = relationship("User", back_populates="training_tasks")
     model = relationship("Model", back_populates="training_tasks")
-    dataset = relationship("Dataset", backref="training_tasks")
+    dataset = relationship("Dataset", back_populates="training_tasks")
     metrics = relationship("TrainingMetric", back_populates="task", cascade="all, delete-orphan")
     model_versions = relationship("ModelVersion", back_populates="training_task")
 

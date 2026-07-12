@@ -225,31 +225,30 @@ async def get_statistics(scene_name: Optional[str] = None) -> str:
                     "class_names": scene.class_names,
                 }
             else:
-                # 查询所有场景统计
-                scenes = db.query(DetectionScene).filter(DetectionScene.is_active.is_(True)).all()
-
-                scene_stats = []
-                for scene in scenes:
-                    total_tasks = (
-                        db.query(DetectionTask).filter(DetectionTask.scene_id == scene.id).count()
+                # 查询所有场景统计（单条 SQL 避免 N+1）
+                scene_stats_query = (
+                    db.query(
+                        DetectionScene.id,
+                        DetectionScene.display_name,
+                        func.count(DetectionTask.id).label("total_tasks"),
+                        func.coalesce(func.sum(DetectionTask.total_objects), 0).label("total_objects"),
                     )
+                    .outerjoin(DetectionTask, DetectionTask.scene_id == DetectionScene.id)
+                    .filter(DetectionScene.is_active.is_(True))
+                    .group_by(DetectionScene.id, DetectionScene.display_name)
+                    .all()
+                )
 
-                    total_objects = (
-                        db.query(func.sum(DetectionTask.total_objects))
-                        .filter(DetectionTask.scene_id == scene.id)
-                        .scalar()
-                        or 0
-                    )
+                scene_stats = [
+                    {
+                        "scene": s.display_name,
+                        "total_tasks": s.total_tasks,
+                        "total_objects": s.total_objects,
+                    }
+                    for s in scene_stats_query
+                ]
 
-                    scene_stats.append(
-                        {
-                            "scene": scene.display_name,
-                            "total_tasks": total_tasks,
-                            "total_objects": total_objects,
-                        }
-                    )
-
-                stats = {"total_scenes": len(scenes), "scenes": scene_stats}
+                stats = {"total_scenes": len(scene_stats), "scenes": scene_stats}
 
             return json.dumps(stats, ensure_ascii=False)
 

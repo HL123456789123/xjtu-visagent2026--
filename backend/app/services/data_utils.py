@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import random
+import yaml
 from pathlib import Path
 from typing import List, Dict, Optional
 from xml.etree import ElementTree as ET
@@ -429,27 +430,18 @@ def generate_data_yaml(
     Returns:
         生成的文件路径
     """
-    yaml_content = f"""# YOLO 数据集配置文件
-# 由 data_utils.py 自动生成
-
-path: {dataset_dir}  # 数据集根目录
-train: {train_dir}  # 训练集相对路径
-val: {val_dir}  # 验证集相对路径
-test: {test_dir}  # 测试集相对路径
-
-# 类别数量
-nc: {len(class_names)}
-
-# 类别名称
-names:
-"""
-
-    for i, name in enumerate(class_names):
-        yaml_content += f"  {i}: {name}\n"
+    yaml_data = {
+        "path": dataset_dir,
+        "train": train_dir,
+        "val": val_dir,
+        "test": test_dir,
+        "nc": len(class_names),
+        "names": {i: name for i, name in enumerate(class_names)},
+    }
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
-        f.write(yaml_content)
+        yaml.dump(yaml_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     logger.info(f"已生成 data.yaml: {output_path}")
     return output_path
