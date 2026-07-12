@@ -5,6 +5,7 @@
 
 from pathlib import Path
 from typing import Optional
+import os
 
 import yaml
 from pydantic import BaseModel
@@ -172,6 +173,29 @@ async def browse_directory(
     )
 
 
+def _walk_with_depth_limit(root_dir: Path, max_depth: int = 5):
+    """递归遍历目录，限制最大扫描深度
+
+    Args:
+        root_dir: 根目录
+        max_depth: 最大递归深度（相对根目录）
+
+    Yields:
+        Path 对象
+    """
+    root_depth = len(root_dir.parts)
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        current = Path(dirpath)
+        # 跳过隐藏目录
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        current_depth = len(current.parts) - root_depth
+        if current_depth >= max_depth:
+            dirnames.clear()  # 不再递归进入子目录
+            continue
+        for filename in filenames:
+            yield current / filename
+
+
 @router.get("/discover", response_model=ApiResponse, dependencies=[Depends(RequirePermission("dataset:create"))])
 async def discover_datasets(
     db: Session = Depends(get_db),
@@ -190,8 +214,8 @@ async def discover_datasets(
     for root_dir in _get_allowed_dirs():
         if not root_dir.exists():
             continue
-        # 递归查找所有 data.yaml / data.yml 文件（无深度限制）
-        for yaml_file in root_dir.rglob("*"):
+        # 带深度限制扫描（最大 5 层），避免无限递归遍历大目录
+        for yaml_file in _walk_with_depth_limit(root_dir, max_depth=5):
             if not yaml_file.is_file() or yaml_file.name.lower() not in yaml_names:
                 continue
             # 跳过隐藏目录下的文件

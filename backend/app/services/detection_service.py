@@ -692,6 +692,7 @@ class DetectionService:
         class_names_cn_map = scene.class_names_cn if scene and scene.class_names_cn else {}
 
         # 为每张图像保存结果
+        result_objects = []
         for result in batch_results:
             if "error" in result:
                 continue
@@ -726,7 +727,10 @@ class DetectionService:
                     image_height=det.get("image_height"),
                     inference_time=inference_time,
                 )
-                db.add(det_result)
+                result_objects.append(det_result)
+
+        if result_objects:
+            db.bulk_save_objects(result_objects)
 
         db.commit()
         db.refresh(task)

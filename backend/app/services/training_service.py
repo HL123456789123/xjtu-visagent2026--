@@ -656,7 +656,7 @@ class TrainingService:
 
     def parse_results_csv(self, db: Session, task_id: int, results_csv: str) -> bool:
         """
-        解析训练日志 results.csv
+        解析训练日志 results.csv，仅写入未被 _write_epoch_metric 覆盖的 epoch
 
         Args:
             db: 数据库会话
@@ -671,20 +671,23 @@ class TrainingService:
                 logger.warning(f"results.csv 不存在: {results_csv}")
                 return False
 
+            # 一次性查询已存在的 epoch 集合，避免逐行查询数据库
+            existing_epochs = set(
+                row[0]
+                for row in db.query(TrainingMetric.epoch)
+                .filter(TrainingMetric.task_id == task_id)
+                .all()
+            )
+
+            new_metrics = []
             with open(results_csv, "r") as f:
                 reader = csv.DictReader(f)
 
                 for row in reader:
                     epoch = int(row.get("epoch", 0))
 
-                    # 检查是否已存在
-                    existing = (
-                        db.query(TrainingMetric)
-                        .filter(TrainingMetric.task_id == task_id, TrainingMetric.epoch == epoch)
-                        .first()
-                    )
-
-                    if existing:
+                    # 跳过已写入的 epoch
+                    if epoch in existing_epochs:
                         continue
 
                     # 创建指标记录
@@ -700,11 +703,14 @@ class TrainingService:
                         map50_95=float(row.get("metrics/mAP50-95(B)", 0)),
                         lr=float(row.get("lr/pg0", 0)),
                     )
-                    db.add(metric)
+                    new_metrics.append(metric)
 
-                db.commit()
-                logger.info(f"解析 results.csv 完成: task_id={task_id}")
-                return True
+            if new_metrics:
+                db.bulk_save_objects(new_metrics)
+
+            db.commit()
+            logger.info(f"解析 results.csv 完成: task_id={task_id}，新增 {len(new_metrics)} 条指标")
+            return True
 
         except Exception as e:
             logger.error(f"解析 results.csv 失败: {e}")
