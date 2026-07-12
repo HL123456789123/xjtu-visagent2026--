@@ -45,26 +45,16 @@ class AgentState(TypedDict):
 _llm_cache = None
 _llm_lock = threading.Lock()
 
-# ReAct Agent 实例缓存，避免每次调用都重新创建
-_agent_cache: dict = {}
-_agent_lock = threading.Lock()
 
-
-def _get_react_agent(agent_name: str):
-    """获取缓存的 ReAct Agent 实例（线程安全）"""
-    if agent_name in _agent_cache:
-        return _agent_cache[agent_name]
-
-    with _agent_lock:
-        if agent_name in _agent_cache:
-            return _agent_cache[agent_name]
-
-        llm = get_llm()
-        tools = get_all_tools()
-        agent = create_react_agent(llm, tools)
-        _agent_cache[agent_name] = agent
-        logger.info(f"创建并缓存 ReAct Agent: {agent_name}")
-        return agent
+def _get_react_agent():
+    """获取 ReAct Agent 实例（每次请求创建独立实例，避免并发状态污染）
+    
+    LLM 实例通过 get_llm() 缓存复用，仅 Agent 实例每次新建。
+    """
+    llm = get_llm()
+    tools = get_all_tools()
+    agent = create_react_agent(llm, tools)
+    return agent
 
 
 def get_llm():
@@ -140,7 +130,7 @@ async def detection_agent_node(state: AgentState) -> dict:
     使用 ReAct Agent 执行检测任务
     """
     try:
-        agent = _get_react_agent("detection_agent")
+        agent = _get_react_agent()
 
         # 构建消息
         messages = [SystemMessage(content=DETECTION_SYSTEM_PROMPT), *state["messages"]]
@@ -174,7 +164,7 @@ async def analysis_agent_node(state: AgentState) -> dict:
     分析检测结果并生成报告
     """
     try:
-        agent = _get_react_agent("analysis_agent")
+        agent = _get_react_agent()
 
         # 构建消息
         messages = [SystemMessage(content=ANALYSIS_SYSTEM_PROMPT), *state["messages"]]
@@ -208,7 +198,7 @@ async def qa_agent_node(state: AgentState) -> dict:
     回答用户问题
     """
     try:
-        agent = _get_react_agent("qa_agent")
+        agent = _get_react_agent()
 
         # 构建消息
         messages = [SystemMessage(content=QA_SYSTEM_PROMPT), *state["messages"]]
@@ -295,13 +285,16 @@ def build_agent_graph():
 
 # 全局 Agent 图实例
 agent_graph = None
+_graph_lock = threading.Lock()
 
 
 def get_agent_graph():
-    """获取全局 Agent 图实例"""
+    """获取全局 Agent 图实例（线程安全）"""
     global agent_graph
     if agent_graph is None:
-        agent_graph = build_agent_graph()
+        with _graph_lock:
+            if agent_graph is None:
+                agent_graph = build_agent_graph()
     return agent_graph
 
 
@@ -309,7 +302,4 @@ def invalidate_agent_cache():
     """清除 Agent 图缓存，在配置变更时调用以重建图实例"""
     global agent_graph
     agent_graph = None
-    # 同时清除 ReAct Agent 缓存
-    with _agent_lock:
-        _agent_cache.clear()
-    logger.info("Agent 缓存已清除，下次调用时将重建")
+    logger.info("Agent 图缓存已清除，下次调用时将重建")

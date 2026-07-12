@@ -119,6 +119,7 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     # 预计算 super_admin 状态并缓存到 user 对象，避免后续重复查库
+    # TODO: 考虑使用 Redis 缓存 super_admin 状态（TTL = Token 过期时间），进一步减少 DB 查询
     from app.entity.db_models import UserRole, Role
     _has_super_admin_role = (
         db.query(UserRole)
