@@ -119,6 +119,7 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     # 预计算 super_admin 状态并缓存到 request.state，避免后续重复查库
+    from app.entity.db_models import UserRole, Role
     _has_super_admin_role = (
         db.query(UserRole)
         .join(Role, Role.id == UserRole.role_id)

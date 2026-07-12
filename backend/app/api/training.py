@@ -335,8 +335,6 @@ async def upload_model(
     current_user: User = Depends(get_current_user),
 ):
     """手动上传模型版本文件（归属于指定模型下）"""
-    from pathlib import Path
-
     # 验证模型是否存在
     model_obj = db.query(Model).filter(Model.id == model_id).first()
     if not model_obj:
