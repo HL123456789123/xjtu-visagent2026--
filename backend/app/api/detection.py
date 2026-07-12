@@ -289,13 +289,13 @@ async def detect_video(
         object_name = f"detection/video/{os.path.basename(output_path)}"
         video_url = minio_client.upload_file(object_name, output_path)
 
-        # 保存视频检测任务记录
+        # 保存视频检测任务记录（含关键帧采样检测结果）
         task = await detection_service.save_detection_result(
             db=db,
             user_id=current_user.id,
             scene_id=scene_id,
             task_type="video",
-            detections=[],
+            detections=result.get("sampled_detections", []),
             image_path=video_path,
             annotated_image_path=None,
             conf_threshold=conf_threshold,
@@ -395,8 +395,9 @@ async def get_detection_tasks(
     current_user: User = Depends(get_current_user),
 ):
     """获取检测任务列表"""
+    user_id = None if is_super_admin(current_user, db) else current_user.id
     result = detection_service.get_task_list(
-        db=db, user_id=current_user.id, scene_id=scene_id, page=page, page_size=page_size
+        db=db, user_id=user_id, scene_id=scene_id, page=page, page_size=page_size
     )
 
     return ApiResponse(code=200, data=result)

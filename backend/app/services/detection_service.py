@@ -26,7 +26,7 @@ from app.entity.db_models import (
     ModelVersion,
     SceneModel,
 )
-from app.storage.minio_client import MinIOClient
+from app.storage.minio_client import get_minio_client
 
 logger = get_logger("detection_service")
 
@@ -372,7 +372,9 @@ class DetectionService:
 
         # 确保模型已加载（在 async 上下文中操作）
         cache_key = (scene_id, model_version_id)
-        if cache_key not in self.models:
+        with self._models_lock:
+            model_loaded = cache_key in self.models
+        if not model_loaded:
             model_path = self.get_default_model_path(db, scene_id, model_version_id)
             loaded = await asyncio.to_thread(self.load_model, scene_id, model_path, cache_key)
             if not loaded:
@@ -423,7 +425,9 @@ class DetectionService:
 
         # 在 async 上下文中确保模型已加载（避免将 db Session 传递到线程）
         cache_key = (scene_id, model_version_id)
-        if cache_key not in self.models:
+        with self._models_lock:
+            model_loaded = cache_key in self.models
+        if not model_loaded:
             model_path = self.get_default_model_path(db, scene_id, model_version_id)
             loaded = await asyncio.to_thread(self.load_model, scene_id, model_path, cache_key)
             if not loaded:
@@ -473,10 +477,10 @@ class DetectionService:
         """
         # 确保模型已加载（模型应由调用方预先加载到缓存）
         cache_key = (scene_id, model_version_id)
-        if cache_key not in self.models:
+        with self._models_lock:
+            model = self.models.get(cache_key)
+        if model is None:
             raise ValueError(f"模型未加载，请先调用 detect_video: scene_id={scene_id}")
-
-        model = self.models[cache_key]
 
         # 打开视频
         cap = cv2.VideoCapture(video_path)
@@ -496,6 +500,8 @@ class DetectionService:
         frame_count = 0
         total_objects = 0
         start_time = time.time()
+        sampled_detections = []  # 采样关键帧的检测结果
+        sample_interval = max(1, total_frames // 20)  # 最多采样 20 帧
 
         try:
             while True:
@@ -516,7 +522,23 @@ class DetectionService:
                 if results and len(results) > 0:
                     annotated_frame = results[0].plot()
                     out.write(annotated_frame)
-                    total_objects += len(results[0].boxes)
+                    boxes = results[0].boxes
+                    total_objects += len(boxes)
+
+                    # 采样关键帧的检测结果
+                    if frame_count % sample_interval == 0 and len(boxes) > 0:
+                        for box in boxes:
+                            cls_id = int(box.cls[0].item())
+                            cls_name = model.names.get(cls_id, str(cls_id))
+                            xyxy = box.xyxy[0].tolist()
+                            sampled_detections.append({
+                                "class_name": cls_name,
+                                "class_id": cls_id,
+                                "confidence": float(box.conf[0].item()),
+                                "bbox": [round(v, 2) for v in xyxy],
+                                "image_width": width,
+                                "image_height": height,
+                            })
                 else:
                     out.write(frame)
 
@@ -536,6 +558,7 @@ class DetectionService:
                 "total_objects": total_objects,
                 "inference_time": inference_time,
                 "fps": fps,
+                "sampled_detections": sampled_detections,
             }
 
         finally:
@@ -601,7 +624,7 @@ class DetectionService:
         if annotated_image_path and os.path.exists(annotated_image_path):
             try:
                 if self.minio_client is None:
-                    self.minio_client = MinIOClient()
+                    self.minio_client = get_minio_client()
                 object_name = f"detection/{task.id}/{Path(annotated_image_path).name}"
                 annotated_image_url = self.minio_client.upload_file(
                     object_name, annotated_image_path
@@ -706,7 +729,7 @@ class DetectionService:
             if annotated_path and os.path.exists(annotated_path):
                 try:
                     if self.minio_client is None:
-                        self.minio_client = MinIOClient()
+                        self.minio_client = get_minio_client()
                     object_name = f"detection/{task.id}/{Path(annotated_path).name}"
                     annotated_image_url = self.minio_client.upload_file(object_name, annotated_path)
                 except Exception as e:
