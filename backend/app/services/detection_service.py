@@ -631,6 +631,12 @@ class DetectionService:
                 )
             except Exception as e:
                 logger.error(f"上传标注图像失败: {e}")
+            finally:
+                # 清理临时标注图像
+                try:
+                    os.unlink(annotated_image_path)
+                except Exception:
+                    pass
 
         # 获取场景的中文类别名映射
         scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
@@ -734,6 +740,12 @@ class DetectionService:
                     annotated_image_url = self.minio_client.upload_file(object_name, annotated_path)
                 except Exception as e:
                     logger.error(f"上传标注图像失败: {e}")
+                finally:
+                    # 清理临时标注图像
+                    try:
+                        os.unlink(annotated_path)
+                    except Exception:
+                        pass
 
             for det in result.get("detections", []):
                 class_name = det.get("class_name", "")
