@@ -1,7 +1,7 @@
 /**
  * 训练相关 API
  */
-import request from '@/utils/request'
+import request, { uploadRequest } from '@/utils/request'
 
 /**
  * 获取可用训练设备列表
@@ -141,9 +141,7 @@ export function uploadModelApi(data) {
   formData.append('version', data.version)
   formData.append('description', data.description || '')
   formData.append('is_default', data.is_default ?? true)
-  return request.post('/training/models/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  return uploadRequest.post('/training/models/upload', formData)
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * 模型管理相关 API
  */
-import request from '@/utils/request'
+import request, { uploadRequest } from '@/utils/request'
 
 /**
  * 获取模型列表
@@ -115,9 +115,7 @@ export function importModelApi(modelId, data) {
   const formData = new FormData()
   formData.append('zip_file', data.zip_file)
   formData.append('description', data.description || '')
-  return request.post(`/models/${modelId}/import`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  return uploadRequest.post(`/models/${modelId}/import`, formData)
 }
 
 /**

@@ -83,3 +83,49 @@ request.interceptors.response.use(
 )
 
 export default request
+
+// 文件上传专用 Axios 实例（10 分钟超时）
+const uploadRequest = axios.create({
+  baseURL: '/api',
+  timeout: 600000,        // 10 分钟超时，适用于大文件上传
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'multipart/form-data',
+  },
+})
+
+// 复用主实例的响应拦截器逻辑
+uploadRequest.interceptors.response.use(
+  (response) => response.data,
+  (error) => {
+    const { response } = error
+    if (response) {
+      const msg = response.data?.message
+      const detail = response.data?.detail
+      switch (response.status) {
+        case 401:
+          ElMessage.error('登录已过期，请重新登录')
+          useUserStore().logout()
+          router.push('/login')
+          break
+        case 403:
+          ElMessage.error(msg || '没有权限访问该资源')
+          break
+        case 422:
+          if (Array.isArray(detail)) {
+            ElMessage.error(detail[0]?.msg || msg || '请求参数错误')
+          } else {
+            ElMessage.error(msg || detail || '请求参数错误')
+          }
+          break
+        default:
+          ElMessage.error(msg || detail || `请求错误 (${response.status})`)
+      }
+    } else {
+      ElMessage.error('网络连接失败，请检查网络')
+    }
+    return Promise.reject(error)
+  }
+)
+
+export { uploadRequest }
