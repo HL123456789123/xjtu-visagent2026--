@@ -89,9 +89,10 @@ export const useUserStore = defineStore('user', {
         this.user = user
         localStorage.setItem(USER_KEY, JSON.stringify(extractSafeFields(user)))
       } catch (error) {
-        // 401 已由请求拦截器处理（跳转登录页），此处不重复 logout
-        // 其他错误（网络抖动、服务端临时错误）保留当前用户状态
+        // 获取失败时清除残留的 localStorage 数据，避免保留过期状态
         console.error('获取用户信息失败:', error)
+        this.user = null
+        localStorage.removeItem(USER_KEY)
         throw error
       }
     },

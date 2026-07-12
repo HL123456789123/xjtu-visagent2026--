@@ -126,8 +126,9 @@ router.beforeEach(async (to, from, next) => {
       await userStore.fetchUserInfo()
       _verified = true
     } catch {
-      // fetchUserInfo 失败时拦截器已处理跳转，此处直接 return
-      return
+      // fetchUserInfo 失败（如 token 过期），重置验证标记并清除用户状态
+      _verified = false
+      userStore.user = null
     }
   }
 
