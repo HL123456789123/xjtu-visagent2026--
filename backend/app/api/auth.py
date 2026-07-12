@@ -5,12 +5,13 @@
 - GET /api/auth/me 获取当前用户信息
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
 from app.core.security import get_current_user, is_super_admin
+from app.core.rate_limiter import limiter
 from app.database.session import get_db
 from app.entity.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.services.user_service import user_service
@@ -19,7 +20,8 @@ router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
-async def register(request: UserRegister, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, body: UserRegister, db: Session = Depends(get_db)):
     """
     用户注册
     - **username**: 用户名（3-50 字符）
@@ -28,9 +30,9 @@ async def register(request: UserRegister, db: Session = Depends(get_db)):
     """
     user = user_service.register(
         db=db,
-        username=request.username,
-        email=request.email,
-        password=request.password,
+        username=body.username,
+        email=body.email,
+        password=body.password,
     )
     return user
 
