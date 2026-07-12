@@ -215,6 +215,7 @@ async def list_versions(
     current_user: User = Depends(get_current_user),
 ):
     """获取模型版本列表"""
+    _check_model_ownership(db, model_id, current_user)  # 校验所有权
     result = model_service.get_model_versions(db, model_id, page, page_size)
     return ApiResponse(code=200, data=result)
 
@@ -289,11 +290,11 @@ async def import_model(
 
     _check_model_ownership(db, model_id, current_user)  # 校验所有权
 
-    # 保存上传的 ZIP 到临时文件
+    # 保存上传的 ZIP 到临时文件（流式写入，避免大文件 OOM）
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-        content = await zip_file.read()
-        tmp.write(content)
         tmp_path = tmp.name
+        while chunk := await zip_file.read(1024 * 1024):  # 1MB chunks
+            tmp.write(chunk)
 
     try:
         mv = model_service.import_model(db, model_id, tmp_path, description)

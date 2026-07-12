@@ -340,6 +340,11 @@ async def upload_model(
     if not model_obj:
         raise HTTPException(status_code=404, detail="模型不存在")
 
+    # 校验模型所有权（超级管理员直接放行）
+    if not is_super_admin(current_user, db):
+        if model_obj.created_by is not None and model_obj.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="无权向该模型上传版本")
+
     # 验证文件类型
     if not model_file.filename.endswith(".pt"):
         raise HTTPException(status_code=400, detail="仅支持 .pt 模型文件")
@@ -551,8 +556,9 @@ async def download_model(
     # 检查模型文件是否存在
     model_path = model_version.model_path
 
-    # 路径安全校验：防止路径穿越攻击
-    allowed_prefixes = ("data/models/", "runs/")
+    # 路径安全校验：防止路径穿越攻击（使用绝对路径比较）
+    base_dir = Path.cwd().resolve()
+    allowed_prefixes = [str(base_dir / p) for p in ("data/models", "runs")]
     resolved_path = Path(model_path).resolve()
     if not any(str(resolved_path).startswith(prefix) for prefix in allowed_prefixes):
         logger.warning(f"模型下载路径不在允许范围内: {model_path}")
