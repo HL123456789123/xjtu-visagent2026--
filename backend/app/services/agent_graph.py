@@ -303,3 +303,13 @@ def get_agent_graph():
     if agent_graph is None:
         agent_graph = build_agent_graph()
     return agent_graph
+
+
+def invalidate_agent_cache():
+    """清除 Agent 图缓存，在配置变更时调用以重建图实例"""
+    global agent_graph
+    agent_graph = None
+    # 同时清除 ReAct Agent 缓存
+    with _agent_lock:
+        _agent_cache.clear()
+    logger.info("Agent 缓存已清除，下次调用时将重建")

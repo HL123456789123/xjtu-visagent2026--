@@ -168,109 +168,118 @@ class ChatService:
     ) -> AsyncGenerator[str, None]:
         """
         发送消息并获取流式响应
-
+    
+        使用独立的数据库 Session，避免 SSE 流在请求结束后因 Session 关闭而失败
+    
         Args:
-            db: 数据库会话
+            db: 数据库会话（仅用于初始化，实际使用独立 Session）
             session_id: 会话ID
             message: 用户消息
-
+    
         Yields:
             SSE 格式的消息
         """
         import time
-
+        from app.database.session import SessionLocal
+    
+        # 创建独立的 Session，确保 SSE 流生命周期内 Session 有效
+        own_db = SessionLocal()
         start_time = time.time()
-
-        # 先获取历史消息（不含当前用户消息），再保存用户消息，避免“先存后取再剔除”的冗余逻辑
-        history = self.get_history(db, session_id, limit=20)
-
-        # 保存用户消息
-        self.save_message(db, session_id, "user", message)
-
-        # 构建消息列表：history（旧历史）+ 当前新消息
-        messages = self._build_messages_for_agent(history, message)
-
-        # 流式执行 Agent
-        full_response = ""
-        agent_used = None
-
+    
         try:
-            # 获取 Agent 图
-            graph = self._get_agent_graph()
-
-            # 初始化状态
-            initial_state = {
-                "messages": messages,
-                "next_agent": "",
-                "detection_results": None,
-                "analysis_report": None,
-                "current_task": None,
-            }
-
-            # 流式执行（设置递归限制防止无限循环）
-            async for event in graph.astream_events(
-                initial_state,
-                config={"recursion_limit": 10},
-                version="v2",
-            ):
-                event_kind = event["event"]
-
-                # 处理 LLM 流式输出
-                if event_kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    if hasattr(chunk, "content") and chunk.content:
-                        token = chunk.content
-                        full_response += token
-                        yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
-
-                # 处理工具调用
-                elif event_kind == "on_tool_start":
-                    tool_name = event.get("name", "unknown")
-                    tool_input = event["data"].get("input", {})
-                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'input': str(tool_input)})}\n\n"
-
-                # 处理工具结果
-                elif event_kind == "on_tool_end":
-                    tool_output = event["data"].get("output", "")
-                    yield f"data: {json.dumps({'type': 'tool_result', 'output': str(tool_output)[:500]})}\n\n"
-
-                # 处理节点执行
-                elif event_kind == "on_chain_start":
-                    node_name = event.get("name", "")
-                    if "supervisor" in node_name:
-                        agent_used = "supervisor"
-                    elif "detection" in node_name:
-                        agent_used = "detection_agent"
-                    elif "analysis" in node_name:
-                        agent_used = "analysis_agent"
-                    elif "qa" in node_name:
-                        agent_used = "qa_agent"
-
-            # 计算耗时
-            latency_ms = int((time.time() - start_time) * 1000)
-
-            # 保存 AI 回复
-            if full_response:
-                self.save_message(
-                    db,
-                    session_id,
-                    "assistant",
-                    full_response,
-                    agent_used=agent_used,
-                    latency_ms=latency_ms,
-                )
-
-            # 发送完成信号
-            yield f"data: {json.dumps({'type': 'done', 'latency_ms': latency_ms})}\n\n"
-
-        except Exception as e:
-            logger.error(f"Agent 执行失败: {e}")
-            error_msg = f"抱歉，处理您的请求时出现错误: {str(e)}"
-
-            # 保存错误消息
-            self.save_message(db, session_id, "assistant", error_msg)
-
-            yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
+            # 先获取历史消息（不含当前用户消息），再保存用户消息
+            history = self.get_history(own_db, session_id, limit=20)
+    
+            # 保存用户消息
+            self.save_message(own_db, session_id, "user", message)
+    
+            # 构建消息列表：history（旧历史）+ 当前新消息
+            messages = self._build_messages_for_agent(history, message)
+    
+            # 流式执行 Agent
+            full_response = ""
+            agent_used = None
+    
+            try:
+                # 获取 Agent 图
+                graph = self._get_agent_graph()
+    
+                # 初始化状态
+                initial_state = {
+                    "messages": messages,
+                    "next_agent": "",
+                    "detection_results": None,
+                    "analysis_report": None,
+                    "current_task": None,
+                }
+    
+                # 流式执行（设置递归限制防止无限循环）
+                async for event in graph.astream_events(
+                    initial_state,
+                    config={"recursion_limit": 10},
+                    version="v2",
+                ):
+                    event_kind = event["event"]
+    
+                    # 处理 LLM 流式输出
+                    if event_kind == "on_chat_model_stream":
+                        chunk = event["data"]["chunk"]
+                        if hasattr(chunk, "content") and chunk.content:
+                            token = chunk.content
+                            full_response += token
+                            yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+    
+                    # 处理工具调用
+                    elif event_kind == "on_tool_start":
+                        tool_name = event.get("name", "unknown")
+                        tool_input = event["data"].get("input", {})
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'input': str(tool_input)})}\n\n"
+    
+                    # 处理工具结果
+                    elif event_kind == "on_tool_end":
+                        tool_output = event["data"].get("output", "")
+                        yield f"data: {json.dumps({'type': 'tool_result', 'output': str(tool_output)[:500]})}\n\n"
+    
+                    # 处理节点执行
+                    elif event_kind == "on_chain_start":
+                        node_name = event.get("name", "")
+                        if "supervisor" in node_name:
+                            agent_used = "supervisor"
+                        elif "detection" in node_name:
+                            agent_used = "detection_agent"
+                        elif "analysis" in node_name:
+                            agent_used = "analysis_agent"
+                        elif "qa" in node_name:
+                            agent_used = "qa_agent"
+    
+                # 计算耗时
+                latency_ms = int((time.time() - start_time) * 1000)
+    
+                # 保存 AI 回复
+                if full_response:
+                    self.save_message(
+                        own_db,
+                        session_id,
+                        "assistant",
+                        full_response,
+                        agent_used=agent_used,
+                        latency_ms=latency_ms,
+                    )
+    
+                # 发送完成信号
+                yield f"data: {json.dumps({'type': 'done', 'latency_ms': latency_ms})}\n\n"
+    
+            except Exception as e:
+                logger.error(f"Agent 执行失败: {e}")
+                error_msg = f"抱歉，处理您的请求时出现错误: {str(e)}"
+    
+                # 保存错误消息
+                self.save_message(own_db, session_id, "assistant", error_msg)
+    
+                yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
+    
+        finally:
+            own_db.close()
 
     def get_session_list(
         self, db: Session, user_id: int, page: int = 1, page_size: int = 20

@@ -277,14 +277,11 @@ class DetectionService:
         start_time = time.time()
         cache_key = (scene_id, model_version_id)
 
-        # 确保模型已加载
-        if cache_key not in self.models:
-            logger.warning(f"模型未缓存，将在同步方法中加载: cache_key={cache_key}")
-            # 同步方法中无法访问 db，需要调用方确保模型已加载
-            if cache_key not in self.models:
-                return [{"image_path": p, "error": "模型未加载", "detections": []} for p in image_paths]
-
-        model = self.models[cache_key]
+        # 确保模型已加载（调用方 detect_batch 已保证模型加载完成）
+        with self._models_lock:
+            model = self.models.get(cache_key)
+        if model is None:
+            return [{"image_path": p, "error": "模型未加载", "detections": []} for p in image_paths]
 
         # 一次性批量推理
         try:
