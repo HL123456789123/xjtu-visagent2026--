@@ -49,10 +49,10 @@ class UserService:
         db.add(new_user)
         db.flush()
 
-        # 自动分配 operator 角色
-        operator_role = db.query(Role).filter(Role.name == "operator").first()
-        if operator_role:
-            db.add(UserRole(user_id=new_user.id, role_id=operator_role.id))
+        # 自动分配 viewer 角色（只读权限，需管理员手动提升角色）
+        viewer_role = db.query(Role).filter(Role.name == "viewer").first()
+        if viewer_role:
+            db.add(UserRole(user_id=new_user.id, role_id=viewer_role.id))
 
         db.commit()
         db.refresh(new_user)
