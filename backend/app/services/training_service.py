@@ -234,9 +234,8 @@ class TrainingService:
                     # 从 results.csv 读取当前 epoch 的指标并写入数据库
                     self._write_epoch_metric(db, task_id, current_ep, results_csv_path)
 
-                    # 每 5 个 epoch 或最后一个 epoch 批量提交，减少事务开销
-                    if current_ep % 5 == 0 or current_ep >= task.epochs - 1:
-                        db.commit()
+                    # 每个 epoch 都提交进度，避免异常丢失
+                    db.commit()
                 except Exception as e:
                     logger.warning(f"训练回调 epoch={current_ep} 写入失败: {e}")
                     db.rollback()
@@ -450,7 +449,7 @@ class TrainingService:
         暂停训练任务
 
         设置停止标志让训练线程自然停止，并保存 checkpoint 路径以便恢复。
-        注意：先设置 DB 状态再设置 stop_flag，避免工作线程看到旧状态而误判为取消。
+        操作顺序：先在锁保护下设置 stop_flag + DB 状态，确保原子性。
 
         Args:
             db: 数据库会话
@@ -466,22 +465,20 @@ class TrainingService:
         if task.status != "running":
             return False
 
-        # 保存 checkpoint 路径（YOLO 训练时 last.pt 会自动保存在 runs/train/task_X/weights/ 下）
+        # 保存 checkpoint 路径
         checkpoint_path = os.path.join("runs", "train", f"task_{task_id}", "weights", "last.pt")
         if os.path.exists(checkpoint_path):
             task.checkpoint_path = checkpoint_path
             logger.info(f"已保存 checkpoint 路径: {checkpoint_path}")
 
-        # 先设置 DB 状态为 paused 并提交，确保工作线程在检查 stop_flag 时
-        # 已经能看到正确的状态，避免“先设 flag 再改 status”导致的竞态条件
-        task.status = "paused"
-        db.commit()
-
-        # 设置停止标志（放在状态提交之后）
+        # 在锁保护下同时设置 stop_flag 和 DB 状态，确保原子性
         with self._lock:
+            task.status = "paused"
             stop_flag = self.task_stop_flags.get(task_id)
-        if stop_flag:
-            stop_flag.set()
+            if stop_flag:
+                stop_flag.set()
+
+        db.commit()
 
         logger.info(f"暂停训练任务: task_id={task_id}")
         return True
@@ -489,6 +486,8 @@ class TrainingService:
     def cancel_training(self, db: Session, task_id: int) -> bool:
         """
         取消训练任务
+
+        操作顺序：先在锁保护下设置 stop_flag，再更新 DB 状态，确保原子性。
 
         Args:
             db: 数据库会话
@@ -504,26 +503,25 @@ class TrainingService:
         if task.status not in ["running", "paused", "pending"]:
             return False
 
-        # 设置停止标志
+        # 先在锁保护下设置停止标志，再更新 DB 状态，确保原子性
         with self._lock:
             stop_flag = self.task_stop_flags.get(task_id)
-        if stop_flag:
-            stop_flag.set()
+            if stop_flag:
+                stop_flag.set()
 
-        task.status = "cancelled"
-        self._invalidate_training_cache(task_id)
+            task.status = "cancelled"
+            self._invalidate_training_cache(task_id)
 
-        # 注意：checkpoint 文件的实际清理由 _train_worker 线程完成
-        # 这里只清理已暂停任务的历史 checkpoint（线程已停止的情况）
-        # 文件清理在 commit 前完成，避免中间窗口工作线程修改状态
-        if task.checkpoint_path and os.path.exists(task.checkpoint_path):
-            try:
-                cp_path = task.checkpoint_path
-                os.remove(cp_path)
-                task.checkpoint_path = None
-                logger.info(f"已清理暂停任务的 checkpoint: {cp_path}")
-            except Exception as e:
-                logger.warning(f"清理 checkpoint 失败: {e}")
+            # 注意：checkpoint 文件的实际清理由 _train_worker 线程完成
+            # 这里只清理已暂停任务的历史 checkpoint（线程已停止的情况）
+            if task.checkpoint_path and os.path.exists(task.checkpoint_path):
+                try:
+                    cp_path = task.checkpoint_path
+                    os.remove(cp_path)
+                    task.checkpoint_path = None
+                    logger.info(f"已清理暂停任务的 checkpoint: {cp_path}")
+                except Exception as e:
+                    logger.warning(f"清理 checkpoint 失败: {e}")
 
         db.commit()
 
