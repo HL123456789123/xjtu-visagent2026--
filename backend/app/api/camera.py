@@ -174,8 +174,9 @@ async def camera_detect(
             if model_version:
                 model_path = model_version.model_path
 
-        # 加载模型
-        cache_key = (scene_id, None)
+        # 加载模型（cache_key 包含 model_version_id，确保切换模型时正确重新加载）
+        model_version_id = model_version.id if model_version else None
+        cache_key = (scene_id, model_version_id)
         if not detection_service.load_model(scene_id, model_path, cache_key=cache_key):
             await websocket.send_json({"type": "error", "message": "模型加载失败"})
             await websocket.close()
@@ -233,9 +234,15 @@ async def camera_detect(
 
                     # 执行检测（通过 to_thread 避免阻塞事件循环）
                     start_time = time.time()
+                    # 加锁获取模型引用，避免线程安全问题
+                    with detection_service._models_lock:
+                        model = detection_service.models.get(cache_key)
+                    if model is None:
+                        await session.send_json({"type": "error", "message": "模型未加载"})
+                        continue
                     results = await asyncio.to_thread(
-                        detection_service.models[cache_key],
-                        frame, conf=conf_threshold, iou=iou_threshold,
+                        model.predict, source=frame,
+                        conf=conf_threshold, iou=iou_threshold, verbose=False,
                     )
                     inference_time = (time.time() - start_time) * 1000  # ms
 
