@@ -107,7 +107,16 @@ const router = createRouter({
 })
 
 // 全局前置守卫 —— 登录状态检查 + 首次加载验证
-let _verified = false
+// 使用 sessionStorage 存储验证状态，支持多标签页共享
+const VERIFIED_KEY = 'visagent_verified'
+
+function getVerified() {
+  return sessionStorage.getItem(VERIFIED_KEY) === 'true'
+}
+
+function setVerified(val) {
+  sessionStorage.setItem(VERIFIED_KEY, val ? 'true' : 'false')
+}
 
 router.beforeEach(async (to, from, next) => {
   // 设置页面标题
@@ -120,21 +129,21 @@ router.beforeEach(async (to, from, next) => {
   const isLoggedIn = userStore.isLoggedIn
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth !== false)
 
-  // 首次加载时验证 cookie 是否仍有效
-  if (requiresAuth && isLoggedIn && !_verified) {
+  // 首次加载时验证 cookie 是否仍有效（多标签页共享验证状态）
+  if (requiresAuth && isLoggedIn && !getVerified()) {
     try {
       await userStore.fetchUserInfo()
-      _verified = true
+      setVerified(true)
     } catch {
       // fetchUserInfo 失败（如 token 过期），重置验证标记并清除用户状态
-      _verified = false
+      setVerified(false)
       userStore.user = null
     }
   }
 
   // 登出后重置验证标记
   if (!isLoggedIn) {
-    _verified = false
+    setVerified(false)
   }
 
   if (requiresAuth && !isLoggedIn) {

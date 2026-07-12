@@ -52,6 +52,7 @@ function reportError(errorInfo) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorInfo),
+      credentials: "include",  // 携带认证信息，后端可识别上报来源
     }).catch(() => {
       // 上报失败时静默处理，不能因为上报失败而再次报错
     });
