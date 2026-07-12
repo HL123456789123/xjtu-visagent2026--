@@ -6,6 +6,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.core.security import create_access_token, hash_password, verify_password
+from app.core.tz import now_cst
 from app.entity.db_models import User, UserRole, Role, RolePermission, Permission
 
 
@@ -79,6 +80,10 @@ class UserService:
 
         if not verify_password(password, user.hashed_password):
             raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+        # 更新最后登录时间
+        user.last_login_at = now_cst()
+        db.commit()
 
         return user
 
