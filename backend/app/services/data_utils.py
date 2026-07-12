@@ -10,15 +10,15 @@ import shutil
 import random
 import yaml
 from pathlib import Path
-from typing import List, Dict, Optional
-from xml.etree import ElementTree as ET
+from typing import List, Dict, Optional, Any
+from defusedxml import ElementTree as ET
 
 from app.core.logger import get_logger
 
 logger = get_logger("data_utils")
 
 
-def validate_dataset(images_dir: str, labels_dir: str, class_names: List[str]) -> Dict[str, any]:
+def validate_dataset(images_dir: str, labels_dir: str, class_names: List[str]) -> Dict[str, Any]:
     """
     验证数据集完整性
 
