@@ -205,7 +205,7 @@ async def discover_datasets(
     """
     # 尝试从 Redis 缓存获取
     cache_key = "dataset_discover"
-    cached = redis_client.cache_get(cache_key)
+    cached = redis_client.cache_get("datasets", cache_key)
     if cached:
         return ApiResponse(code=200, data=cached)
 
@@ -264,7 +264,7 @@ async def discover_datasets(
 
     result = {"discovered": discovered, "total": len(discovered)}
     # 写入缓存，5 分钟 TTL
-    redis_client.cache_set(cache_key, result, ex=300)
+    redis_client.cache_set("datasets", cache_key, result, ex=300)
 
     return ApiResponse(
         code=200,
