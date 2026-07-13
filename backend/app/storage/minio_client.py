@@ -4,6 +4,7 @@ MinIO 对象存储客户端封装
 """
 
 import io
+import threading
 from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
@@ -92,11 +93,14 @@ class MinIOClient:
 
 # 全局单例，避免重复创建连接
 _minio_client_instance: MinIOClient | None = None
+_minio_lock = threading.Lock()
 
 
 def get_minio_client() -> MinIOClient:
-    """获取全局 MinIO 客户端单例"""
+    """获取全局 MinIO 客户端单例（线程安全）"""
     global _minio_client_instance
     if _minio_client_instance is None:
-        _minio_client_instance = MinIOClient()
+        with _minio_lock:
+            if _minio_client_instance is None:
+                _minio_client_instance = MinIOClient()
     return _minio_client_instance

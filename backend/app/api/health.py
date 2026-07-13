@@ -8,7 +8,6 @@
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
-from app.config.settings import settings
 from app.core.logger import get_logger
 
 logger = get_logger("health")
@@ -20,9 +19,7 @@ router = APIRouter(prefix="/api/health", tags=["健康检查"])
 async def health_check():
     """应用基础健康检查"""
     return {
-        "status": "healthy",
-        "app_name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
+        "status": "ok",
     }
 
 
@@ -36,9 +33,7 @@ async def database_health():
         try:
             db.execute(text("SELECT 1"))
             return {
-                "status": "healthy",
-                "database": "postgresql",
-                "message": "数据库连接正常",
+                "status": "ok",
             }
         finally:
             db.close()
@@ -47,9 +42,7 @@ async def database_health():
         raise HTTPException(
             status_code=503,
             detail={
-                "status": "unhealthy",
-                "database": "postgresql",
-                "message": "数据库连接异常，请查看日志",
+                "status": "degraded",
             },
         )
 
@@ -61,18 +54,14 @@ async def redis_health():
 
     if redis_client.is_connected():
         return {
-            "status": "healthy",
-            "redis": "connected",
-            "message": "Redis 连接正常",
+            "status": "ok",
         }
     else:
         logger.error("Redis 健康检查失败: 连接不可用")
         raise HTTPException(
             status_code=503,
             detail={
-                "status": "unhealthy",
-                "redis": "disconnected",
-                "message": "Redis 连接失败",
+                "status": "degraded",
             },
         )
 
@@ -81,28 +70,19 @@ async def redis_health():
 async def minio_health():
     """真实检测 MinIO 连接"""
     try:
-        from minio import Minio
+        from app.storage.minio_client import get_minio_client
 
-        client = Minio(
-            settings.MINIO_ENDPOINT,
-            access_key=settings.MINIO_ACCESS_KEY,
-            secret_key=settings.MINIO_SECRET_KEY,
-            secure=settings.MINIO_SECURE,
-        )
+        client = get_minio_client()
         # 尝试列出存储桶来验证连接
-        client.list_buckets()
+        client.client.list_buckets()
         return {
-            "status": "healthy",
-            "minio": "connected",
-            "message": "MinIO 连接正常",
+            "status": "ok",
         }
     except Exception as e:
         logger.error(f"MinIO 健康检查失败: {e}")
         raise HTTPException(
             status_code=503,
             detail={
-                "status": "unhealthy",
-                "minio": "disconnected",
-                "message": "MinIO 连接异常，请查看日志",
+                "status": "degraded",
             },
         )

@@ -98,7 +98,8 @@ async def general_exception_handler(request: Request, exc: Exception):
         f"Method: {request.method}",
         exc_info=True,
     )
-    detail = str(exc) if settings.DEBUG else None
+    # 即使在 DEBUG 模式也限制返回的异常信息，仅返回异常类型名，不暴露堆栈和内部细节
+    detail = f"{type(exc).__name__}: {str(exc)[:200]}" if settings.DEBUG else None
     return JSONResponse(
         status_code=500,
         content={

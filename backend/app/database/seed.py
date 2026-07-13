@@ -517,7 +517,7 @@ def seed_scenes(db_session) -> int:
         if role:
             db_session.add(UserRole(user_id=user.id, role_id=role.id))
 
-        logger.info(f"创建默认用户: {username} ({role_name})，初始密码: {password}（请首次登录后修改）")
+        logger.info(f"创建默认用户: {username} ({role_name})，已设置初始密码（请首次登录后修改）")
 
     db_session.commit()
 

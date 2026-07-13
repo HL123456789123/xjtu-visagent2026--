@@ -301,5 +301,6 @@ def get_agent_graph():
 def invalidate_agent_cache():
     """清除 Agent 图缓存，在配置变更时调用以重建图实例"""
     global agent_graph
-    agent_graph = None
+    with _graph_lock:
+        agent_graph = None
     logger.info("Agent 图缓存已清除，下次调用时将重建")

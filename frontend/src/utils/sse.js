@@ -48,9 +48,10 @@ export function streamChat(url, body, callbacks) {
       if (!response.ok) {
         if (response.status === 401) {
           const { useUserStore } = await import('@/stores/user')
+          const { default: router } = await import('@/router')
           const userStore = useUserStore()
           userStore.logout()
-          window.location.href = '/login'
+          router.push('/login')
           return
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
