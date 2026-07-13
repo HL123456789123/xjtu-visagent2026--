@@ -25,7 +25,8 @@ SUPERVISOR_SYSTEM_PROMPT = """你是一个智能助手 Supervisor，负责协调
    - 当用户要求结束、再见、不需要更多帮助时使用
 
 请根据用户的输入，判断应该由哪个 Agent 处理。
-只返回 agent 名称，不要返回其他内容。"""
+返回 JSON 格式：{"next_agent": "agent_name"}
+其中 agent_name 必须是以下之一：detection_agent, analysis_agent, qa_agent, end"""
 
 
 # ── 检测 Agent 提示词 ────────────────────────────────

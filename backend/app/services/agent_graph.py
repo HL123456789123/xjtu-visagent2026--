@@ -4,14 +4,16 @@ LangGraph Agent 模块
 包括 Supervisor 路由、检测 Agent、分析 Agent、问答 Agent
 """
 
-from typing import TypedDict, Annotated, Optional
+from typing import TypedDict, Annotated, Optional, Literal
 import threading
+import json
 
 import httpx
 from langchain_core.messages import AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import create_react_agent
+from pydantic import BaseModel
 
 from app.config.settings import settings
 from app.core.logger import get_logger
@@ -81,13 +83,21 @@ def get_llm():
     return _llm_cache
 
 
+# ── Supervisor 结构化输出模型 ─────────────────────
+
+
+class SupervisorDecision(BaseModel):
+    """Supervisor 路由决策"""
+    next_agent: Literal["detection_agent", "analysis_agent", "qa_agent", "end"]
+
+
 # ── Supervisor 节点 ───────────────────────────────────
 
 
 async def supervisor_node(state: AgentState) -> dict:
     """
     Supervisor 路由节点
-    使用 LLM 判断用户意图，决定下一步由哪个 Agent 处理
+    使用 LLM 结构化输出判断用户意图，决定下一步由哪个 Agent 处理
     """
     try:
         llm = get_llm()
@@ -95,22 +105,10 @@ async def supervisor_node(state: AgentState) -> dict:
         # 构建消息
         messages = [SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT), *state["messages"]]
 
-        # 调用 LLM
-        response = await llm.ainvoke(messages)
-        content = response.content.strip().lower()
-
-        # 解析 Agent 名称
-        if "detection" in content:
-            next_agent = "detection_agent"
-        elif "analysis" in content:
-            next_agent = "analysis_agent"
-        elif "qa" in content or "问答" in content:
-            next_agent = "qa_agent"
-        elif "end" in content or "结束" in content:
-            next_agent = "end"
-        else:
-            # 默认使用问答 Agent
-            next_agent = "qa_agent"
+        # 使用结构化输出强制返回 JSON
+        structured_llm = llm.with_structured_output(SupervisorDecision)
+        decision: SupervisorDecision = await structured_llm.ainvoke(messages)
+        next_agent = decision.next_agent
 
         logger.info(f"Supervisor 路由: {next_agent}")
 
