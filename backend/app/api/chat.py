@@ -3,8 +3,6 @@
 提供对话会话管理、消息发送等接口
 """
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -12,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user, RequirePermission
 from app.database.session import get_db
 from app.entity.db_models import User, ChatSession
-from app.entity.schemas import ApiResponse, SendMessageRequest
+from app.entity.schemas import ApiResponse, SendMessageRequest, CreateSessionRequest
 from app.services.chat_service import chat_service
 
 router = APIRouter(prefix="/api/chat", tags=["智能对话"])
@@ -20,12 +18,12 @@ router = APIRouter(prefix="/api/chat", tags=["智能对话"])
 
 @router.post("/sessions", response_model=ApiResponse, dependencies=[Depends(RequirePermission("agent:chat"))])
 async def create_session(
-    title: Optional[str] = None,
+    body: CreateSessionRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """创建对话会话"""
-    session = chat_service.create_session(db=db, user_id=current_user.id, title=title)
+    session = chat_service.create_session(db=db, user_id=current_user.id, title=body.title)
 
     return ApiResponse(
         code=200,

@@ -43,6 +43,7 @@ class UserBrief(BaseModel):
     email: str
     avatar: Optional[str] = None
     roles: list[str] = []
+    permissions: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -399,6 +400,11 @@ class SceneModelBindRequest(BaseModel):
 # ══════════════════════════════════════════════════════════════
 # 五、对话模块
 # ══════════════════════════════════════════════════════════════
+
+
+class CreateSessionRequest(BaseModel):
+    """创建会话请求"""
+    title: Optional[str] = None
 
 
 class SendMessageRequest(BaseModel):

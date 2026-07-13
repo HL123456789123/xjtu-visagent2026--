@@ -5,6 +5,7 @@
  * - /register → 注册页
  */
 import { createRouter, createWebHistory } from 'vue-router'
+import { getActivePinia } from 'pinia'
 import { useUserStore } from '@/stores/user'
 
 // 路由表
@@ -124,13 +125,21 @@ router.beforeEach(async (to, from, next) => {
     ? `${to.meta.title} - visagent`
     : 'visagent'
 
+  // 防御性检查：确保 Pinia 已激活（Vite 8 模块时序可能导致 install 阶段 Pinia 上下文丢失）
+  if (!getActivePinia()) {
+    next()
+    return
+  }
+
   // 从 store 获取登录状态（基于 HttpOnly cookie，不再依赖 localStorage token）
   const userStore = useUserStore()
   const isLoggedIn = userStore.isLoggedIn
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth !== false)
 
-  // 首次加载时验证 cookie 是否仍有效（多标签页共享验证状态）
-  if (requiresAuth && isLoggedIn && !getVerified()) {
+  // 页面刷新后 permissions 丢失（仅存在内存中），需重新获取
+  // 判断依据：sessionStorage 未验证 或 用户无权限列表
+  const needsPermissions = !userStore.permissions || userStore.permissions.length === 0
+  if (requiresAuth && isLoggedIn && (!getVerified() || needsPermissions)) {
     try {
       await userStore.fetchUserInfo()
       setVerified(true)
@@ -138,18 +147,21 @@ router.beforeEach(async (to, from, next) => {
       // fetchUserInfo 失败（如 token 过期），重置验证标记并清除用户状态
       setVerified(false)
       userStore.user = null
+      // 用户状态已失效，直接跳转登录页，避免后续权限检查误判为 404
+      next({ path: '/login', query: { redirect: to.fullPath } })
+      return
     }
   }
 
   // 登出后重置验证标记
-  if (!isLoggedIn) {
+  if (!userStore.isLoggedIn) {
     setVerified(false)
   }
 
-  if (requiresAuth && !isLoggedIn) {
+  if (requiresAuth && !userStore.isLoggedIn) {
     // 未登录，跳转到登录页
     next({ path: '/login', query: { redirect: to.fullPath } })
-  } else if ((to.path === '/login' || to.path === '/register') && isLoggedIn) {
+  } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
     // 已登录则跳转到首页
     next('/')
   } else if (to.meta.permission) {
