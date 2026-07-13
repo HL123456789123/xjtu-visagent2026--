@@ -239,6 +239,17 @@
         <el-form-item label="描述">
           <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="模型描述（可选）" />
         </el-form-item>
+        <el-form-item label="关联场景">
+          <el-select v-model="createForm.scene_id" placeholder="选择场景（可选）" clearable>
+            <el-option
+              v-for="scene in allScenes"
+              :key="scene.id"
+              :label="scene.display_name"
+              :value="scene.id"
+            />
+          </el-select>
+          <div class="form-tip">可选，绑定后可在目标检测页面直接使用</div>
+        </el-form-item>
         <el-form-item label="权重文件">
           <el-upload
             ref="createUploadRef"
@@ -384,7 +395,8 @@ const createForm = ref({
   name: '',
   category: 'general',
   base_architecture: 'yolo26n',
-  description: ''
+  description: '',
+  scene_id: null
 })
 const createWeightFile = ref(null)
 const createUploadRef = ref(null)
@@ -475,7 +487,7 @@ async function createModel() {
     }
     
     showCreateDialog.value = false
-    createForm.value = { name: '', category: 'general', base_architecture: 'yolo26n', description: '' }
+    createForm.value = { name: '', category: 'general', base_architecture: 'yolo26n', description: '', scene_id: null }
     createWeightFile.value = null
     if (createUploadRef.value) {
       createUploadRef.value.clearFiles()
@@ -783,5 +795,11 @@ onMounted(() => {
     padding: $spacing-md;
     color: $text-secondary;
   }
+}
+
+.form-tip {
+  font-size: 12px;
+  color: $text-secondary;
+  margin-top: 4px;
 }
 </style>

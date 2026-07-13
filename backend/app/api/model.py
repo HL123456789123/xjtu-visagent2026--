@@ -70,10 +70,11 @@ async def create_model(
     category: str = Form("general", description="模型分类"),
     class_names: str = Form("[]", description="类别列表 JSON"),
     class_names_cn: str = Form("{}", description="类别中文名 JSON"),
+    scene_id: Optional[int] = Form(None, description="绑定的检测场景ID"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """创建模型"""
+    """创建模型，可选绑定到检测场景"""
     import json
 
     try:
@@ -92,6 +93,7 @@ async def create_model(
             category=category,
             class_names=cn_list,
             class_names_cn=cn_map,
+            scene_id=scene_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

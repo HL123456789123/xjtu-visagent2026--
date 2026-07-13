@@ -176,11 +176,9 @@ class ModelService:
         scene_list = []
         if scene_models:
             scene_ids = [sm.scene_id for sm in scene_models]
-            scenes = dict(
-                db.query(DetectionScene.id, DetectionScene.display_name, DetectionScene.category)
-                .filter(DetectionScene.id.in_(scene_ids))
-                .all()
-            )
+            # 使用字典推导式正确构建场景映射
+            scene_data = db.query(DetectionScene).filter(DetectionScene.id.in_(scene_ids)).all()
+            scenes = {s.id: s for s in scene_data}
             for sm in scene_models:
                 scene = scenes.get(sm.scene_id)
                 if scene:
@@ -220,8 +218,9 @@ class ModelService:
         category: str = "general",
         class_names: Optional[list] = None,
         class_names_cn: Optional[dict] = None,
+        scene_id: Optional[int] = None,
     ) -> Model:
-        """创建模型"""
+        """创建模型，可选绑定到检测场景"""
         # 检查名称唯一性
         existing = db.query(Model).filter(Model.name == name).first()
         if existing:
@@ -238,6 +237,20 @@ class ModelService:
             created_by=user_id,
         )
         db.add(model)
+        db.flush()  # 获取 model.id
+
+        # 如果指定了场景，绑定模型到场景
+        if scene_id:
+            scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
+            if scene:
+                scene_model = SceneModel(
+                    scene_id=scene_id,
+                    model_id=model.id,
+                    is_default=False,
+                )
+                db.add(scene_model)
+                logger.info(f"绑定模型到场景: model_id={model.id}, scene_id={scene_id}")
+
         db.commit()
         db.refresh(model)
         logger.info(f"创建模型: id={model.id}, name={name}")
