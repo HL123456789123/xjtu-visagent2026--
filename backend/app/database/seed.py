@@ -492,14 +492,12 @@ def seed_scenes(db_session) -> int:
     from app.entity.db_models import User, UserRole
     from app.core.security import hash_password
 
-    import secrets
-
     for user_data in DEFAULT_USERS:
         username = user_data["username"]
         role_name = user_data["role"]
         email = f"{username}@visagent.com"
-        # 生成随机密码（16 字符），打印到日志供首次登录使用
-        password = secrets.token_urlsafe(12)
+        # 密码规则：用户名首字母大写 + @2026
+        password = username[0].upper() + username[1:] + "@2026"
 
         existing_user = db_session.query(User).filter(User.username == username).first()
         if existing_user:
