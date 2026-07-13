@@ -320,17 +320,14 @@ async def import_model(
 
     _check_model_ownership(db, model_id, current_user)  # 校验所有权
 
-    # 保存上传的 ZIP 到临时文件（流式写入，避免大文件 OOM）
+    # 保存上传的 ZIP 到临时文件
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
         tmp_path = tmp.name
-        while chunk := await zip_file.read(1024 * 1024):  # 1MB chunks
-            tmp.write(chunk)
+        content = await zip_file.read()
+        tmp.write(content)
 
     try:
         mv = model_service.import_model(db, model_id, tmp_path, description)
-        if not mv:
-            raise HTTPException(status_code=400, detail="导入失败，请检查 ZIP 格式")
-
         return ApiResponse(
             code=200,
             message="模型版本导入成功",
@@ -340,6 +337,8 @@ async def import_model(
                 "model_path": mv.model_path,
             },
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)

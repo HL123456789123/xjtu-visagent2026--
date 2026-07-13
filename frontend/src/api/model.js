@@ -104,7 +104,7 @@ export function deleteVersionApi(modelId, versionId) {
  * @param {number} versionId
  */
 export function exportModelApi(modelId, versionId) {
-  return request.get(`/models/${modelId}/versions/${versionId}/export`, {
+  return uploadRequest.get(`/models/${modelId}/versions/${versionId}/export`, {
     responseType: 'blob'
   })
 }

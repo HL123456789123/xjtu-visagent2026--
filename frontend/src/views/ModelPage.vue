@@ -4,9 +4,6 @@
     <div class="page-header">
       <h3>模型管理</h3>
       <div class="header-actions">
-        <el-button @click="showImportDialog = true">
-          <el-icon><Upload /></el-icon>导入模型
-        </el-button>
         <el-button type="primary" @click="showCreateDialog = true">
           <el-icon><Plus /></el-icon>新建模型
         </el-button>
@@ -156,7 +153,7 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="140">
+            <el-table-column label="操作" min-width="140">
               <template #default="{ row }">
                 <el-button size="small" text @click="exportVersion(row.id)">导出</el-button>
                 <el-button
@@ -661,7 +658,7 @@ async function importModel() {
     importForm.value = { file: null, description: '' }
     loadModelDetail()
   } catch (error) {
-    ElMessage.error('导入失败')
+    // 错误信息已由 request 拦截器统一处理
   } finally {
     importing.value = false
   }

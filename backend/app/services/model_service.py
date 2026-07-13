@@ -543,7 +543,7 @@ class ModelService:
         model_id: int,
         zip_path: str,
         description: Optional[str] = None,
-    ) -> Optional[ModelVersion]:
+    ) -> ModelVersion:
         """
         从 ZIP 导入模型版本，同步更新模型元信息
 
@@ -559,27 +559,26 @@ class ModelService:
             description: 版本描述
 
         Returns:
-            创建的 ModelVersion，失败返回 None
+            创建的 ModelVersion
+
+        Raises:
+            ValueError: 导入失败时抛出，包含具体错误信息
         """
         model = db.query(Model).filter(Model.id == model_id).first()
         if not model:
-            return None
+            raise ValueError("模型不存在")
 
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
                 # 验证 ZIP 结构
                 names = zf.namelist()
                 if "weights/best.pt" not in names:
-                    logger.error("ZIP 中缺少 weights/best.pt")
-                    return None
+                    raise ValueError("ZIP 中缺少 weights/best.pt 文件")
 
                 # ZIP 炸弹防护：检查解压总大小
                 total_size = sum(info.file_size for info in zf.infolist())
                 if total_size > _MAX_UNZIP_SIZE:
-                    logger.error(
-                        f"ZIP 炸弹防护：解压总大小 {total_size} 超过上限 {_MAX_UNZIP_SIZE}"
-                    )
-                    return None
+                    raise ValueError(f"ZIP 解压总大小超过上限 {_MAX_UNZIP_SIZE // (1024*1024)}MB")
 
                 # 创建存储目录
                 models_dir = Path("data/models") / model.name
@@ -602,8 +601,7 @@ class ModelService:
                     .first()
                 )
                 if existing:
-                    logger.warning(f"版本已存在: {version_str}")
-                    return None
+                    raise ValueError(f"版本 {version_str} 已存在，无法重复导入")
 
                 # 解压权重文件
                 dest_path = models_dir / f"{model.name}_{version_str}.pt"
@@ -654,6 +652,8 @@ class ModelService:
                 logger.info(f"导入模型版本: model_id={model_id}, version={version_str}")
                 return mv
 
+        except ValueError:
+            raise  # 让业务异常传播到 API 层
         except Exception as e:
             logger.error(f"导入模型失败: {e}")
             db.rollback()
