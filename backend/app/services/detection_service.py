@@ -41,6 +41,11 @@ class DetectionService:
         self.minio_client = None
         self._models_lock = threading.Lock()
 
+    @property
+    def models_lock(self) -> threading.Lock:
+        """公共属性：模型缓存锁，供外部安全访问"""
+        return self._models_lock
+
     def load_model(self, scene_id: int, model_path: str, cache_key=None) -> bool:
         """
         加载场景对应的模型

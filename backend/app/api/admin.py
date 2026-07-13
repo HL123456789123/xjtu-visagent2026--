@@ -15,12 +15,9 @@ from app.entity.schemas import (
     UserAdminUpdate,
     UserRoleAssign,
     UserStatusUpdate,
-    UserResponse,
     RoleCreate,
     RoleUpdate,
     RolePermissionAssign,
-    RoleResponse,
-    PermissionGroupResponse,
 )
 from app.services.user_service import user_service
 from app.services.role_service import role_service
@@ -96,7 +93,7 @@ async def update_user(
     if not kwargs:
         raise HTTPException(status_code=400, detail="未提供任何更新字段")
 
-    user = user_service.admin_update_user(
+    user_service.admin_update_user(
         db=db,
         user_id=user_id,
         current_user_id=current_user.id,
@@ -113,7 +110,7 @@ async def assign_user_roles(
     current_user: User = Depends(get_current_user),
 ):
     """分配用户角色"""
-    user = user_service.assign_user_roles(
+    user_service.assign_user_roles(
         db=db,
         user_id=user_id,
         role_ids=data.role_ids,
@@ -129,7 +126,7 @@ async def toggle_user_status(
     current_user: User = Depends(get_current_user),
 ):
     """启用/禁用用户"""
-    user = user_service.toggle_user_active(
+    user_service.toggle_user_active(
         db=db,
         user_id=user_id,
         is_active=data.is_active,
@@ -209,7 +206,7 @@ async def update_role(
     current_user: User = Depends(get_current_user),
 ):
     """更新角色"""
-    role = role_service.update_role(
+    role_service.update_role(
         db=db,
         role_id=role_id,
         display_name=data.display_name,
@@ -238,7 +235,7 @@ async def assign_role_permissions(
     current_user: User = Depends(get_current_user),
 ):
     """分配角色权限"""
-    role = role_service.assign_role_permissions(
+    role_service.assign_role_permissions(
         db=db,
         role_id=role_id,
         permission_codes=data.permission_codes,

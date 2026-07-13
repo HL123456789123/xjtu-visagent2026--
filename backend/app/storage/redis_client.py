@@ -62,7 +62,7 @@ class RedisClient:
             if self.client:
                 return self.client.get(key)
         except Exception as e:
-            logger.error(f"Redis GET 失败: {key}, {e}")
+            logger.warning(f"Redis GET 失败: {key}: {e}")
         return None
 
     def set(
@@ -84,7 +84,7 @@ class RedisClient:
                 self.client.set(key, value, ex=ex)
                 return True
         except Exception as e:
-            logger.error(f"Redis SET 失败: {key}, {e}")
+            logger.warning(f"Redis SET 失败: {key}: {e}")
         return False
 
     def delete(self, key: str) -> bool:
@@ -94,7 +94,7 @@ class RedisClient:
                 self.client.delete(key)
                 return True
         except Exception as e:
-            logger.error(f"Redis DELETE 失败: {key}, {e}")
+            logger.warning(f"Redis DELETE 失败: {key}: {e}")
         return False
 
     def exists(self, key: str) -> bool:
@@ -103,7 +103,7 @@ class RedisClient:
             if self.client:
                 return self.client.exists(key) > 0
         except Exception as e:
-            logger.error(f"Redis EXISTS 失败: {key}, {e}")
+            logger.warning(f"Redis EXISTS 失败: {key}: {e}")
         return False
 
     # ── JSON 操作 ─────────────────────────────────────
@@ -167,7 +167,7 @@ class RedisClient:
                         break
                 return deleted
         except Exception as e:
-            logger.error(f"Redis 清除缓存失败: {prefix}:*, {e}")
+            logger.warning(f"Redis 清除缓存失败: {prefix}:*: {e}")
         return 0
 
 

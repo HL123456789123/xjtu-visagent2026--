@@ -20,6 +20,9 @@ from app.entity.db_models import Model, ModelVersion, SceneModel, DetectionScene
 
 logger = get_logger("model_service")
 
+# ZIP 炸弹防护：解压总大小上限（2GB）
+_MAX_UNZIP_SIZE = 2 * 1024 * 1024 * 1024
+
 
 class ModelService:
     """模型管理服务类"""
@@ -568,6 +571,14 @@ class ModelService:
                 names = zf.namelist()
                 if "weights/best.pt" not in names:
                     logger.error("ZIP 中缺少 weights/best.pt")
+                    return None
+
+                # ZIP 炸弹防护：检查解压总大小
+                total_size = sum(info.file_size for info in zf.infolist())
+                if total_size > _MAX_UNZIP_SIZE:
+                    logger.error(
+                        f"ZIP 炸弹防护：解压总大小 {total_size} 超过上限 {_MAX_UNZIP_SIZE}"
+                    )
                     return None
 
                 # 创建存储目录

@@ -115,8 +115,13 @@ async def camera_detect(
         "fps": float
     }
     """
-    # JWT 身份验证
+    # JWT 身份验证（优先 query 参数，回退到 cookie）
     user_id = _authenticate_websocket_token(token)
+    if user_id is None:
+        # 尝试从 cookie 中读取 token
+        cookie_token = websocket.cookies.get("access_token")
+        if cookie_token:
+            user_id = _authenticate_websocket_token(cookie_token)
     if user_id is None:
         await websocket.close(code=4001, reason="认证失败，请提供有效的 JWT Token")
         return
@@ -235,7 +240,7 @@ async def camera_detect(
                     # 执行检测（通过 to_thread 避免阻塞事件循环）
                     start_time = time.time()
                     # 加锁获取模型引用，避免线程安全问题
-                    with detection_service._models_lock:
+                    with detection_service.models_lock:
                         model = detection_service.models.get(cache_key)
                     if model is None:
                         await session.send_json({"type": "error", "message": "模型未加载"})

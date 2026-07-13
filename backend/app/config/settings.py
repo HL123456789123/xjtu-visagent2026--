@@ -5,7 +5,7 @@
 """
 
 from pydantic_settings import BaseSettings
-from pydantic import model_validator, field_validator
+from pydantic import ConfigDict, model_validator, field_validator
 import warnings
 
 
@@ -93,9 +93,7 @@ class Settings(BaseSettings):
         """将 CORS 配置字符串转为列表"""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator('DB_PORT')
     @classmethod
