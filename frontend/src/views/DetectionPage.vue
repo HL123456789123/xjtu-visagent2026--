@@ -349,6 +349,9 @@ function drawDetections() {
     // 绘制图像
     ctx.drawImage(img, 0, 0)
     
+    // 释放 Object URL，避免内存泄漏
+    URL.revokeObjectURL(img.src)
+    
     // 绘制检测框
     const detections = detectionResult.value.detections || []
     detections.forEach(det => {
@@ -416,6 +419,7 @@ async function startCamera() {
     const wsHost = import.meta.env.DEV 
       ? `${window.location.hostname}:8888`  // 开发环境直连后端
       : window.location.host                  // 生产环境使用当前 host
+    // WebSocket 认证：通过 query 参数传递 scene_id，token 由浏览器自动通过 cookie 发送
     const wsUrl = `${protocol}//${wsHost}/api/camera/detect?scene_id=${selectedScene.value}`
     ws = new WebSocket(wsUrl)
     
