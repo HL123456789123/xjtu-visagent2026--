@@ -25,11 +25,17 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    // HMR WebSocket 使用独立路径，避免与根路径冲突
+    hmr: {
+      path: '/__vite_hmr',
+    },
     // API 代理 —— 将 /api 请求转发到后端
     proxy: {
       '/api': {
         target: 'http://localhost:8888',
         changeOrigin: true,
+        // WebSocket 代理也需要开启
+        ws: true,
       },
     },
   },
