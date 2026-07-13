@@ -82,8 +82,8 @@ class Settings(BaseSettings):
     MAX_CACHED_MODELS: int = 5
     """检测服务模型 LRU 缓存最大数量"""
 
-    COOKIE_SECURE: bool = True
-    """Cookie 安全标志，生产环境需开启 HTTPS"""
+    COOKIE_SECURE: bool = False
+    """Cookie 安全标志，生产环境 HTTPS 时设为 True"""
 
     # ── CORS 配置 ────────────────────────────────────
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:8080"
