@@ -172,6 +172,7 @@ async function loadStats() {
 
 // 加载趋势数据
 async function loadTrendData() {
+  await loadStats()
   await nextTick()
   renderTrendChart()
 }

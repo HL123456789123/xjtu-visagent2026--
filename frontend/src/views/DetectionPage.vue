@@ -276,6 +276,8 @@ async function loadScenes() {
     scenes.value = res.data || []
     if (scenes.value.length > 0) {
       selectedScene.value = scenes.value[0].id
+      // 自动选中首个场景后加载其关联模型
+      await onSceneChange()
     }
   } catch (error) {
     console.error('加载场景失败:', error)
@@ -512,13 +514,15 @@ async function startCamera() {
       videoRef.value.srcObject = mediaStream
     }
     
-    // 连接 WebSocket（动态获取后端地址）
+    // 连接 WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsHost = import.meta.env.DEV 
-      ? `${window.location.hostname}:8888`  // 开发环境直连后端
-      : window.location.host                  // 生产环境使用当前 host
-    // WebSocket 认证：通过 query 参数传递 scene_id，token 由浏览器自动通过 cookie 发送
-    const wsUrl = `${protocol}//${wsHost}/api/camera/detect?scene_id=${selectedScene.value}`
+    // 开发环境直连后端 WebSocket（Vite 代理不转发 WS 消息体）
+    const wsHost = import.meta.env.DEV
+      ? `${window.location.hostname}:8888`
+      : window.location.host
+    // 认证：优先通过 query 参数传递 token（HttpOnly cookie 在 ws:// 下不可用）
+    const wsToken = localStorage.getItem('ws_token') || ''
+    const wsUrl = `${protocol}//${wsHost}/api/camera/detect?scene_id=${selectedScene.value}&token=${encodeURIComponent(wsToken)}`
     ws = new WebSocket(wsUrl)
     
     ws.onopen = () => {
@@ -582,6 +586,17 @@ function stopCamera() {
   cameraObjects.value = 0
 }
 
+// 复用离屏 canvas，避免帧循环中重复创建导致内存泄漏
+let _frameCanvas = null
+function getFrameCanvas(width, height) {
+  if (!_frameCanvas) {
+    _frameCanvas = document.createElement('canvas')
+  }
+  _frameCanvas.width = width
+  _frameCanvas.height = height
+  return _frameCanvas
+}
+
 // 循环发送帧
 function sendFrameLoop() {
   if (!cameraActive.value || !ws || ws.readyState !== WebSocket.OPEN) return
@@ -592,17 +607,23 @@ function sendFrameLoop() {
     return
   }
   
-  // 创建临时 canvas 抽帧
-  const tempCanvas = document.createElement('canvas')
-  tempCanvas.width = video.videoWidth
-  tempCanvas.height = video.videoHeight
+  // 复用离屏 canvas 抽帧
+  const tempCanvas = getFrameCanvas(video.videoWidth, video.videoHeight)
   const tempCtx = tempCanvas.getContext('2d')
   tempCtx.drawImage(video, 0, 0)
   
-  // 转换为 JPEG 并发送
+  // 转换为 JPEG 并发送（使用 base64 文本编码，避免 Vite 代理二进制 WebSocket 消息问题）
   tempCanvas.toBlob((blob) => {
     if (blob && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(blob)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        // reader.result 是 "data:image/jpeg;base64,..." 格式
+        const base64 = reader.result.split(',')[1]
+        if (base64 && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(base64)
+        }
+      }
+      reader.readAsDataURL(blob)
     }
   }, 'image/jpeg', 0.7)
   

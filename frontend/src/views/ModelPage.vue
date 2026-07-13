@@ -352,7 +352,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { Plus, Goods, Edit, Delete, Upload, Link } from '@element-plus/icons-vue'
+import { Plus, Goods, Upload, Link } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getModelsApi,
@@ -369,6 +369,7 @@ import {
   unbindModelFromSceneApi
 } from '@/api/model'
 import { getScenesApi } from '@/api/detection'
+import { formatTime } from '@/utils/format'
 
 // 模型列表
 const models = ref([])
@@ -709,12 +710,6 @@ async function unbindScene(sceneId) {
   } catch (error) {
     if (error !== 'cancel') ElMessage.error('解绑失败')
   }
-}
-
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString('zh-CN')
 }
 
 onMounted(() => {

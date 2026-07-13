@@ -73,7 +73,11 @@ export const useUserStore = defineStore('user', {
      */
     async login(credentials) {
       const res = await loginApi(credentials)
-      // Token 存储在 HttpOnly cookie 中，由后端设置，前端无需处理
+      // Token 存储在 HttpOnly cookie 中，由后端设置
+      // 同时保存一份到 localStorage 用于 WebSocket 认证（HttpOnly cookie 无法被 JS 读取）
+      if (res.access_token) {
+        localStorage.setItem('ws_token', res.access_token)
+      }
       // 保存用户信息（完整信息在内存，非敏感信息持久化到 localStorage）
       this.user = res.user
       localStorage.setItem(USER_KEY, JSON.stringify(extractSafeFields(res.user)))
@@ -109,6 +113,7 @@ export const useUserStore = defineStore('user', {
       }
       this.user = null
       localStorage.removeItem(USER_KEY)
+      localStorage.removeItem('ws_token')
     },
   },
 })

@@ -168,7 +168,7 @@ router.beforeEach(async (to, from, next) => {
     // 需要特定权限的路由，使用细粒度权限判断
     const hasPerm = userStore.hasPermission(to.meta.permission)
     if (!hasPerm) {
-      next({ path: '/404' })
+      next({ name: 'NotFound' })
     } else {
       next()
     }

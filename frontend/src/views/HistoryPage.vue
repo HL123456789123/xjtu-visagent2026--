@@ -178,6 +178,7 @@ import { getDetectionTasksApi, getDetectionResultsApi } from '@/api/detection'
 import { getTrainingTasksApi } from '@/api/training'
 import { getScenesApi } from '@/api/detection'
 import { useRouter } from 'vue-router'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 
@@ -294,12 +295,6 @@ function getStatusText(status) {
     cancelled: '已取消'
   }
   return map[status] || status
-}
-
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString('zh-CN')
 }
 
 onMounted(async () => {
