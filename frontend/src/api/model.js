@@ -13,18 +13,21 @@ export function getModelsApi(params) {
 
 /**
  * 创建模型
- * @param {Object} data - { name, description, base_architecture, category, class_names, class_names_cn }
+ * @param {Object} data - { name, description, base_architecture, category, class_names, class_names_cn, scene_id, weight_file }
  */
 export function createModelApi(data) {
   const formData = new FormData()
   Object.keys(data).forEach(key => {
-    if (data[key] !== undefined && data[key] !== null) {
+    if (key === 'weight_file') {
+      // 文件单独处理
+      if (data[key]) {
+        formData.append('weight_file', data[key])
+      }
+    } else if (data[key] !== undefined && data[key] !== null) {
       formData.append(key, typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key])
     }
   })
-  return request.post('/models', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  return uploadRequest.post('/models', formData)
 }
 
 /**

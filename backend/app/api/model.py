@@ -71,11 +71,13 @@ async def create_model(
     class_names: str = Form("[]", description="类别列表 JSON"),
     class_names_cn: str = Form("{}", description="类别中文名 JSON"),
     scene_id: Optional[int] = Form(None, description="绑定的检测场景ID"),
+    weight_file: Optional[UploadFile] = File(None, description="权重文件（.pt格式）"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """创建模型，可选绑定到检测场景"""
+    """创建模型，可选绑定到检测场景，可选上传权重文件"""
     import json
+    import tempfile
 
     try:
         cn_list = json.loads(class_names)
@@ -97,6 +99,32 @@ async def create_model(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # 如果上传了权重文件，创建模型版本
+    if weight_file:
+        # 验证文件扩展名
+        if not weight_file.filename.endswith('.pt'):
+            raise HTTPException(status_code=400, detail="权重文件必须是 .pt 格式")
+        
+        # 保存上传的文件到临时目录
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as tmp:
+            content = await weight_file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        try:
+            mv = model_service.upload_weight_file(
+                db=db,
+                model_id=model.id,
+                file_path=tmp_path,
+                original_filename=weight_file.filename,
+            )
+            if not mv:
+                logger.warning(f"权重文件上传失败: model_id={model.id}")
+        finally:
+            import os
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     return ApiResponse(
         code=200,

@@ -3,9 +3,14 @@
     <!-- 页面头部 -->
     <div class="page-header">
       <h3>模型管理</h3>
-      <el-button type="primary" @click="showCreateDialog = true">
-        <el-icon><Plus /></el-icon>新建模型
-      </el-button>
+      <div class="header-actions">
+        <el-button @click="showImportDialog = true">
+          <el-icon><Upload /></el-icon>导入模型
+        </el-button>
+        <el-button type="primary" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>新建模型
+        </el-button>
+      </div>
     </div>
 
     <!-- 筛选 -->
@@ -255,13 +260,13 @@
             ref="createUploadRef"
             :auto-upload="false"
             :limit="1"
-            accept=".zip"
+            accept=".pt"
             :on-change="handleCreateFileChange"
             :on-remove="handleCreateFileRemove"
           >
             <el-button type="primary" size="small">选择文件</el-button>
             <template #tip>
-              <div class="el-upload__tip">可选，支持 ZIP 格式模型包；不选则仅创建模型元数据</div>
+              <div class="el-upload__tip">可选，支持 .pt 格式权重文件；不选则仅创建模型元数据</div>
             </template>
           </el-upload>
         </el-form-item>
@@ -471,20 +476,14 @@ async function createModel() {
   }
   creating.value = true
   try {
-    const res = await createModelApi(createForm.value)
-    const modelId = res.data?.id
-    
-    // 如果选择了权重文件，则导入版本
-    if (createWeightFile.value && modelId) {
-      try {
-        await importModelApi(modelId, { zip_file: createWeightFile.value, description: '创建时导入' })
-        ElMessage.success('模型创建成功，权重已导入')
-      } catch (importError) {
-        ElMessage.warning('模型已创建，但权重导入失败，请稍后在详情中手动导入')
-      }
-    } else {
-      ElMessage.success('模型创建成功')
+    // 构建请求数据，包含权重文件
+    const requestData = { ...createForm.value }
+    if (createWeightFile.value) {
+      requestData.weight_file = createWeightFile.value
     }
+    
+    const res = await createModelApi(requestData)
+    ElMessage.success('模型创建成功')
     
     showCreateDialog.value = false
     createForm.value = { name: '', category: 'general', base_architecture: 'yolo26n', description: '', scene_id: null }
@@ -747,6 +746,11 @@ onMounted(() => {
     margin: 0;
     font-size: 18px;
     color: $text-primary;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: $spacing-sm;
   }
 }
 

@@ -256,6 +256,76 @@ class ModelService:
         logger.info(f"创建模型: id={model.id}, name={name}")
         return model
 
+    def upload_weight_file(
+        self,
+        db: Session,
+        model_id: int,
+        file_path: str,
+        original_filename: str,
+    ) -> Optional[ModelVersion]:
+        """
+        上传权重文件并创建模型版本
+
+        Args:
+            db: 数据库会话
+            model_id: 目标模型ID
+            file_path: 临时文件路径
+            original_filename: 原始文件名
+
+        Returns:
+            创建的 ModelVersion，失败返回 None
+        """
+        from pathlib import Path
+        import shutil
+
+        model = db.query(Model).filter(Model.id == model_id).first()
+        if not model:
+            return None
+
+        try:
+            # 创建存储目录
+            models_dir = Path("data/models") / model.name
+            models_dir.mkdir(parents=True, exist_ok=True)
+
+            # 生成版本号（使用时间戳）
+            from app.core.tz import now_cst
+            timestamp = now_cst().strftime("%Y%m%d%H%M%S")
+            version_str = f"v1.0.0-{timestamp}"
+
+            # 复制文件到目标位置
+            dest_path = models_dir / f"{model.name}_{version_str}.pt"
+            shutil.copy2(file_path, dest_path)
+
+            file_size = dest_path.stat().st_size
+
+            # 检查是否是第一个版本
+            version_count = (
+                db.query(ModelVersion).filter(ModelVersion.model_id == model_id).count()
+            )
+
+            # 创建版本记录
+            mv = ModelVersion(
+                model_id=model_id,
+                version=version_str,
+                source="upload",
+                status="active",
+                model_path=str(dest_path),
+                file_size=file_size,
+                description=f"上传自 {original_filename}",
+                is_default=(version_count == 0),  # 第一个版本设为默认
+            )
+            db.add(mv)
+            db.commit()
+            db.refresh(mv)
+
+            logger.info(f"上传权重文件: model_id={model_id}, version={version_str}, path={dest_path}")
+            return mv
+
+        except Exception as e:
+            logger.error(f"上传权重文件失败: {e}")
+            db.rollback()
+            return None
+
     def update_model(self, db: Session, model_id: int, **kwargs) -> Optional[Model]:
         """更新模型信息"""
         model = db.query(Model).filter(Model.id == model_id).first()
@@ -472,7 +542,12 @@ class ModelService:
         description: Optional[str] = None,
     ) -> Optional[ModelVersion]:
         """
-        从 ZIP 导入模型版本
+        从 ZIP 导入模型版本，同步更新模型元信息
+
+        ZIP 结构：
+        ├── manifest.json      — 元信息
+        ├── weights/best.pt    — 权重文件
+        └── config/model.json  — 模型配置
 
         Args:
             db: 数据库会话
@@ -500,6 +575,7 @@ class ModelService:
                 models_dir.mkdir(parents=True, exist_ok=True)
 
                 # 读取 manifest
+                manifest = {}
                 version_str = "v1.0.0"
                 if "manifest.json" in names:
                     manifest = json.loads(zf.read("manifest.json"))
@@ -525,6 +601,19 @@ class ModelService:
 
                 file_size = dest_path.stat().st_size
 
+                # 同步更新模型元信息（如果 manifest 中包含）
+                if manifest:
+                    if "base_architecture" in manifest:
+                        model.base_architecture = manifest["base_architecture"]
+                    if "category" in manifest:
+                        model.category = manifest["category"]
+                    if "class_names" in manifest:
+                        model.class_names = manifest["class_names"]
+                    if "class_names_cn" in manifest:
+                        model.class_names_cn = manifest["class_names_cn"]
+                    model.updated_at = now_cst()
+                    logger.info(f"更新模型元信息: model_id={model_id}")
+
                 # 检查是否有版本数量
                 version_count = (
                     db.query(ModelVersion).filter(ModelVersion.model_id == model_id).count()
@@ -541,6 +630,11 @@ class ModelService:
                     description=description
                     or f"导入于 {now_cst().strftime('%Y-%m-%d %H:%M')}",
                     is_default=(version_count == 0),
+                    # 导入评估指标（如果存在）
+                    map50=manifest.get("metrics", {}).get("map50"),
+                    map50_95=manifest.get("metrics", {}).get("map50_95"),
+                    precision=manifest.get("metrics", {}).get("precision"),
+                    recall=manifest.get("metrics", {}).get("recall"),
                 )
                 db.add(mv)
                 db.commit()
