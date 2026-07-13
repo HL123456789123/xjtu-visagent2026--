@@ -222,4 +222,4 @@ async def get_user_stats(
 
     except Exception as e:
         logger.error(f"获取用户统计数据失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取用户统计数据失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="获取用户统计数据失败，请稍后重试")

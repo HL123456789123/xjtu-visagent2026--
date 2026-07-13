@@ -513,16 +513,15 @@ class TrainingService:
             task.status = "cancelled"
             self._invalidate_training_cache(task_id)
 
-            # 注意：checkpoint 文件的实际清理由 _train_worker 线程完成
-            # 这里只清理已暂停任务的历史 checkpoint（线程已停止的情况）
-            if task.checkpoint_path and os.path.exists(task.checkpoint_path):
-                try:
-                    cp_path = task.checkpoint_path
-                    os.remove(cp_path)
-                    task.checkpoint_path = None
-                    logger.info(f"已清理暂停任务的 checkpoint: {cp_path}")
-                except Exception as e:
-                    logger.warning(f"清理 checkpoint 失败: {e}")
+        # checkpoint 文件清理移到锁外，避免锁内执行 I/O
+        if task.checkpoint_path and os.path.exists(task.checkpoint_path):
+            try:
+                cp_path = task.checkpoint_path
+                os.remove(cp_path)
+                task.checkpoint_path = None
+                logger.info(f"已清理暂停任务的 checkpoint: {cp_path}")
+            except Exception as e:
+                logger.warning(f"清理 checkpoint 失败: {e}")
 
         db.commit()
 

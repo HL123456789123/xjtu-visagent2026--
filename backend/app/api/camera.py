@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import base64
 import time
 from typing import Optional
 
@@ -41,10 +42,19 @@ class CameraSession:
         await self.websocket.send_json(data)
 
     async def receive_frame(self) -> Optional[bytes]:
-        """接收一帧图像"""
+        """接收一帧图像（支持二进制和 base64 文本两种格式）"""
         try:
-            data = await self.websocket.receive_bytes()
-            return data
+            # 先尝试接收文本消息（base64 编码）
+            data = await self.websocket.receive()
+            if data["type"] == "websocket.disconnect":
+                return None
+            if "text" in data and data["text"]:
+                # base64 文本帧
+                return base64.b64decode(data["text"])
+            elif "bytes" in data and data["bytes"]:
+                # 二进制帧（兼容旧版前端）
+                return data["bytes"]
+            return None
         except Exception:
             return None
 
@@ -115,6 +125,9 @@ async def camera_detect(
         "fps": float
     }
     """
+    # 先接受 WebSocket 连接（ASGI 协议要求 accept 后才能 close）
+    await websocket.accept()
+
     # JWT 身份验证（优先 query 参数，回退到 cookie）
     user_id = _authenticate_websocket_token(token)
     if user_id is None:
@@ -141,8 +154,6 @@ async def camera_detect(
     except Exception:
         await websocket.close(code=4001, reason="认证失败")
         return
-
-    await websocket.accept()
     logger.info(f"摄像头连接建立: scene_id={scene_id}, user_id={user_id}")
 
     session = None

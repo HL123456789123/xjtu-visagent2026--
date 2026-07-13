@@ -60,6 +60,9 @@ packages = ["app"]
 [project.scripts]
 dev = "main:startup"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.ruff]
 line-length = 100
 

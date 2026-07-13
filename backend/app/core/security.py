@@ -12,9 +12,14 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 import bcrypt
+import weakref
 from app.config.settings import settings
 from app.database.session import get_db
 from app.core.tz import now_cst
+
+# super_admin 状态缓存，避免修改 SQLAlchemy 模型实例
+# 使用 WeakKeyDictionary，user 对象被 GC 时自动清理
+_super_admin_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 def hash_password(password: str) -> str:
@@ -118,8 +123,7 @@ async def get_current_user(
     user = user_service.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
-    # 预计算 super_admin 状态并缓存到 user 对象，避免后续重复查库
-    # TODO: 考虑使用 Redis 缓存 super_admin 状态（TTL = Token 过期时间），进一步减少 DB 查询
+    # 预计算 super_admin 状态并缓存，避免后续重复查库
     from app.entity.db_models import UserRole, Role
     _has_super_admin_role = (
         db.query(UserRole)
@@ -130,9 +134,7 @@ async def get_current_user(
         )
         .first()
     ) is not None
-    # 设置到 user 对象，供 is_super_admin 函数读取
-    # TODO: 考虑迁移到 request.state 缓存，避免 object.__setattr__ hack SQLAlchemy 实例
-    object.__setattr__(user, "_is_super_admin", _has_super_admin_role)
+    _super_admin_cache[user] = _has_super_admin_role
     return user
 
 
@@ -151,8 +153,8 @@ def is_super_admin(user, db: Session) -> bool:
     Returns:
         是否为超级管理员
     """
-    # 检查请求级缓存（附加在 user 对象上）
-    cached = getattr(user, "_is_super_admin", None)
+    # 检查缓存
+    cached = _super_admin_cache.get(user)
     if cached is not None:
         return cached
 
@@ -168,8 +170,7 @@ def is_super_admin(user, db: Session) -> bool:
         .first()
     )
     result = has_role is not None
-    # 缓存到 user 对象（使用 object.__setattr__ 避免 SQLAlchemy 警告）
-    object.__setattr__(user, "_is_super_admin", result)
+    _super_admin_cache[user] = result
     return result
 
 

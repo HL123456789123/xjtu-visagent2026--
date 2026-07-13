@@ -6,9 +6,11 @@
 - GET /api/health/minio - 真实检测 MinIO 连接
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 from app.core.logger import get_logger
+from app.database.session import get_db
 
 logger = get_logger("health")
 
@@ -24,19 +26,13 @@ async def health_check():
 
 
 @router.get("/database")
-async def database_health():
+async def database_health(db: Session = Depends(get_db)):
     """真实检测 PostgreSQL 连接"""
     try:
-        from app.database.session import SessionLocal
-
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            return {
-                "status": "ok",
-            }
-        finally:
-            db.close()
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+        }
     except Exception as e:
         logger.error(f"数据库健康检查失败: {e}")
         raise HTTPException(
