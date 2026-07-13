@@ -166,6 +166,7 @@ async def camera_detect(
         )
 
         model_path = "yolo26n.pt"
+        model_version = None
         if scene_model:
             model_version = (
                 db.query(ModelVersion)
