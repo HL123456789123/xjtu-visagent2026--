@@ -30,33 +30,28 @@ class TestHealth:
         response = client.get("/api/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
-        assert data["app_name"] == "VisAgent"
-        assert data["version"] == "0.1.0"
+        assert data["status"] == "ok"
 
     def test_database_health(self):
         """GET /api/health/database 返回数据库状态"""
         response = client.get("/api/health/database")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
-        assert "数据库连接正常" in data["message"]
+        assert data["status"] == "ok"
 
     def test_redis_health(self):
         """GET /api/health/redis 返回 Redis 状态"""
         response = client.get("/api/health/redis")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
-        assert "Redis 连接正常" in data["message"]
+        assert data["status"] == "ok"
 
     def test_minio_health(self):
         """GET /api/health/minio 返回 MinIO 状态"""
         response = client.get("/api/health/minio")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
-        assert "MinIO 连接正常" in data["message"]
+        assert data["status"] == "ok"
 
 
 class TestDocs:

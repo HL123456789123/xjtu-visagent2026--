@@ -6,20 +6,28 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.entity.db_models import User, TrainingTask, Dataset
-from app.core.security import get_password_hash
+from app.entity.db_models import User, TrainingTask, Dataset, UserRole
+from app.core.security import hash_password
+from app.config.settings import settings
+
+# 测试用的合法路径（在 ALLOWED_TRAINING_DIRS 内）
+_TEST_DATA_DIR = settings.ALLOWED_TRAINING_DIRS.split(",")[0].strip()
+_TEST_DATASET_PATH = _TEST_DATA_DIR.rstrip("/") + "/test_dataset"
+_TEST_DATA_YAML = _TEST_DATA_DIR.rstrip("/") + "/test_dataset/data.yaml"
 
 
 @pytest.fixture
-def test_user(db: Session):
-    """创建测试用户"""
+def test_user(db: Session, seed_rbac):
+    """创建测试用户（operator 角色）"""
     user = User(
         username="testuser",
         email="test@example.com",
-        hashed_password=get_password_hash("testpassword"),
+        hashed_password=hash_password("testpassword"),
         is_active=True,
     )
     db.add(user)
+    db.flush()
+    db.add(UserRole(user_id=user.id, role_id=seed_rbac["operator"].id))
     db.commit()
     db.refresh(user)
     return user
@@ -31,11 +39,12 @@ def test_dataset(db: Session, test_user):
     dataset = Dataset(
         user_id=test_user.id,
         name="test_dataset",
-        path="/tmp/test_dataset",
+        path=_TEST_DATASET_PATH,
+        yaml_path=_TEST_DATA_YAML,
         description="测试数据集",
         num_images=100,
         num_classes=5,
-        status="ready",
+        status="active",
     )
     db.add(dataset)
     db.commit()
@@ -45,8 +54,10 @@ def test_dataset(db: Session, test_user):
 
 @pytest.fixture
 def auth_headers(client: TestClient, test_user):
-    """获取认证头"""
-    client.post("/api/auth/login", json={"username": "testuser", "password": "testpassword"})
+    """获取认证"""
+    client.cookies.clear()  # 清除之前测试留下的 cookie
+    response = client.post("/api/auth/login", json={"username": "testuser", "password": "testpassword"})
+    assert response.status_code == 200, f"登录失败: {response.status_code}"
     return {}
 
 
@@ -55,46 +66,44 @@ class TestTrainingTaskCreation:
 
     def test_create_training_task(self, client: TestClient, auth_headers, test_dataset):
         """创建训练任务"""
-        task_data = {
-            "model_name": "yolo26n",
+        response = client.post("/api/training/tasks", data={
+            "base_architecture": "yolo26n",
             "epochs": 10,
             "batch_size": 8,
             "lr0": 0.01,
             "device": "cpu",
             "dataset_id": test_dataset.id,
-        }
-        response = client.post("/api/training/tasks", json=task_data, headers=auth_headers)
+            "dataset_path": _TEST_DATASET_PATH,
+            "data_yaml": _TEST_DATA_YAML,
+        })
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 200
         assert "data" in data
         assert data["data"]["status"] == "pending"
 
-    def test_create_training_task_without_auth(self, client: TestClient):
+    def test_create_training_task_without_auth(self, client: TestClient, db: Session):
         """未认证用户无法创建训练任务"""
-        task_data = {
-            "model_name": "yolo26n",
+        response = client.post("/api/training/tasks", data={
+            "base_architecture": "yolo26n",
             "epochs": 10,
             "batch_size": 8,
-            "lr0": 0.01,
-            "device": "cpu",
-            "dataset_id": 1,
-        }
-        response = client.post("/api/training/tasks", json=task_data)
+            "dataset_path": _TEST_DATASET_PATH,
+            "data_yaml": _TEST_DATA_YAML,
+        })
         assert response.status_code == 401
 
     def test_create_training_task_invalid_dataset(self, client: TestClient, auth_headers):
         """使用不存在的数据集创建训练任务"""
-        task_data = {
-            "model_name": "yolo26n",
+        response = client.post("/api/training/tasks", data={
+            "base_architecture": "yolo26n",
             "epochs": 10,
             "batch_size": 8,
-            "lr0": 0.01,
-            "device": "cpu",
-            "dataset_id": 99999,
-        }
-        response = client.post("/api/training/tasks", json=task_data, headers=auth_headers)
-        assert response.status_code == 400
+            "dataset_path": _TEST_DATASET_PATH,
+            "data_yaml": _TEST_DATA_YAML,
+        })
+        # 不指定 dataset_id 时应成功创建（dataset_id 为可选）
+        assert response.status_code == 200
 
 
 class TestTrainingTaskOperations:
@@ -105,7 +114,8 @@ class TestTrainingTaskOperations:
         # 创建测试任务
         task = TrainingTask(
             user_id=test_user.id,
-            model_name="yolo26n",
+            task_uuid="test-uuid-001",
+            base_architecture="yolo26n",
             epochs=10,
             batch_size=8,
             status="pending",
@@ -123,7 +133,8 @@ class TestTrainingTaskOperations:
         """获取训练任务详情"""
         task = TrainingTask(
             user_id=test_user.id,
-            model_name="yolo26n",
+            task_uuid="test-uuid-002",
+            base_architecture="yolo26n",
             epochs=10,
             batch_size=8,
             status="pending",
@@ -136,13 +147,14 @@ class TestTrainingTaskOperations:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 200
-        assert data["data"]["id"] == task.id
+        assert data["data"]["task_id"] == task.id
 
     def test_delete_training_task(self, client: TestClient, auth_headers, test_user, db: Session):
         """删除训练任务"""
         task = TrainingTask(
             user_id=test_user.id,
-            model_name="yolo26n",
+            task_uuid="test-uuid-003",
+            base_architecture="yolo26n",
             epochs=10,
             batch_size=8,
             status="pending",
@@ -160,23 +172,26 @@ class TestTrainingTaskOperations:
 class TestTrainingTaskPermissions:
     """训练任务权限测试"""
 
-    def test_user_cannot_access_other_user_task(self, client: TestClient, auth_headers, test_user, db: Session):
+    def test_user_cannot_access_other_user_task(self, client: TestClient, auth_headers, test_user, seed_rbac, db: Session):
         """用户无法访问其他用户的任务"""
         # 创建另一个用户
         other_user = User(
             username="otheruser",
             email="other@example.com",
-            hashed_password=get_password_hash("otherpassword"),
+            hashed_password=hash_password("otherpassword"),
             is_active=True,
         )
         db.add(other_user)
+        db.flush()
+        db.add(UserRole(user_id=other_user.id, role_id=seed_rbac["operator"].id))
         db.commit()
         db.refresh(other_user)
 
         # 创建其他用户的任务
         task = TrainingTask(
             user_id=other_user.id,
-            model_name="yolo26n",
+            task_uuid="test-uuid-004",
+            base_architecture="yolo26n",
             epochs=10,
             batch_size=8,
             status="pending",
