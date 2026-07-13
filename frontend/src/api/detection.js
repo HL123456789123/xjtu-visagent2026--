@@ -1,7 +1,7 @@
 /**
  * 检测相关 API
  */
-import request from '@/utils/request'
+import request, { uploadRequest } from '@/utils/request'
 
 /**
  * 获取检测场景列表
@@ -62,7 +62,7 @@ export function detectBatchApi(data) {
   if (data.model_version_id) {
     formData.append('model_version_id', data.model_version_id)
   }
-  return request.post('/detection/batch', formData, {
+  return uploadRequest.post('/detection/batch', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
@@ -81,7 +81,7 @@ export function detectVideoApi(data) {
   if (data.model_version_id) {
     formData.append('model_version_id', data.model_version_id)
   }
-  return request.post('/detection/video', formData, {
+  return uploadRequest.post('/detection/video', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }

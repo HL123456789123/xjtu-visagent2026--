@@ -141,8 +141,8 @@
         </div>
       </div>
       
-      <!-- 检测结果 -->
-      <div v-else-if="detectionResult" class="result-content">
+      <!-- 单图/视频检测结果 -->
+      <div v-else-if="detectionResult && detectMode !== 'batch'" class="result-content">
         <div class="result-header">
           <h3>检测结果</h3>
           <div class="result-stats">
@@ -180,6 +180,45 @@
         </div>
       </div>
 
+      <!-- 批量检测结果 -->
+      <div v-else-if="detectMode === 'batch' && batchResults.length > 0" class="result-content">
+        <div class="result-header">
+          <h3>批量检测结果</h3>
+          <div class="result-stats">
+            <el-tag type="success">图片数量: {{ batchResults.length }}</el-tag>
+            <el-tag type="info">总目标数: {{ batchResults.reduce((sum, r) => sum + (r.total_objects || 0), 0) }}</el-tag>
+          </div>
+        </div>
+        <div class="batch-grid">
+          <div v-for="(result, idx) in batchResults" :key="idx" class="batch-item">
+            <div class="batch-item-header">
+              <span class="batch-filename">{{ result.image_name || `图片 ${idx + 1}` }}</span>
+              <div class="batch-item-stats">
+                <el-tag size="small" type="success">{{ result.total_objects || 0 }} 个目标</el-tag>
+                <el-tag size="small" type="info">{{ result.inference_time?.toFixed(1) }}ms</el-tag>
+              </div>
+            </div>
+            <div class="batch-canvas-wrap">
+              <canvas :ref="el => batchCanvasRefs[idx] = el" class="detection-canvas"></canvas>
+            </div>
+            <el-table v-if="result.detections?.length" :data="result.detections" stripe size="small" max-height="160">
+              <el-table-column prop="class_name" label="类别" width="100" />
+              <el-table-column prop="confidence" label="置信度" width="90">
+                <template #default="{ row }">
+                  {{ (row.confidence * 100).toFixed(1) }}%
+                </template>
+              </el-table-column>
+              <el-table-column label="位置">
+                <template #default="{ row }">
+                  {{ row.bbox.map(v => v.toFixed(0)).join(', ') }}
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else class="batch-no-detection">未检测到目标</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 空状态 -->
       <div v-else class="empty-result">
         <el-icon :size="64"><Aim /></el-icon>
@@ -214,6 +253,8 @@ const uploadRef = ref(null)
 // 检测状态
 const detecting = ref(false)
 const detectionResult = ref(null)
+const batchResults = ref([])
+const batchCanvasRefs = ref([])
 const canvasRef = ref(null)
 const currentImage = ref(null)
 
@@ -266,8 +307,12 @@ async function onSceneChange() {
 }
 
 // 文件变更
-function handleFileChange(file) {
-  if (detectMode.value !== 'batch') {
+function handleFileChange(file, uploadFiles) {
+  if (detectMode.value === 'batch') {
+    // 批量模式：使用 uploadFiles（el-upload 内部完整文件列表）
+    fileList.value = uploadFiles
+  } else {
+    // 单图/视频模式：只保留当前文件
     fileList.value = [file]
   }
 }
@@ -302,25 +347,36 @@ async function startDetection() {
         ...params,
         image: fileList.value[0].raw
       })
+      detectionResult.value = res.data
     } else if (detectMode.value === 'batch') {
       res = await detectBatchApi({
         ...params,
         images: fileList.value.map(f => f.raw)
       })
+      // 批量结果：附带文件名便于展示
+      batchResults.value = (res.data?.results || []).map((r, i) => ({
+        ...r,
+        image_name: fileList.value[i]?.name || `图片 ${i + 1}`,
+      }))
     } else {
       res = await detectVideoApi({
         ...params,
         video: fileList.value[0].raw
       })
+      detectionResult.value = res.data
     }
 
-    detectionResult.value = res.data
     ElMessage.success('检测完成')
 
     // 绘制检测框
-    if (detectMode.value !== 'video') {
-      await nextTick()
+    await nextTick()
+    if (detectMode.value === 'single') {
       drawDetections()
+    } else if (detectMode.value === 'batch') {
+      drawBatchDetections()
+      // 批量检测完成后清理已上传的文件列表
+      fileList.value = []
+      uploadRef.value?.clearFiles()
     }
   } catch (error) {
     ElMessage.error('检测失败: ' + (error.message || '未知错误'))
@@ -378,10 +434,52 @@ function drawDetections() {
   img.src = URL.createObjectURL(file.raw)
 }
 
+// 绘制批量检测框
+function drawBatchDetections() {
+  if (batchResults.value.length === 0) return
+
+  batchResults.value.forEach((result, idx) => {
+    const file = fileList.value[idx]
+    if (!file) return
+
+    const canvas = batchCanvasRefs.value[idx]
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    const img = new Image()
+
+    img.onload = () => {
+      canvas.width = img.width
+      canvas.height = img.height
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(img.src)
+
+      const detections = result.detections || []
+      detections.forEach(det => {
+        const [x1, y1, x2, y2] = det.bbox
+        ctx.strokeStyle = '#409eff'
+        ctx.lineWidth = 2
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+
+        const label = `${det.class_name} ${(det.confidence * 100).toFixed(0)}%`
+        ctx.font = '14px Arial'
+        const textWidth = ctx.measureText(label).width
+        ctx.fillStyle = '#409eff'
+        ctx.fillRect(x1, y1 - 24, textWidth + 10, 24)
+        ctx.fillStyle = '#fff'
+        ctx.fillText(label, x1 + 5, y1 - 6)
+      })
+    }
+
+    img.src = URL.createObjectURL(file.raw)
+  })
+}
+
 // 监听检测模式变化
 watch(detectMode, () => {
   fileList.value = []
   detectionResult.value = null
+  batchResults.value = []
   if (detectMode.value !== 'camera' && cameraActive.value) {
     stopCamera()
   }
@@ -652,6 +750,61 @@ onUnmounted(() => {
     max-height: 500px;
     border: 1px solid #ebeef5;
     border-radius: $border-radius-md;
+  }
+}
+
+.batch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: $spacing-lg;
+  margin-bottom: $spacing-lg;
+}
+
+.batch-item {
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: $border-radius-md;
+  padding: $spacing-md;
+
+  .batch-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: $spacing-sm;
+
+    .batch-filename {
+      font-weight: 500;
+      font-size: 14px;
+      color: $text-primary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+    }
+
+    .batch-item-stats {
+      display: flex;
+      gap: 4px;
+    }
+  }
+
+  .batch-canvas-wrap {
+    text-align: center;
+    margin-bottom: $spacing-sm;
+
+    .detection-canvas {
+      max-width: 100%;
+      max-height: 280px;
+      border: 1px solid #ebeef5;
+      border-radius: $border-radius-sm;
+    }
+  }
+
+  .batch-no-detection {
+    text-align: center;
+    padding: $spacing-sm;
+    color: $text-placeholder;
+    font-size: 13px;
   }
 }
 
