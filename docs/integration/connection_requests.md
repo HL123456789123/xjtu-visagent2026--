@@ -5,8 +5,8 @@
 - 日期：2026-07-14
 - 提交人：刘楚涵
 - 共享文件 owner：闫灿宇或当天指定前端集成人
-- 状态：待 owner 接线
-- 本次已遵守边界：未修改 `frontend/src/router/index.js`，未修改 `frontend/src/components/layout/AppSidebar.vue`
+- 状态：已接线
+- 本次接线：已修改 `frontend/src/router/index.js` 和 `frontend/src/components/layout/AppSidebar.vue`
 
 ### 目标文件
 
@@ -32,7 +32,13 @@
 { path: '/food-recipes', title: '食物菜谱', icon: Dish, permission: 'food:recognition:create' }
 ```
 
-3. 若 Day1 RBAC 权限尚未冻结，可由 owner 决定临时不加 `permission`，或先复用一个明确允许测试用户访问的临时权限；正式权限建议与后端食物识别创建/查看权限对齐。
+3. 当前 Day1 演示阶段暂不加 `permission`，保证普通测试用户可以打开页面；正式权限后续建议与后端食物识别创建/查看权限对齐。
+
+### 实际接线结果
+
+- `/` 默认重定向到 `/food-recipes`，避免无旧菜单权限的测试用户进入 `/chat` 后看到 404。
+- 新增 `/food-recipes` 路由，渲染 `FoodRecipePage.vue`。
+- 侧边栏新增“食物菜谱”入口，暂不绑定旧权限。
 
 ### 变更原因
 
