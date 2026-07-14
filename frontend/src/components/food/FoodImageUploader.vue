@@ -5,6 +5,7 @@
       class="food-uploader__input"
       type="file"
       accept="image/jpeg,image/png"
+      multiple
       :disabled="disabled"
       data-testid="food-image-input"
       @change="handleNativeFile"
@@ -23,12 +24,18 @@
       @dragleave.prevent="dragging = false"
       @drop.prevent="handleDrop"
     >
-      <div v-if="previewUrl" class="food-uploader__preview">
-        <img :src="previewUrl" :alt="selectedName" />
+      <div
+        v-if="previewUrls.length"
+        class="food-uploader__preview-grid"
+        :class="{ 'is-single': previewUrls.length === 1 }"
+      >
+        <div v-for="preview in previewUrls" :key="preview.url" class="food-uploader__preview">
+          <img :src="preview.url" :alt="preview.file.name" />
+        </div>
       </div>
       <div v-else class="food-uploader__placeholder">
         <strong>选择食物图片</strong>
-        <span>JPG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
+        <span>支持 1 至多张 JPG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
       </div>
     </div>
 
@@ -37,7 +44,7 @@
         {{ selectedName || '未选择图片' }}
       </span>
       <button
-        v-if="previewUrl"
+        v-if="selectedFiles.length"
         class="food-uploader__clear"
         type="button"
         :disabled="disabled"
@@ -59,8 +66,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
   modelValue: {
-    type: File,
-    default: null,
+    type: Array,
+    default: () => [],
   },
   maxSizeMB: {
     type: Number,
@@ -81,18 +88,23 @@ const emit = defineEmits([
 ])
 
 const fileInputRef = ref(null)
-const previewUrl = ref('')
+const previewUrls = ref([])
 const validationMessage = ref('')
 const dragging = ref(false)
 
-const selectedName = computed(() => props.modelValue?.name || '')
+const selectedFiles = computed(() => (Array.isArray(props.modelValue) ? props.modelValue : []))
+const selectedName = computed(() => {
+  if (selectedFiles.value.length === 1) return selectedFiles.value[0].name
+  if (selectedFiles.value.length > 1) return `已选择 ${selectedFiles.value.length} 张图片`
+  return ''
+})
 const maxSizeBytes = computed(() => props.maxSizeMB * 1024 * 1024)
 
-function revokePreview() {
-  if (previewUrl.value) {
-    URL.revokeObjectURL(previewUrl.value)
-    previewUrl.value = ''
-    emit('preview-change', '')
+function revokePreviews() {
+  if (previewUrls.value.length) {
+    previewUrls.value.forEach((preview) => URL.revokeObjectURL(preview.url))
+    previewUrls.value = []
+    emit('preview-change', [])
   }
 }
 
@@ -102,7 +114,7 @@ function setValidationError(message) {
 }
 
 function validateFile(file) {
-  if (!file) return '请选择一张图片。'
+  if (!file) return '请选择至少一张图片。'
   if (!['image/jpeg', 'image/png'].includes(file.type)) {
     return '仅支持 JPG 或 PNG 图片。'
   }
@@ -112,42 +124,51 @@ function validateFile(file) {
   return ''
 }
 
-function selectFile(file) {
-  const error = validateFile(file)
+function validateFiles(files) {
+  if (!files.length) return '请选择至少一张图片。'
+  const invalidFile = files.find((file) => validateFile(file))
+  if (!invalidFile) return ''
+  return `${invalidFile.name}：${validateFile(invalidFile)}`
+}
+
+function selectFiles(files) {
+  const nextFiles = Array.from(files || [])
+  const error = validateFiles(nextFiles)
   if (error) {
-    emit('update:modelValue', null)
-    revokePreview()
+    emit('update:modelValue', [])
+    revokePreviews()
     setValidationError(error)
     return false
   }
 
   validationMessage.value = ''
-  revokePreview()
-  previewUrl.value = URL.createObjectURL(file)
-  emit('update:modelValue', file)
-  emit('selected', file)
-  emit('preview-change', previewUrl.value)
+  revokePreviews()
+  previewUrls.value = nextFiles.map((file) => ({
+    file,
+    url: URL.createObjectURL(file),
+  }))
+  emit('update:modelValue', nextFiles)
+  emit('selected', nextFiles)
+  emit(
+    'preview-change',
+    previewUrls.value.map((preview) => preview.url)
+  )
   return true
 }
 
+function selectFile(file) {
+  return selectFiles(file ? [file] : [])
+}
+
 function handleNativeFile(event) {
-  const [file] = Array.from(event.target.files || [])
-  selectFile(file)
+  selectFiles(event.target.files || [])
   event.target.value = ''
 }
 
 function handleDrop(event) {
   dragging.value = false
   if (props.disabled) return
-  const files = Array.from(event.dataTransfer?.files || [])
-  if (files.length > 1) {
-    emit('update:modelValue', null)
-    revokePreview()
-    setValidationError('一次只能上传一张图片。')
-    return
-  }
-  const [file] = files
-  selectFile(file)
+  selectFiles(event.dataTransfer?.files || [])
 }
 
 function openFileDialog() {
@@ -156,28 +177,30 @@ function openFileDialog() {
 }
 
 function clearSelection() {
-  emit('update:modelValue', null)
-  revokePreview()
+  emit('update:modelValue', [])
+  revokePreviews()
   validationMessage.value = ''
   emit('cleared')
 }
 
 watch(
   () => props.modelValue,
-  (file) => {
-    if (!file) {
-      revokePreview()
+  (files) => {
+    if (!Array.isArray(files) || files.length === 0) {
+      revokePreviews()
     }
   }
 )
 
 onBeforeUnmount(() => {
-  revokePreview()
+  revokePreviews()
 })
 
 defineExpose({
   validateFile,
+  validateFiles,
   selectFile,
+  selectFiles,
   clearSelection,
 })
 </script>
@@ -232,9 +255,22 @@ defineExpose({
   }
 }
 
-.food-uploader__preview {
+.food-uploader__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $spacing-sm;
   width: 100%;
   height: 260px;
+  overflow: hidden;
+
+  &.is-single {
+    grid-template-columns: 1fr;
+  }
+}
+
+.food-uploader__preview {
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   border-radius: $border-radius-sm;
 

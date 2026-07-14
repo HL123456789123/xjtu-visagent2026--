@@ -26,6 +26,10 @@
         <dd data-testid="summary-confirmed-count">{{ confirmedIngredients.length }} 项</dd>
       </div>
       <div>
+        <dt>image_count</dt>
+        <dd data-testid="summary-image-count">{{ imageCount }} 张</dd>
+      </div>
+      <div>
         <dt>provider</dt>
         <dd>{{ provider || '-' }}</dd>
       </div>
@@ -61,6 +65,14 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  imageCount: {
+    type: Number,
+    default: 0,
+  },
+  sourceImageNames: {
+    type: Array,
+    default: () => [],
+  },
 })
 
 const emit = defineEmits(['generate-recipe'])
@@ -80,6 +92,8 @@ function emitRecipeRequest() {
   emit('generate-recipe', {
     recognition_id: props.recognitionId,
     confirmed_ingredients: props.confirmedIngredients,
+    image_count: props.imageCount,
+    source_images: props.sourceImageNames,
   })
 }
 </script>
@@ -130,7 +144,7 @@ function emitRecipeRequest() {
 
 .recognition-summary__contract {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: $spacing-sm;
   margin: 0;
 

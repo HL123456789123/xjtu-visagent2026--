@@ -3,7 +3,7 @@
     <section class="food-recipe-page__toolbar">
       <div>
         <h1>食物识别生成菜谱</h1>
-        <p>上传图片、确认食材，再把确认快照交给菜谱模块。</p>
+        <p>上传一张或多张图片、确认食材，再把确认快照交给菜谱模块。</p>
       </div>
       <div class="food-recipe-page__status" data-testid="workflow-state">
         {{ workflowState }}
@@ -25,7 +25,7 @@
           </header>
 
           <FoodImageUploader
-            v-model="selectedFile"
+            v-model="selectedFiles"
             :disabled="workflowState === 'uploading'"
             @selected="handleFileSelected"
             @cleared="resetRecognition"
@@ -41,7 +41,7 @@
             class="food-recipe-page__primary"
             type="button"
             data-testid="start-recognition"
-            :disabled="!selectedFile || workflowState === 'uploading'"
+            :disabled="selectedFiles.length === 0 || workflowState === 'uploading'"
             @click="startRecognition"
           >
             开始识别
@@ -61,11 +61,11 @@
 
       <section class="food-recipe-page__right">
         <div v-if="workflowState === 'idle'" class="food-recipe-page__empty" data-testid="idle-state">
-          请选择一张食物图片。
+          请选择至少一张食物图片。
         </div>
 
         <div v-else-if="workflowState === 'selecting'" class="food-recipe-page__empty" data-testid="selecting-state">
-          图片已准备好，可以开始识别。
+          {{ selectedImageText }}已准备好，可以开始识别。
         </div>
 
         <div v-else-if="workflowState === 'uploading'" class="food-recipe-page__loading" data-testid="loading-state">
@@ -96,6 +96,8 @@
             :status="workflowState"
             :provider="recognitionMeta.provider"
             :model-version="recognitionMeta.modelVersion"
+            :image-count="recognizedImageCount"
+            :source-image-names="selectedImageNames"
             @generate-recipe="emitRecipeRequest"
           />
         </template>
@@ -119,11 +121,12 @@ import { mapCandidatesToEditableIngredients } from '@/components/food/ingredient
 const emit = defineEmits(['confirmed', 'recipe-requested'])
 
 const workflowState = ref('idle')
-const selectedFile = ref(null)
+const selectedFiles = ref([])
 const confThreshold = ref(0.25)
 const mockScenario = ref('success')
 const recognizedIngredients = ref([])
 const confirmedIngredients = ref([])
+const recognizedImageCount = ref(0)
 const recognitionId = ref('')
 const validationMessage = ref('')
 const errorState = ref({
@@ -151,6 +154,13 @@ const visibleStateKey = computed(() => {
   return ''
 })
 
+const selectedImageNames = computed(() => selectedFiles.value.map((file) => file.name))
+const selectedImageText = computed(() => {
+  const count = selectedFiles.value.length
+  if (count <= 1) return '图片'
+  return `${count} 张图片`
+})
+
 function handleFileSelected() {
   workflowState.value = 'selecting'
   resetRecognition()
@@ -159,11 +169,12 @@ function handleFileSelected() {
 function resetRecognition() {
   recognizedIngredients.value = []
   confirmedIngredients.value = []
+  recognizedImageCount.value = 0
   recognitionId.value = ''
   validationMessage.value = ''
   errorState.value = { status: null, title: '', message: '' }
   recognitionMeta.value = { provider: '', modelVersion: '' }
-  if (!selectedFile.value) workflowState.value = 'idle'
+  if (selectedFiles.value.length === 0) workflowState.value = 'idle'
 }
 
 function setValidationError(message) {
@@ -208,12 +219,13 @@ function applyRecognitionResult(response) {
   }
   recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
   confirmedIngredients.value = []
+  recognizedImageCount.value = payload.image_count || payload.images?.length || selectedFiles.value.length
   workflowState.value = 'recognized'
 }
 
 async function startRecognition() {
-  if (!selectedFile.value) {
-    setValidationError('请先选择一张 JPG/PNG 图片。')
+  if (selectedFiles.value.length === 0) {
+    setValidationError('请先选择至少一张 JPG/PNG 图片。')
     return
   }
 
@@ -223,7 +235,7 @@ async function startRecognition() {
   try {
     const response = await createFoodRecognition(
       {
-        image: selectedFile.value,
+        images: selectedFiles.value,
         conf_threshold: confThreshold.value,
       },
       { mockScenario: mockScenario.value }
@@ -257,6 +269,8 @@ async function handleConfirm(ingredients) {
   emit('confirmed', {
     recognition_id: recognitionId.value,
     confirmed_ingredients: ingredients,
+    image_count: recognizedImageCount.value,
+    source_images: selectedImageNames.value,
   })
 }
 
@@ -265,7 +279,11 @@ function handleIngredientValidation(errors) {
 }
 
 function emitRecipeRequest(payload) {
-  emit('recipe-requested', payload)
+  emit('recipe-requested', {
+    ...payload,
+    image_count: payload.image_count || recognizedImageCount.value,
+    source_images: payload.source_images || selectedImageNames.value,
+  })
 }
 </script>
 

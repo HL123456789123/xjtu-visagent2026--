@@ -77,6 +77,11 @@ export function unwrapFoodApiData(response) {
   return response?.data ?? response
 }
 
+function normalizeRecognitionImages(data = {}) {
+  if (Array.isArray(data.images)) return data.images.filter(Boolean)
+  return data.image ? [data.image] : []
+}
+
 export function createFoodRecognition(data, options = {}) {
   const scenario = options.mockScenario ?? options.mock
   const mock = resolveMockScenario(scenario)
@@ -85,8 +90,15 @@ export function createFoodRecognition(data, options = {}) {
   const client = options.client || injectedClient
   if (client?.create) return client.create(data, options)
 
+  const images = normalizeRecognitionImages(data)
   const formData = new FormData()
-  formData.append('image', data.image)
+  images.forEach((image) => {
+    formData.append('images', image)
+  })
+  if (images[0]) {
+    formData.append('image', images[0])
+  }
+  formData.append('image_count', images.length)
   formData.append('conf_threshold', data.conf_threshold ?? 0.25)
 
   return uploadRequest.post(FOOD_RECOGNITION_PATHS.create, formData, {

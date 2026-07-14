@@ -4,8 +4,9 @@ import FoodImageUploader from '../FoodImageUploader.vue'
 
 describe('FoodImageUploader', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:preview-url'),
+      createObjectURL: vi.fn((file) => `blob:${file.name}`),
       revokeObjectURL: vi.fn(),
     })
   })
@@ -17,9 +18,9 @@ describe('FoodImageUploader', () => {
     const selected = wrapper.vm.selectFile(file)
 
     expect(selected).toBe(true)
-    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([file])
-    expect(wrapper.emitted('selected')?.[0]).toEqual([file])
-    expect(wrapper.emitted('preview-change')?.[0]).toEqual(['blob:preview-url'])
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([[file]])
+    expect(wrapper.emitted('selected')?.[0]).toEqual([[file]])
+    expect(wrapper.emitted('preview-change')?.[0]).toEqual([['blob:meal.jpg']])
   })
 
   it('rejects non JPG/PNG files', async () => {
@@ -48,7 +49,7 @@ describe('FoodImageUploader', () => {
     expect(wrapper.emitted('validation-error')?.[0][0]).toContain('1 MB')
   })
 
-  it('rejects multiple dropped files to keep the workflow single-image only', async () => {
+  it('accepts multiple dropped images as one recognition batch', async () => {
     const wrapper = mount(FoodImageUploader)
     const first = new File(['image'], 'meal-one.jpg', { type: 'image/jpeg' })
     const second = new File(['image'], 'meal-two.png', { type: 'image/png' })
@@ -59,7 +60,9 @@ describe('FoodImageUploader', () => {
       },
     })
 
-    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([null])
-    expect(wrapper.emitted('validation-error')?.[0][0]).toContain('一张图片')
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([[first, second]])
+    expect(wrapper.emitted('selected')?.[0]).toEqual([[first, second]])
+    expect(wrapper.emitted('preview-change')?.[0]).toEqual([['blob:meal-one.jpg', 'blob:meal-two.png']])
+    expect(wrapper.findAll('.food-uploader__preview img')).toHaveLength(2)
   })
 })

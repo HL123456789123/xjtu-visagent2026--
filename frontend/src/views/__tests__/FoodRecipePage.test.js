@@ -7,16 +7,17 @@ function makeImageFile(name = 'meal.jpg') {
   return new File(['image'], name, { type: 'image/jpeg' })
 }
 
-async function selectImage(wrapper) {
+async function selectImages(wrapper, files = [makeImageFile()]) {
   const uploader = wrapper.findComponent(FoodImageUploader)
-  uploader.vm.selectFile(makeImageFile())
+  uploader.vm.selectFiles(files)
   await flushPromises()
 }
 
 describe('FoodRecipePage', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:food-preview'),
+      createObjectURL: vi.fn((file) => `blob:${file.name}`),
       revokeObjectURL: vi.fn(),
     })
   })
@@ -24,8 +25,9 @@ describe('FoodRecipePage', () => {
   it('runs the success mock flow and emits the recipe contract after confirmation', async () => {
     const wrapper = mount(FoodRecipePage)
 
-    await selectImage(wrapper)
+    await selectImages(wrapper, [makeImageFile('breakfast.jpg'), makeImageFile('vegetables.jpg')])
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('selecting')
+    expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('2 张图片')
 
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
@@ -42,8 +44,11 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
     expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('rec_mock_day1_001')
     expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('3 项')
+    expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
     expect(wrapper.emitted('confirmed')?.[0][0]).toMatchObject({
       recognition_id: 'rec_mock_day1_001',
+      image_count: 2,
+      source_images: ['breakfast.jpg', 'vegetables.jpg'],
       confirmed_ingredients: [
         { key: 'tomato', name: '番茄' },
         { key: 'egg', name: '鸡蛋' },
@@ -54,6 +59,8 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="recipe-generate"]').trigger('click')
     expect(wrapper.emitted('recipe-requested')?.[0][0]).toMatchObject({
       recognition_id: 'rec_mock_day1_001',
+      image_count: 2,
+      source_images: ['breakfast.jpg', 'vegetables.jpg'],
       confirmed_ingredients: [
         { key: 'tomato', name: '番茄' },
         { key: 'egg', name: '鸡蛋' },
@@ -66,7 +73,7 @@ describe('FoodRecipePage', () => {
     const wrapper = mount(FoodRecipePage)
 
     await wrapper.find('[data-testid="mock-scenario"]').setValue('empty')
-    await selectImage(wrapper)
+    await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
@@ -84,7 +91,7 @@ describe('FoodRecipePage', () => {
     const wrapper = mount(FoodRecipePage)
 
     await wrapper.find('[data-testid="mock-scenario"]').setValue('503')
-    await selectImage(wrapper)
+    await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
