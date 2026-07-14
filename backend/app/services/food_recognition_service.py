@@ -1,9 +1,11 @@
 """食物识别的上传、识别、确认快照服务骨架。"""
+
 import asyncio
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
@@ -11,6 +13,7 @@ from fastapi import UploadFile
 from pydantic import ValidationError
 
 from app.core.exceptions import AppException
+from app.core.logger import get_logger
 from app.entity.food_schemas import (
     ConfirmedIngredient,
     FoodRecognitionResponse,
@@ -24,6 +27,8 @@ from app.services.food_recognition_provider import (
     FoodRecognitionProviderError,
     YoloFoodRecognitionProvider,
 )
+
+logger = get_logger("food_recognition_service")
 
 
 class FoodRecognitionValidationError(AppException):
@@ -45,6 +50,10 @@ class FoodRecognitionPersistenceError(AppException):
 
     def __init__(self, message: str = "食物识别任务持久化失败", detail: str | None = None):
         super().__init__(code=503, message=message, detail=detail)
+
+
+class FoodRecognitionStateError(FoodRecognitionValidationError):
+    """识别任务当前状态不允许执行目标操作。"""
 
 
 class FoodRecognitionNotFoundError(AppException):
@@ -153,10 +162,11 @@ class FoodRecognitionService:
     ) -> FoodRecognitionResponse:
         """创建一张图片对应的一条食物识别任务。"""
         self._validate_conf_threshold(conf_threshold)
+        started_at = time.perf_counter()
         content, extension, mime_type = await self._read_and_validate_image(image)
         temp_path = self._create_temp_file(content, extension)
         recognition_id = str(uuid.uuid4())
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         object_name = self._build_object_name(user_id, now, recognition_id, extension)
         uploaded = False
 
@@ -183,10 +193,33 @@ class FoodRecognitionService:
             try:
                 stored = await self._create_record(record)
             except FoodRecognitionPersistenceError:
-                await self._delete_uploaded_object(object_name)
+                await self._compensate_uploaded_object(
+                    object_name=object_name,
+                    recognition_id=recognition_id,
+                    user_id=user_id,
+                    started_at=started_at,
+                )
+                self._log_event(
+                    level="warning",
+                    recognition_id=recognition_id,
+                    user_id=user_id,
+                    status="failed",
+                    phase="database",
+                    started_at=started_at,
+                    error_type="persistence",
+                )
                 raise
+            self._log_event(
+                level="info",
+                recognition_id=recognition_id,
+                user_id=user_id,
+                status=stored.recognition.status,
+                phase="completed",
+                started_at=started_at,
+            )
             return stored.recognition
         except (FoodRecognitionStorageError, FoodRecognitionProviderError) as exc:
+            phase = "minio" if isinstance(exc, FoodRecognitionStorageError) else "provider"
             try:
                 await self._persist_failure(
                     user_id=user_id,
@@ -200,13 +233,38 @@ class FoodRecognitionService:
                 )
             except FoodRecognitionPersistenceError:
                 if uploaded:
-                    await self._delete_uploaded_object(object_name)
+                    await self._compensate_uploaded_object(
+                        object_name=object_name,
+                        recognition_id=recognition_id,
+                        user_id=user_id,
+                        started_at=started_at,
+                    )
+                self._log_event(
+                    level="warning",
+                    recognition_id=recognition_id,
+                    user_id=user_id,
+                    status="failed",
+                    phase="database",
+                    started_at=started_at,
+                    error_type="persistence",
+                )
                 raise
+            self._log_event(
+                level="warning",
+                recognition_id=recognition_id,
+                user_id=user_id,
+                status="failed",
+                phase=phase,
+                started_at=started_at,
+                error_type=type(exc).__name__,
+            )
             raise
         finally:
             self._remove_temp_file(temp_path)
 
-    async def get_recognition(self, *, user_id: int, recognition_id: str) -> FoodRecognitionResponse:
+    async def get_recognition(
+        self, *, user_id: int, recognition_id: str
+    ) -> FoodRecognitionResponse:
         """查询当前用户拥有的食物识别任务。"""
         record = await self._get_owned_record(user_id, recognition_id)
         return record.recognition
@@ -227,7 +285,11 @@ class FoodRecognitionService:
             raise FoodRecognitionValidationError("食材 key 不允许重复")
 
         record = await self._get_owned_record(user_id, recognition_id)
-        now = datetime.now()
+        if record.recognition.status == "failed":
+            raise FoodRecognitionStateError("失败的食物识别任务不能确认食材")
+
+        started_at = time.perf_counter()
+        now = datetime.now(timezone.utc)
         updated_recognition = record.recognition.model_copy(
             update={
                 "status": "confirmed",
@@ -248,6 +310,14 @@ class FoodRecognitionService:
         )
         if updated is None:
             raise FoodRecognitionNotFoundError(recognition_id)
+        self._log_event(
+            level="info",
+            recognition_id=recognition_id,
+            user_id=user_id,
+            status=updated.recognition.status,
+            phase="confirmation",
+            started_at=started_at,
+        )
         return updated.recognition
 
     def _validate_conf_threshold(self, conf_threshold: float) -> None:
@@ -316,6 +386,57 @@ class FoodRecognitionService:
                 "食物图片补偿删除失败", detail=type(exc).__name__
             ) from exc
 
+    async def _compensate_uploaded_object(
+        self,
+        *,
+        object_name: str,
+        recognition_id: str,
+        user_id: int,
+        started_at: float,
+    ) -> None:
+        """尽力删除孤立对象，并保留原始数据库异常作为接口结果。"""
+        try:
+            await self._delete_uploaded_object(object_name)
+        except FoodRecognitionStorageError as exc:
+            self._log_event(
+                level="warning",
+                recognition_id=recognition_id,
+                user_id=user_id,
+                status="failed",
+                phase="minio_compensation",
+                started_at=started_at,
+                error_type=type(exc).__name__,
+            )
+
+    def _log_event(
+        self,
+        *,
+        level: str,
+        recognition_id: str,
+        user_id: int,
+        status: str,
+        phase: str,
+        started_at: float,
+        error_type: str | None = None,
+    ) -> None:
+        """记录可检索的 Food 关键路径日志，不写入文件名、路径或敏感凭据。"""
+        elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+        message = (
+            "food_recognition recognition_id=%s user_id=%s provider=yolo "
+            "model_version=%s status=%s phase=%s duration_ms=%s error_type=%s"
+        )
+        log_method = logger.info if level == "info" else logger.warning
+        log_method(
+            message,
+            recognition_id,
+            user_id,
+            self._model_version(),
+            status,
+            phase,
+            elapsed_ms,
+            error_type or "none",
+        )
+
     def _get_object_storage(self) -> FoodObjectStorage:
         if self._object_storage is None:
             try:
@@ -347,7 +468,9 @@ class FoodRecognitionService:
         return self._normalize_candidates(candidates, conf_threshold)
 
     @staticmethod
-    def _normalize_candidate(candidate: IngredientCandidate | Mapping[str, Any]) -> IngredientCandidate:
+    def _normalize_candidate(
+        candidate: IngredientCandidate | Mapping[str, Any],
+    ) -> IngredientCandidate:
         """归一化类别键，并优先使用项目定义的中文展示名。"""
         if isinstance(candidate, IngredientCandidate):
             payload = candidate.model_dump()
@@ -457,7 +580,7 @@ class FoodRecognitionService:
             conf_threshold=conf_threshold,
             raw_detections=[],
             created_at=occurred_at,
-            updated_at=datetime.now(),
+            updated_at=datetime.now(timezone.utc),
         )
         await self._create_record(
             FoodRecognitionRecord(

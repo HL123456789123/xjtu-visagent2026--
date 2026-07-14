@@ -1,4 +1,5 @@
 """食物识别接口的数据传输对象。"""
+
 import math
 from datetime import datetime
 from typing import Literal
@@ -120,7 +121,7 @@ class FoodRecognitionResponse(FoodSchemaBase):
     """食物识别任务对外响应；不包含本地临时文件路径。"""
 
     recognition_id: str = Field(..., min_length=1, description="识别任务 ID")
-    status: str = Field(..., min_length=1, description="recognized 或 confirmed")
+    status: Literal["recognized", "confirmed", "failed"] = Field(..., description="识别任务状态")
     image_object_name: str = Field(..., min_length=1, description="MinIO 对象名")
     provider: Literal["yolo"] = "yolo"
     model_version: str = Field(..., min_length=1)
