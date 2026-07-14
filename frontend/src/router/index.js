@@ -39,7 +39,7 @@ const routes = [
         path: 'chat',
         name: 'Chat',
         component: () => import('@/views/ChatPage.vue'),
-        meta: { title: '智能对话', icon: 'ChatDotRound', permission: 'agent:chat' },
+        meta: { title: '智能对话', icon: 'ChatDotRound' },
       },
       {
         path: 'detection',
@@ -69,7 +69,7 @@ const routes = [
         path: 'history',
         name: 'History',
         component: () => import('@/views/HistoryPage.vue'),
-        meta: { title: '历史记录', icon: 'Clock', permission: 'detection:task:view' },
+        meta: { title: '历史记录', icon: 'Clock' },
       },
       {
         path: 'dashboard',

@@ -75,12 +75,12 @@ const activeMenu = computed(() => {
 const menuItems = [
   { path: '/food-recipes', title: '食物菜谱', icon: Goods },
   { path: '/dashboard', title: '仪表盘', icon: DataAnalysis, permission: 'system:dashboard' },
-  { path: '/chat', title: '智能对话', icon: ChatDotRound, permission: 'agent:chat' },
+  { path: '/chat', title: '智能对话', icon: ChatDotRound },
   { path: '/detection', title: '目标检测', icon: Camera, permission: 'detection:task:view' },
   { path: '/models', title: '模型管理', icon: Goods, permission: 'model:view' },
   { path: '/training', title: '模型训练', icon: Cpu, permission: 'training:task:view' },
   { path: '/datasets', title: '数据集管理', icon: FolderOpened, permission: 'dataset:view' },
-  { path: '/history', title: '历史记录', icon: Clock, permission: 'detection:task:view' },
+  { path: '/history', title: '历史记录', icon: Clock },
 ]
 
 /** 管理员菜单项（含权限标识） */
