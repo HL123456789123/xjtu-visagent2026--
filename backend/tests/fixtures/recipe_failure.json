@@ -1,0 +1,96 @@
+{
+    "_comment": "菜谱失败样例 Fixture - 用于测试 Schema 校验",
+    "_test_target": "RecipeGenerateResult 和 Ingredient 的反例",
+
+    "generate_result_empty_title": {
+        "title": "",
+        "description": "测试空标题",
+        "ingredients": [{"name": "番茄", "amount": 2, "unit": "个"}],
+        "steps": [{"step_number": 1, "description": "切番茄"}],
+        "servings": 2
+    },
+    "generate_result_no_ingredients": {
+        "title": "番茄炒蛋",
+        "ingredients": [],
+        "steps": [{"step_number": 1, "description": "切番茄"}],
+        "servings": 2
+    },
+    "generate_result_no_steps": {
+        "title": "番茄炒蛋",
+        "ingredients": [{"name": "番茄", "amount": 2, "unit": "个"}],
+        "steps": [],
+        "servings": 2
+    },
+    "generate_result_step_order_non_continuous": {
+        "title": "番茄炒蛋",
+        "ingredients": [{"name": "番茄", "amount": 2, "unit": "个"}],
+        "steps": [
+            {"step_number": 1, "description": "步骤1"},
+            {"step_number": 3, "description": "步骤3"}
+        ],
+        "servings": 2
+    },
+    "generate_result_negative_servings": {
+        "title": "番茄炒蛋",
+        "ingredients": [{"name": "番茄", "amount": 2, "unit": "个"}],
+        "steps": [{"step_number": 1, "description": "切番茄"}],
+        "servings": -1
+    },
+
+    "ingredient_negative_amount": {
+        "name": "番茄",
+        "amount": -1,
+        "unit": "个"
+    },
+    "ingredient_zero_amount": {
+        "name": "番茄",
+        "amount": 0,
+        "unit": "个"
+    },
+    "ingredient_empty_name": {
+        "name": "",
+        "amount": 2,
+        "unit": "个"
+    },
+    "ingredient_missing_both_amount": {
+        "name": "番茄",
+        "unit": "个"
+    },
+
+    "recipe_step_zero_number": {
+        "step_number": 0,
+        "description": "步骤0"
+    },
+    "recipe_step_negative_number": {
+        "step_number": -1,
+        "description": "负数步骤"
+    },
+    "recipe_step_empty_description": {
+        "step_number": 1,
+        "description": ""
+    },
+    "recipe_step_description_too_long": {
+    "step_number": 1,
+    "description": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+
+    "recipe_create_negative_recognition_id": {
+        "recognition_id": -1
+    },
+    "recipe_create_negative_servings": {
+        "recognition_id": 1,
+        "servings": -1
+    },
+    "recipe_create_servings_too_large": {
+        "recognition_id": 1,
+        "servings": 100
+    },
+
+    "nutrition_negative_calories": {
+        "calories": -1,
+        "protein": 10,
+        "fat": 5,
+        "carbs": 15,
+        "disclaimer": "test"
+    }
+}
