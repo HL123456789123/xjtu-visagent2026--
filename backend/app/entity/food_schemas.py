@@ -1,14 +1,22 @@
 """食物识别接口的数据传输对象。"""
+import math
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def normalize_ingredient_key(value: str) -> str:
+    """将 Provider 和用户输入中的类别键统一为稳定的小写形式。"""
+    if not isinstance(value, str):
+        return value
+    return value.strip().lower().replace(" ", "_")
 
 
 class FoodSchemaBase(BaseModel):
     """食物识别 DTO 的公共配置。"""
 
-    model_config = {"str_strip_whitespace": True}
+    model_config = {"str_strip_whitespace": True, "allow_inf_nan": False}
 
 
 class BoundingBox(FoodSchemaBase):
@@ -18,6 +26,14 @@ class BoundingBox(FoodSchemaBase):
     y1: float
     x2: float
     y2: float
+
+    @field_validator("x1", "y1", "x2", "y2")
+    @classmethod
+    def validate_finite_coordinate(cls, value: float) -> float:
+        """JSON 结果中不能出现 NaN 或 Infinity。"""
+        if not math.isfinite(value):
+            raise ValueError("bbox 坐标必须是有限数值")
+        return value
 
     @model_validator(mode="after")
     def validate_coordinate_order(self) -> "BoundingBox":
@@ -44,6 +60,18 @@ class IngredientCandidate(FoodSchemaBase):
     bbox: BoundingBox | None = Field(default=None, description="检测框；无定位信息时为空")
     source: Literal["yolo"] = "yolo"
 
+    @field_validator("key", mode="before")
+    @classmethod
+    def normalize_key(cls, value: str) -> str:
+        return normalize_ingredient_key(value)
+
+    @field_validator("confidence")
+    @classmethod
+    def validate_finite_confidence(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("置信度必须是有限数值")
+        return value
+
 
 class ConfirmedIngredient(FoodSchemaBase):
     """用户最终确认的食材快照项。"""
@@ -59,6 +87,11 @@ class ConfirmedIngredient(FoodSchemaBase):
     quantity: str | None = Field(default=None, max_length=100, description="数量，如“2”或“适量”")
     unit: str | None = Field(default=None, max_length=50, description="单位，如“个”或“克”")
     source: Literal["yolo", "manual"] = Field(..., description="食材来源")
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def normalize_key(cls, value: str) -> str:
+        return normalize_ingredient_key(value)
 
 
 def _validate_unique_ingredient_keys(ingredients: list[ConfirmedIngredient]) -> None:

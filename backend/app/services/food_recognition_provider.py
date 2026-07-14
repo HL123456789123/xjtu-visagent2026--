@@ -5,6 +5,22 @@ from app.core.exceptions import AppException
 from app.entity.food_schemas import IngredientCandidate
 
 
+# 运行时可按需扩展此映射；未知类别仍使用 Provider 返回的展示名称。
+FOOD_LABEL_NAMES = {
+    "apple": "苹果",
+    "beef": "牛肉",
+    "carrot": "胡萝卜",
+    "chicken": "鸡肉",
+    "cucumber": "黄瓜",
+    "egg": "鸡蛋",
+    "onion": "洋葱",
+    "pork": "猪肉",
+    "potato": "土豆",
+    "rice": "大米",
+    "tomato": "番茄",
+}
+
+
 class FoodRecognitionProviderError(AppException):
     """YOLO Provider 无法提供有效结果时的领域异常。"""
 
