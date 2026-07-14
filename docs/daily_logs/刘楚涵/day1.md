@@ -125,8 +125,11 @@ AI 辅助阅读文档、整理组件边界、补充测试、生成日志草稿�
 
 - Commit 信息建议：`feat(frontend): 增加食材编辑工作流骨架`
 - 已完成前端功能提交：`8f886a5`
+- 已完成文档证据提交：`432cfb9`
 - PR 目标：`develop`
-- PR 状态：待本地提交后推送创建；router/sidebar 接线需求已写入 `docs/integration/connection_requests.md`。
+- 远端分支：`github/feature/frontend-food-workflow`
+- PR 直达链接：`https://github.com/HL123456789123/xjtu-visagent2026--/pull/new/feature/frontend-food-workflow`
+- PR 状态：本机无 `gh` 命令，已推送分支并保留创建链接；router/sidebar 接线需求已写入 `docs/integration/connection_requests.md`。
 
 ## 17. 明日计划
 
