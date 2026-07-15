@@ -4,13 +4,22 @@
 用户权限：users, roles, permissions, user_roles, role_permissions
 检测业务：detection_scenes, detection_tasks, detection_results
 模型管理：training_tasks, training_metrics, model_versions
-智能体：  chat_sessions, chat_messages
+智能体：  recipes, chat_sessions, chat_messages
 系统运维：operation_logs
 """
+
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, ForeignKey,
-    JSON, Text, Boolean, BigInteger
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    ForeignKey,
+    JSON,
+    Text,
+    Boolean,
+    BigInteger,
 )
 from sqlalchemy.orm import relationship
 from app.database.session import Base
@@ -20,8 +29,10 @@ from app.database.session import Base
 # 一、用户与权限（RBAC）
 # ══════════════════════════════════════════════════════════════
 
+
 class User(Base):
     """用户表"""
+
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -40,16 +51,21 @@ class User(Base):
     user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     detection_tasks = relationship("DetectionTask", back_populates="user")
     training_tasks = relationship("TrainingTask", back_populates="user")
+    food_recognition_tasks = relationship("FoodRecognitionTask", back_populates="user")
+    recipes = relationship("Recipe", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
     operation_logs = relationship("OperationLog", back_populates="user")
 
 
 class Role(Base):
     """角色表"""
+
     __tablename__ = "roles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False, comment="角色标识，如 admin/operator/viewer")
+    name = Column(
+        String(50), unique=True, nullable=False, comment="角色标识，如 admin/operator/viewer"
+    )
     display_name = Column(String(100), nullable=False, comment="角色显示名，如 管理员/操作员/访客")
     description = Column(String(500), nullable=True, comment="角色描述")
     is_system = Column(Boolean, default=False, comment="是否系统内置角色（不可删除）")
@@ -57,25 +73,35 @@ class Role(Base):
 
     # 关联
     user_roles = relationship("UserRole", back_populates="role", cascade="all, delete-orphan")
-    role_permissions = relationship("RolePermission", back_populates="role", cascade="all, delete-orphan")
+    role_permissions = relationship(
+        "RolePermission", back_populates="role", cascade="all, delete-orphan"
+    )
 
 
 class Permission(Base):
     """权限表"""
+
     __tablename__ = "permissions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(String(100), unique=True, nullable=False, comment="权限编码，如 detection:task:create")
+    code = Column(
+        String(100), unique=True, nullable=False, comment="权限编码，如 detection:task:create"
+    )
     name = Column(String(100), nullable=False, comment="权限名称")
-    module = Column(String(50), nullable=False, comment="所属模块：auth/detection/training/agent/system")
+    module = Column(
+        String(50), nullable=False, comment="所属模块：auth/detection/training/agent/system"
+    )
     description = Column(String(500), nullable=True, comment="权限描述")
 
     # 关联
-    role_permissions = relationship("RolePermission", back_populates="permission", cascade="all, delete-orphan")
+    role_permissions = relationship(
+        "RolePermission", back_populates="permission", cascade="all, delete-orphan"
+    )
 
 
 class UserRole(Base):
     """用户-角色关联表（多对多）"""
+
     __tablename__ = "user_roles"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -89,6 +115,7 @@ class UserRole(Base):
 
 class RolePermission(Base):
     """角色-权限关联表（多对多）"""
+
     __tablename__ = "role_permissions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -98,22 +125,29 @@ class RolePermission(Base):
     role = relationship("Role", back_populates="role_permissions")
     permission = relationship("Permission", back_populates="role_permissions")
 
+
 # ══════════════════════════════════════════════════════════════
 # 二、检测业务
 # ══════════════════════════════════════════════════════════════
+
 
 class DetectionScene(Base):
     """检测场景配置表
     每个小组/业务方向一个场景，如：遥感检测、工业缺陷、农业病害等
     场景决定了使用哪个模型、检测哪些类别
     """
+
     __tablename__ = "detection_scenes"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), unique=True, nullable=False, comment="场景标识，如 remote_sensing")
     display_name = Column(String(100), nullable=False, comment="场景显示名，如 遥感目标检测")
     description = Column(Text, nullable=True, comment="场景描述")
-    category = Column(String(50), nullable=False, comment="场景分类：agriculture/industry/remote_sensing/medical/traffic")
+    category = Column(
+        String(50),
+        nullable=False,
+        comment="场景分类：agriculture/industry/remote_sensing/medical/traffic",
+    )
     class_names = Column(JSON, nullable=False, comment='类别列表，如 ["airplane","storage-tank"]')
     class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
     is_active = Column(Boolean, default=True, comment="是否启用")
@@ -129,14 +163,29 @@ class DetectionScene(Base):
 
 class DetectionTask(Base):
     """检测任务表 — 每次检测操作生成一条任务记录"""
+
     __tablename__ = "detection_tasks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户")
-    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="使用的检测场景")
-    model_version_id = Column(Integer, ForeignKey("model_versions.id"), nullable=True, comment="使用的模型版本")
-    task_type = Column(String(20), nullable=False, comment="检测类型：single/batch/folder/video/camera")
-    status = Column(String(20), default="pending", comment="状态：pending/processing/completed/failed")
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户"
+    )
+    scene_id = Column(
+        Integer,
+        ForeignKey("detection_scenes.id"),
+        nullable=False,
+        index=True,
+        comment="使用的检测场景",
+    )
+    model_version_id = Column(
+        Integer, ForeignKey("model_versions.id"), nullable=True, comment="使用的模型版本"
+    )
+    task_type = Column(
+        String(20), nullable=False, comment="检测类型：single/batch/folder/video/camera"
+    )
+    status = Column(
+        String(20), default="pending", comment="状态：pending/processing/completed/failed"
+    )
 
     # 检测统计
     total_images = Column(Integer, default=0, comment="处理图像总数")
@@ -169,10 +218,17 @@ class DetectionTask(Base):
 
 class DetectionResult(Base):
     """检测结果表 — 每张图像中每个检测到的目标一条记录"""
+
     __tablename__ = "detection_results"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("detection_tasks.id"), nullable=False, index=True, comment="所属检测任务")
+    task_id = Column(
+        Integer,
+        ForeignKey("detection_tasks.id"),
+        nullable=False,
+        index=True,
+        comment="所属检测任务",
+    )
     image_path = Column(String(500), nullable=False, comment="原始图像路径")
     annotated_image_url = Column(String(500), nullable=True, comment="标注图像 MinIO URL")
 
@@ -192,19 +248,28 @@ class DetectionResult(Base):
     # 关联
     task = relationship("DetectionTask", back_populates="results")
 
+
 # ══════════════════════════════════════════════════════════════
 # 三、模型管理
 # ══════════════════════════════════════════════════════════════
 
+
 class TrainingTask(Base):
     """模型训练任务表"""
+
     __tablename__ = "training_tasks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户")
-    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="关联场景")
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户"
+    )
+    scene_id = Column(
+        Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="关联场景"
+    )
     task_uuid = Column(String(100), unique=True, nullable=False, index=True, comment="任务唯一标识")
-    status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed/cancelled")
+    status = Column(
+        String(20), default="pending", comment="状态：pending/running/completed/failed/cancelled"
+    )
 
     # 训练配置
     model_name = Column(String(50), default="yolov11n", comment="基础模型：yolov11n/s/m/l/x")
@@ -242,10 +307,13 @@ class TrainingTask(Base):
 
 class TrainingMetric(Base):
     """训练指标表 — 每个 epoch 记录一条，用于绘制训练曲线"""
+
     __tablename__ = "training_metrics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("training_tasks.id"), nullable=False, index=True, comment="所属训练任务")
+    task_id = Column(
+        Integer, ForeignKey("training_tasks.id"), nullable=False, index=True, comment="所属训练任务"
+    )
     epoch = Column(Integer, nullable=False, comment="当前轮数")
 
     # 损失值
@@ -269,11 +337,19 @@ class TrainingMetric(Base):
 
 class ModelVersion(Base):
     """模型版本管理表 — 每次训练产出或手动上传的模型版本"""
+
     __tablename__ = "model_versions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    scene_id = Column(Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="所属场景")
-    training_task_id = Column(Integer, ForeignKey("training_tasks.id"), nullable=True, comment="来源训练任务（可为空，支持手动上传）")
+    scene_id = Column(
+        Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="所属场景"
+    )
+    training_task_id = Column(
+        Integer,
+        ForeignKey("training_tasks.id"),
+        nullable=True,
+        comment="来源训练任务（可为空，支持手动上传）",
+    )
     version = Column(String(50), nullable=False, comment="版本号，如 v1.0.0")
     model_name = Column(String(100), nullable=False, comment="模型名称")
     model_type = Column(String(50), default="yolov11n", comment="模型类型：yolov11n/s/m/l/x")
@@ -288,7 +364,9 @@ class ModelVersion(Base):
     map50_95 = Column(Float, nullable=True, comment="mAP@0.50:0.95")
     precision = Column(Float, nullable=True, comment="精确率")
     recall = Column(Float, nullable=True, comment="召回率")
-    per_class_ap = Column(JSON, nullable=True, comment='各类别 AP，如 {"airplane":0.85,"tank":0.72}')
+    per_class_ap = Column(
+        JSON, nullable=True, comment='各类别 AP，如 {"airplane":0.85,"tank":0.72}'
+    )
 
     # 元信息
     description = Column(Text, nullable=True, comment="版本描述/变更说明")
@@ -301,17 +379,87 @@ class ModelVersion(Base):
     training_task = relationship("TrainingTask", back_populates="model_versions")
     detection_tasks = relationship("DetectionTask", back_populates="model_version")
 
+
 # ══════════════════════════════════════════════════════════════
-# 四、智能体对话
+# 四、食物识别与菜谱
 # ══════════════════════════════════════════════════════════════
+
+
+class FoodRecognitionTask(Base):
+    """一次同步食物识别任务，保存模型原始结果和用户确认快照。"""
+
+    __tablename__ = "food_recognition_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
+    )
+    image_object_name = Column(String(500), nullable=False, comment="MinIO 对象名")
+    status = Column(String(20), nullable=False, default="completed", index=True, comment="识别状态")
+    provider = Column(String(20), nullable=False, comment="mock 或 yolo")
+    model_version = Column(String(100), nullable=False, comment="模型版本")
+    raw_detections = Column(JSON, nullable=False, default=list, comment="IngredientCandidate 列表")
+    confirmed_ingredients = Column(
+        JSON, nullable=False, default=list, comment="ConfirmedIngredient 列表"
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, index=True)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    user = relationship("User", back_populates="food_recognition_tasks")
+    recipes = relationship("Recipe", back_populates="recognition")
+
+
+class Recipe(Base):
+    """V1 MVP 菜谱实体，完整的菜谱内容保存为 JSON。"""
+
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
+    )
+    recognition_id = Column(
+        Integer,
+        ForeignKey("food_recognition_tasks.id"),
+        nullable=False,
+        index=True,
+        comment="来源识别任务",
+    )
+    version = Column(Integer, nullable=False, default=1, comment="菜谱版本")
+    recipe_data = Column(JSON, nullable=False, comment="完整 Recipe JSON")
+    generator = Column(JSON, nullable=False, comment="生成器元信息")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    user = relationship("User", back_populates="recipes")
+    recognition = relationship("FoodRecognitionTask", back_populates="recipes")
+    chat_sessions = relationship("ChatSession", back_populates="recipe")
+
+
+# ══════════════════════════════════════════════════════════════
+# 五、智能体对话
+# ══════════════════════════════════════════════════════════════
+
 
 class ChatSession(Base):
     """对话会话表 — 每次对话创建一个会话"""
+
     __tablename__ = "chat_sessions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户")
-    session_uuid = Column(String(100), unique=True, nullable=False, index=True, comment="会话唯一标识")
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
+    )
+    recipe_id = Column(
+        Integer, ForeignKey("recipes.id"), nullable=True, index=True, comment="关联菜谱"
+    )
+    session_uuid = Column(
+        String(100), unique=True, nullable=False, index=True, comment="会话唯一标识"
+    )
     title = Column(String(200), nullable=True, comment="会话标题（取第一条消息摘要）")
     status = Column(String(20), default="active", comment="状态：active/archived")
     message_count = Column(Integer, default=0, comment="消息数量")
@@ -321,22 +469,34 @@ class ChatSession(Base):
 
     # 关联
     user = relationship("User", back_populates="chat_sessions")
-    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan",
-                            order_by="ChatMessage.created_at")
+    recipe = relationship("Recipe", back_populates="chat_sessions")
+    messages = relationship(
+        "ChatMessage",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ChatMessage.created_at",
+    )
 
 
 class ChatMessage(Base):
     """对话消息表 — 每条消息（用户/AI/工具调用）一条记录"""
+
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False, index=True, comment="所属会话")
+    session_id = Column(
+        Integer, ForeignKey("chat_sessions.id"), nullable=False, index=True, comment="所属会话"
+    )
     role = Column(String(20), nullable=False, comment="消息角色：user/assistant/tool/system")
     content = Column(Text, nullable=False, comment="消息内容")
 
     # 智能体路由信息
-    agent_used = Column(String(50), nullable=True, comment="处理的 Agent：supervisor/detection/analysis/qa")
-    tool_calls = Column(JSON, nullable=True, comment='工具调用记录，如 [{"tool":"detect_objects","args":{...}}]')
+    agent_used = Column(
+        String(50), nullable=True, comment="处理的 Agent：supervisor/detection/analysis/qa"
+    )
+    tool_calls = Column(
+        JSON, nullable=True, comment='工具调用记录，如 [{"tool":"detect_objects","args":{...}}]'
+    )
     tool_result = Column(Text, nullable=True, comment="工具调用返回结果")
 
     # 元信息
@@ -349,20 +509,32 @@ class ChatMessage(Base):
 
 
 # ══════════════════════════════════════════════════════════════
-# 五、系统运维
+# 六、系统运维
 # ══════════════════════════════════════════════════════════════
+
 
 class OperationLog(Base):
     """操作审计日志表 — 记录用户关键操作"""
+
     __tablename__ = "operation_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True, comment="操作用户（可为空表示系统操作）")
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+        comment="操作用户（可为空表示系统操作）",
+    )
     username = Column(String(50), nullable=True, comment="冗余用户名，方便查询")
 
     # 操作信息
-    module = Column(String(50), nullable=False, comment="操作模块：auth/detection/training/agent/system")
-    action = Column(String(50), nullable=False, comment="操作类型：create/update/delete/login/export")
+    module = Column(
+        String(50), nullable=False, comment="操作模块：auth/detection/training/agent/system"
+    )
+    action = Column(
+        String(50), nullable=False, comment="操作类型：create/update/delete/login/export"
+    )
     target_type = Column(String(50), nullable=True, comment="操作对象类型：user/task/model/session")
     target_id = Column(String(100), nullable=True, comment="操作对象 ID")
     description = Column(String(500), nullable=True, comment="操作描述")
