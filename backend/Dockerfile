@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir uv
 # 复制依赖文件
 COPY pyproject.toml uv.lock ./
 
+# 配置国内 PyPI 镜像（解决容器内下载超时）
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
 # 安装 Python 依赖
 RUN uv sync --no-dev --no-install-project
 
