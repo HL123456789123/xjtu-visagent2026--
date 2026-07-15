@@ -29,7 +29,7 @@
 - [ ] 陈煜君完成 `recipes.py`，提供 router 导出名、V1 路径和最小契约测试结果。
 - [ ] 陈煜君将现有 `chat.py` 对齐 V1 会话请求、消息请求和四类 SSE。
 - [ ] 绕家辉确认 ChatSession 的 `recipe_id` 数据关系已由唯一 migration 支持。
-- [ ] 吴雯提供 canonical fixture 与契约测试结论。
+- [x] 吴雯已通过 PR #1 提供 canonical fixture 与 fixture 契约测试，复审通过并已合入 `develop`。
 - [ ] 闫灿宇在上述条件满足后，只在 `backend/main.py` 增加 Food/Recipe 路由导入和注册，并复核 Chat 注册未重复。
 - [ ] 保留旧路由时确认它们不被前端当作第二套 Food/Recipe/Chat 公开接口。
 
@@ -79,14 +79,14 @@ V1 未冻结具体前端 URL 和页面文件名，因此入口负责人不自行
 
 ### Day3 Mock 前缺少什么
 
-- [ ] `docs/contracts/api_v1.md` 和团队发布文件进入可共享的 Git 历史；当前契约被 `docs/` 忽略。
+- [x] `docs/contracts/api_v1.md` 已通过 PR #2 进入 `develop`，成为仓库内唯一接口标准。
 - [ ] `backend/app/api/food.py` 与 Food V1 三个接口。
 - [ ] `backend/app/api/recipes.py` 与 Recipe V1 两个接口。
 - [ ] Chat 会话绑定 `recipe_id`，消息体改为 `content`。
 - [ ] SSE 仅输出 `token`、`recipe_updated`、`done`、`error`，并具备正确 data 字段。
 - [ ] `frontend/src/api/food.js`、`recipe.js`、V1 `chat.js`。
 - [ ] Food 页面、Recipe 展示页面、V1 Chat 页面/解析层交付接线信息。
-- [ ] 四个 canonical fixture：Food success/empty、Recipe success、SSE recipe update。
+- [x] 四个 canonical fixture 已通过 PR #1 合入：Food success/empty、Recipe success、SSE recipe update。
 - [ ] Mock Food Provider 和 Fake LLM 明确返回 `mock/fake` 标记。
 - [ ] Recipe 固定字段、整数 ID、版本规则、营养免责声明和 V1 错误码通过契约测试。
 - [ ] `recipe_updated` 后前端执行 `GET /api/recipes/{recipe_id}`。
@@ -112,3 +112,22 @@ V1 未冻结具体前端 URL 和页面文件名，因此入口负责人不自行
 4. 吴雯提供 canonical fixture 与契约测试结果。
 5. 闫灿宇统一修改 `backend/main.py`、router 和 sidebar。
 6. Day3 只合入通过契约测试的 Mock 链路；Day4 再替换真实 Provider。
+
+## Day1 测试 PR 合并记录
+
+- canonical fixtures：已完成并进入 `develop`。
+- 测试 PR：[#1](https://github.com/HL123456789123/xjtu-visagent2026--/pull/1)。
+- 审核结论：复审通过；四个 fixture 符合 V1，4 项 fixture 契约测试通过。
+- 合并状态：已合并。
+- 合并方式：Squash。
+- Squash Commit：`9fffc2f7e373440b58b1daba1e1ccda0d19d8f25`。
+- 吴雯临时分支：远程 `chore/test-docker` 已删除。
+- 刘楚涵 Food 前端：canonical fixture 阻塞已解除；应从最新 `develop` 同步，并直接使用 Food success/empty fixture，不 cherry-pick 旧 Commit。
+
+### 剩余 Day1 P0
+
+- Food API：等待绕家辉交付固定 V1 路由、Schema、Repository 和模型 Adapter。
+- Recipe API：等待陈煜君交付固定 V1 路由、Recipe Schema、Fake/Real LLM 边界。
+- Chat/SSE：等待陈煜君、李晨宁将请求体和对外事件收敛为 V1。
+- 前端页面：等待刘楚涵、李晨宁交付 Food、Recipe/Chat 页面及接线信息。
+- 共享入口：等待上述模块可运行后，由闫灿宇统一接入 `backend/main.py`、router 和 sidebar。
