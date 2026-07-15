@@ -92,8 +92,6 @@ function emitRecipeRequest() {
   emit('generate-recipe', {
     recognition_id: props.recognitionId,
     confirmed_ingredients: props.confirmedIngredients,
-    image_count: props.imageCount,
-    source_images: props.sourceImageNames,
   })
 }
 </script>

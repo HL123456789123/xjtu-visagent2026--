@@ -29,13 +29,13 @@
         class="food-uploader__preview-grid"
         :class="{ 'is-single': previewUrls.length === 1 }"
       >
-        <div v-for="preview in previewUrls" :key="preview.url" class="food-uploader__preview">
+        <div v-for="preview in previewUrls" :key="preview.file.name || preview.url" class="food-uploader__preview">
           <img :src="preview.url" :alt="preview.file.name" />
         </div>
       </div>
       <div v-else class="food-uploader__placeholder">
         <strong>选择食物图片</strong>
-        <span>支持 1 至多张 JPG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
+        <span>支持 1 至多张 JPG / JPEG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
       </div>
     </div>
 
@@ -115,11 +115,14 @@ function setValidationError(message) {
 
 function validateFile(file) {
   if (!file) return '请选择至少一张图片。'
-  if (!['image/jpeg', 'image/png'].includes(file.type)) {
-    return '仅支持 JPG 或 PNG 图片。'
+  const extension = file.name?.split('.').pop()?.toLowerCase()
+  const hasSupportedType = ['image/jpeg', 'image/png'].includes(file.type)
+  const hasSupportedExtension = ['jpg', 'jpeg', 'png'].includes(extension)
+  if (!hasSupportedType && !hasSupportedExtension) {
+    return '仅支持 JPG、JPEG 或 PNG 图片。'
   }
   if (file.size > maxSizeBytes.value) {
-    return `图片大小建议不超过 ${props.maxSizeMB} MB。`
+    return `图片大小不能超过 ${props.maxSizeMB} MB。`
   }
   return ''
 }
@@ -129,6 +132,14 @@ function validateFiles(files) {
   const invalidFile = files.find((file) => validateFile(file))
   if (!invalidFile) return ''
   return `${invalidFile.name}：${validateFile(invalidFile)}`
+}
+
+function createPreviewUrl(file) {
+  try {
+    return URL.createObjectURL(file)
+  } catch {
+    return ''
+  }
 }
 
 function selectFiles(files) {
@@ -145,7 +156,7 @@ function selectFiles(files) {
   revokePreviews()
   previewUrls.value = nextFiles.map((file) => ({
     file,
-    url: URL.createObjectURL(file),
+    url: createPreviewUrl(file),
   }))
   emit('update:modelValue', nextFiles)
   emit('selected', nextFiles)

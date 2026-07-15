@@ -6,6 +6,8 @@ import {
   createFoodRecognition,
   createMockFoodApiClient,
   getFoodRecognition,
+  normalizeConfirmedIngredients,
+  normalizeRecognitionId,
   resetFoodApiClient,
   setFoodApiClient,
 } from '../food'
@@ -62,11 +64,37 @@ describe('food api contract', () => {
     expect(path).toBe(FOOD_RECOGNITION_PATHS.create)
     expect(formData.getAll('images')).toEqual([first, second])
     expect(formData.get('image')).toBe(first)
-    expect(formData.get('image_count')).toBe('2')
+    expect(formData.has('image_count')).toBe(false)
     expect(formData.get('conf_threshold')).toBe('0.4')
     expect(config).toMatchObject({
       headers: { 'Content-Type': 'multipart/form-data' },
     })
+  })
+
+  it('normalizes recognition ids and strips confirmation-only payload fields', () => {
+    expect(normalizeRecognitionId('12')).toBe(12)
+    expect(normalizeRecognitionId('rec_12')).toBeNull()
+    expect(
+      normalizeConfirmedIngredients([
+        {
+          name: ' 番茄 ',
+          class_name: 'tomato',
+          quantity: '2',
+          unit: ' 个 ',
+          source: 'model',
+          candidate_id: 'det-1',
+          confidence: 0.93,
+        },
+      ])
+    ).toEqual([
+      {
+        name: '番茄',
+        class_name: 'tomato',
+        quantity: 2,
+        unit: '个',
+        source: 'model',
+      },
+    ])
   })
 
   it('allows an injected client before the real backend is connected', async () => {
@@ -85,6 +113,7 @@ describe('food api contract', () => {
       quantity: 1,
       unit: '个',
       source: 'model',
+      candidate_id: 'det-extra',
     }
     await confirmFoodIngredients(12, [confirmedIngredient])
 
@@ -93,7 +122,15 @@ describe('food api contract', () => {
     expect(client.confirm).toHaveBeenCalledWith(
       {
         recognitionId: 12,
-        ingredients: [confirmedIngredient],
+        ingredients: [
+          {
+            name: '鸡蛋',
+            class_name: 'egg',
+            quantity: 1,
+            unit: '个',
+            source: 'model',
+          },
+        ],
       },
       {}
     )
@@ -120,7 +157,22 @@ describe('food api contract', () => {
     expect(confirmed.data).toEqual({
       recognition_id: 12,
       confirmed_ingredients: [confirmedIngredient],
-      status: 'confirmed',
+      confirmed_at: '2026-07-14T21:35:00+08:00',
+    })
+  })
+
+  it('exposes reserved mock errors for 413 and 415', async () => {
+    await expect(createFoodRecognition({}, { mockScenario: '413' })).rejects.toMatchObject({
+      response: {
+        status: 413,
+        data: { code: 'IMAGE_TOO_LARGE' },
+      },
+    })
+    await expect(confirmFoodIngredients(12, [], { mockScenario: '415' })).rejects.toMatchObject({
+      response: {
+        status: 415,
+        data: { code: 'UNSUPPORTED_IMAGE_TYPE' },
+      },
     })
   })
 })

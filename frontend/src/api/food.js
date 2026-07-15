@@ -38,6 +38,21 @@ function createMockError(status) {
   return error
 }
 
+export function normalizeRecognitionId(value) {
+  const id = Number(value)
+  return Number.isInteger(id) ? id : null
+}
+
+export function normalizeConfirmedIngredients(ingredients = []) {
+  return ingredients.map((ingredient) => ({
+    name: String(ingredient.name || '').trim(),
+    class_name: ingredient.class_name || null,
+    quantity: Number(ingredient.quantity),
+    unit: String(ingredient.unit || '').trim(),
+    source: ingredient.source || 'manual',
+  }))
+}
+
 function mockResponse(data, message = 'mock', code = 200) {
   return Promise.resolve({
     code,
@@ -66,9 +81,9 @@ export function createMockFoodApiClient(scenario = 'success') {
         code: 200,
         message: 'mock',
         data: {
-          recognition_id: recognitionId,
-          confirmed_ingredients: cloneFixture(ingredients),
-          status: 'confirmed',
+          recognition_id: normalizeRecognitionId(recognitionId),
+          confirmed_ingredients: cloneFixture(normalizeConfirmedIngredients(ingredients)),
+          confirmed_at: '2026-07-14T21:35:00+08:00',
         },
       }),
   }
@@ -99,7 +114,6 @@ export function createFoodRecognition(data, options = {}) {
     formData.append('images', image)
   })
   if (images[0]) formData.append('image', images[0])
-  formData.append('image_count', String(images.length))
   formData.append('conf_threshold', data.conf_threshold ?? 0.25)
 
   return uploadRequest.post(FOOD_RECOGNITION_PATHS.create, formData, {
@@ -119,10 +133,31 @@ export function getFoodRecognition(recognitionId, options = {}) {
 }
 
 export function confirmFoodIngredients(recognitionId, ingredients, options = {}) {
-  const client = options.client || injectedClient
-  if (client?.confirm) return client.confirm({ recognitionId, ingredients }, options)
+  const scenario = options.mockScenario ?? options.mock
+  if (foodRecognitionErrorFixtures[scenario]) return Promise.reject(createMockError(scenario))
 
-  return request.put(FOOD_RECOGNITION_PATHS.confirm(recognitionId), {
-    ingredients,
+  const normalizedRecognitionId = normalizeRecognitionId(recognitionId)
+  const confirmedIngredients = normalizeConfirmedIngredients(ingredients)
+
+  const client = options.client || injectedClient
+  if (client?.confirm) {
+    return client.confirm(
+      {
+        recognitionId: normalizedRecognitionId,
+        ingredients: confirmedIngredients,
+      },
+      options
+    )
+  }
+
+  if (scenario && scenario !== 'off') {
+    return createMockFoodApiClient('success').confirm({
+      recognitionId: normalizedRecognitionId,
+      ingredients: confirmedIngredients,
+    })
+  }
+
+  return request.put(FOOD_RECOGNITION_PATHS.confirm(normalizedRecognitionId), {
+    ingredients: confirmedIngredients,
   })
 }

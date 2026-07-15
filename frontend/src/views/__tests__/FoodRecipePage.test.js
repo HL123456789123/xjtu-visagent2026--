@@ -45,10 +45,8 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('12')
     expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
     expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
-    expect(wrapper.emitted('confirmed')?.[0][0]).toMatchObject({
+    expect(wrapper.emitted('confirmed')?.[0][0]).toEqual({
       recognition_id: 12,
-      image_count: 2,
-      source_images: ['breakfast.jpg', 'vegetables.jpg'],
       confirmed_ingredients: [
         { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
         { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
@@ -56,10 +54,8 @@ describe('FoodRecipePage', () => {
     })
 
     await wrapper.find('[data-testid="recipe-generate"]').trigger('click')
-    expect(wrapper.emitted('recipe-requested')?.[0][0]).toMatchObject({
+    expect(wrapper.emitted('recipe-requested')?.[0][0]).toEqual({
       recognition_id: 12,
-      image_count: 2,
-      source_images: ['breakfast.jpg', 'vegetables.jpg'],
       confirmed_ingredients: [
         { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
         { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
@@ -96,5 +92,27 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('识别服务不可用')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('食物识别服务暂不可用')
+  })
+
+  it('shows reserved 413 and 415 error states from the mock API', async () => {
+    const wrapper = mount(FoodRecipePage)
+
+    await wrapper.find('[data-testid="mock-scenario"]').setValue('413')
+    await selectImages(wrapper)
+    await wrapper.find('[data-testid="start-recognition"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片过大')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片超过 10 MB')
+
+    await wrapper.find('[data-testid="mock-scenario"]').setValue('415')
+    await selectImages(wrapper)
+    await wrapper.find('[data-testid="start-recognition"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片格式不支持')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('JPG、JPEG 或 PNG')
   })
 })
