@@ -1,304 +1,254 @@
 """
-LangGraph Agent 模块
-实现多 Agent 协作的对话系统
-包括 Supervisor 路由、检测 Agent、分析 Agent、问答 Agent
+LangGraph 最小流程（V1 冻结版本）
+负责人：陈煜君
+
+首次生成：START -> load_confirmed_ingredients -> generate_recipe -> validate_and_save -> END
+对话修改：START -> load_recipe_context -> call_llm -> route_by_action -> answer/update_recipe -> END
 """
 
-from typing import TypedDict, Annotated, Optional, Literal
-import threading
-import json
+from typing import TypedDict, Optional
+from datetime import datetime
 
-import httpx
-from langchain_core.messages import AIMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
-from langgraph.prebuilt import create_react_agent
-from pydantic import BaseModel
 
-from app.config.settings import settings
 from app.core.logger import get_logger
-from app.services.agent_tools import get_all_tools
-from app.services.agent_prompts import (
-    SUPERVISOR_SYSTEM_PROMPT,
-    DETECTION_SYSTEM_PROMPT,
-    ANALYSIS_SYSTEM_PROMPT,
-    QA_SYSTEM_PROMPT,
+from app.entity.recipe_schema import (
+    RecipeGenerateResult,
+    RecipeResponse,
+    GeneratorInfo,
 )
+from app.services.agent_prompts import NUTRITION_DISCLAIMER
 
 logger = get_logger("agent_graph")
 
 
-# ── 状态定义 ──────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# 状态定义
+# ══════════════════════════════════════════════════════════════
+
+class GenerateRecipeState(TypedDict):
+    """首次生成菜谱状态"""
+    recognition_id: int
+    user_id: int
+    preferences: dict
+    confirmed_ingredients: list
+    raw_recipe: dict
+    recipe_response: dict
 
 
-class AgentState(TypedDict):
-    """Agent 状态"""
-
-    messages: Annotated[list, "对话消息列表"]
-    next_agent: Annotated[str, "下一个处理的 Agent"]
-    detection_results: Annotated[Optional[dict], "检测结果"]
-    analysis_report: Annotated[Optional[str], "分析报告"]
-    current_task: Annotated[Optional[str], "当前任务类型"]
-
-
-# ── LLM 初始化 ────────────────────────────────────────
-
-# LLM 实例缓存，避免每次调用都创建新实例
-_llm_cache = None
-_llm_lock = threading.Lock()
+class ChatRecipeState(TypedDict):
+    """对话修改菜谱状态"""
+    recipe_id: int
+    user_id: int
+    message: str
+    current_recipe: dict
+    llm_output: dict
+    response: dict
 
 
-def _get_react_agent():
-    """获取 ReAct Agent 实例（每次请求创建独立实例，避免并发状态污染）
+# ══════════════════════════════════════════════════════════════
+# Mock 数据（Fake LLM Fixture）
+# ══════════════════════════════════════════════════════════════
+
+MOCK_INGREDIENTS = [
+    {"name": "番茄", "class_name": "tomato", "quantity": 2, "unit": "个", "source": "model"},
+    {"name": "鸡蛋", "class_name": None, "quantity": 3, "unit": "个", "source": "manual"},
+]
+
+MOCK_RECIPE_RAW = {
+    "title": "番茄炒蛋",
+    "summary": "一道适合两人食用的家常快手菜。",
+    "servings": 2,
+    "cooking_time_minutes": 20,
+    "difficulty": "简单",
+    "ingredients": [
+        {"name": "番茄", "amount": 2, "unit": "个", "note": None},
+        {"name": "鸡蛋", "amount": 3, "unit": "个", "note": None},
+    ],
+    "steps": [
+        {"step_no": 1, "description": "番茄洗净切块。", "duration_minutes": 5},
+        {"step_no": 2, "description": "鸡蛋打散加少许盐。", "duration_minutes": 2},
+        {"step_no": 3, "description": "热锅凉油，倒入蛋液炒熟盛出。", "duration_minutes": 3},
+        {"step_no": 4, "description": "锅中加油，放入番茄翻炒出汁。", "duration_minutes": 3},
+        {"step_no": 5, "description": "加入炒好的鸡蛋，加盐调味即可。", "duration_minutes": 2},
+    ],
+    "nutrition": {
+        "basis": "per_serving",
+        "calories_kcal": 280,
+        "protein_g": 16.5,
+        "fat_g": 15.2,
+        "carbohydrates_g": 18.4,
+    },
+}
+
+MOCK_GENERATOR = {
+    "provider": "fake",
+    "model": "fixture-v1",
+    "is_mock": True,
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# 首次生成流程节点
+# ══════════════════════════════════════════════════════════════
+
+async def load_confirmed_ingredients(state: GenerateRecipeState) -> dict:
+    """加载确认食材（Mock 实现）"""
+    logger.info(f"加载食材: recognition_id={state['recognition_id']}")
+    # TODO: Day3 对接 Repository
+    return {"confirmed_ingredients": MOCK_INGREDIENTS}
+
+
+async def generate_recipe(state: GenerateRecipeState) -> dict:
+    """调用 LLM 生成菜谱（Mock 实现）"""
+    logger.info("生成菜谱（Mock）")
+    # TODO: Day4 对接真实 LLM
+    return {"raw_recipe": MOCK_RECIPE_RAW}
+
+
+async def validate_and_save(state: GenerateRecipeState) -> dict:
+    """校验并保存菜谱"""
+    logger.info("校验并保存菜谱")
     
-    LLM 实例通过 get_llm() 缓存复用，仅 Agent 实例每次新建。
-    """
-    llm = get_llm()
-    tools = get_all_tools()
-    agent = create_react_agent(llm, tools)
-    return agent
-
-
-def get_llm():
-    """获取 LLM 实例（缓存复用，线程安全）"""
-    global _llm_cache
-    if _llm_cache is not None:
-        return _llm_cache
-
-    with _llm_lock:
-        if _llm_cache is not None:
-            return _llm_cache
-
-        # 创建自定义 httpx 客户端，禁用 HTTP/2 并增加超时
-        http_async_client = httpx.AsyncClient(http2=False, timeout=60.0, follow_redirects=True)
-
-        _llm_cache = ChatOpenAI(
-            model=settings.OPENAI_MODEL,
-            openai_api_key=settings.OPENAI_API_KEY,
-            openai_api_base=settings.OPENAI_BASE_URL,
-            temperature=0.7,
-            streaming=True,
-            http_async_client=http_async_client,
-        )
-    return _llm_cache
-
-
-# ── Supervisor 结构化输出模型 ─────────────────────
-
-
-class SupervisorDecision(BaseModel):
-    """Supervisor 路由决策"""
-    next_agent: Literal["detection_agent", "analysis_agent", "qa_agent", "end"]
-
-
-# ── Supervisor 节点 ───────────────────────────────────
-
-
-async def supervisor_node(state: AgentState) -> dict:
-    """
-    Supervisor 路由节点
-    使用 LLM 结构化输出判断用户意图，决定下一步由哪个 Agent 处理
-    """
-    try:
-        llm = get_llm()
-
-        # 构建消息
-        messages = [SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT), *state["messages"]]
-
-        # 使用结构化输出强制返回 JSON
-        structured_llm = llm.with_structured_output(SupervisorDecision)
-        decision: SupervisorDecision = await structured_llm.ainvoke(messages)
-        next_agent = decision.next_agent
-
-        logger.info(f"Supervisor 路由: {next_agent}")
-
-        return {"next_agent": next_agent, "current_task": next_agent}
-
-    except Exception as e:
-        logger.error(f"Supervisor 节点执行失败: {type(e).__name__}: {e}")
-        return {"next_agent": "qa_agent", "current_task": "qa_agent"}
-
-
-# ── 检测 Agent 节点 ──────────────────────────────────
-
-
-async def detection_agent_node(state: AgentState) -> dict:
-    """
-    检测 Agent 节点
-    使用 ReAct Agent 执行检测任务
-    """
-    try:
-        agent = _get_react_agent()
-
-        # 构建消息
-        messages = [SystemMessage(content=DETECTION_SYSTEM_PROMPT), *state["messages"]]
-
-        # 执行 Agent
-        result = await agent.ainvoke({"messages": messages})
-
-        # 提取最后的 AI 消息
-        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        if ai_messages:
-            response_content = ai_messages[-1].content
-        else:
-            response_content = "检测完成，但未能生成响应。"
-
-        return {
-            "messages": [AIMessage(content=response_content)],
-            "detection_results": result.get("detection_results"),
-        }
-
-    except Exception as e:
-        logger.error(f"检测 Agent 执行失败: {e}")
-        return {"messages": [AIMessage(content=f"检测过程中出现错误: {str(e)}")]}
-
-
-# ── 分析 Agent 节点 ──────────────────────────────────
-
-
-async def analysis_agent_node(state: AgentState) -> dict:
-    """
-    分析 Agent 节点
-    分析检测结果并生成报告
-    """
-    try:
-        agent = _get_react_agent()
-
-        # 构建消息
-        messages = [SystemMessage(content=ANALYSIS_SYSTEM_PROMPT), *state["messages"]]
-
-        # 执行 Agent
-        result = await agent.ainvoke({"messages": messages})
-
-        # 提取最后的 AI 消息
-        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        if ai_messages:
-            response_content = ai_messages[-1].content
-        else:
-            response_content = "分析完成，但未能生成报告。"
-
-        return {
-            "messages": [AIMessage(content=response_content)],
-            "analysis_report": response_content,
-        }
-
-    except Exception as e:
-        logger.error(f"分析 Agent 执行失败: {e}")
-        return {"messages": [AIMessage(content=f"分析过程中出现错误: {str(e)}")]}
-
-
-# ── 问答 Agent 节点 ──────────────────────────────────
-
-
-async def qa_agent_node(state: AgentState) -> dict:
-    """
-    问答 Agent 节点
-    回答用户问题
-    """
-    try:
-        agent = _get_react_agent()
-
-        # 构建消息
-        messages = [SystemMessage(content=QA_SYSTEM_PROMPT), *state["messages"]]
-
-        # 执行 Agent
-        result = await agent.ainvoke({"messages": messages})
-
-        # 提取最后的 AI 消息
-        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        if ai_messages:
-            response_content = ai_messages[-1].content
-        else:
-            response_content = "抱歉，我无法回答这个问题。"
-
-        return {"messages": [AIMessage(content=response_content)]}
-
-    except Exception as e:
-        logger.error(f"问答 Agent 执行失败: {type(e).__name__}: {e}")
-        return {"messages": [AIMessage(content=f"回答问题时出现错误: {str(e)}")]}
-
-
-# ── 路由函数 ──────────────────────────────────────────
-
-
-def route_to_agent(state: AgentState) -> str:
-    """根据状态决定下一个节点"""
-    next_agent = state.get("next_agent", "end")
-
-    if next_agent == "detection_agent":
-        return "detection_agent"
-    elif next_agent == "analysis_agent":
-        return "analysis_agent"
-    elif next_agent == "qa_agent":
-        return "qa_agent"
-    else:
-        return "end"
-
-
-# ── 构建 Agent 图 ─────────────────────────────────────
-
-
-def build_agent_graph():
-    """
-    构建 Agent 图
-
-    Returns:
-        编译后的 Agent 图
-    """
-    # 创建状态图
-    graph = StateGraph(AgentState)
-
-    # 添加节点
-    graph.add_node("supervisor", supervisor_node)
-    graph.add_node("detection_agent", detection_agent_node)
-    graph.add_node("analysis_agent", analysis_agent_node)
-    graph.add_node("qa_agent", qa_agent_node)
-
-    # 添加边
-    graph.add_conditional_edges(
-        "supervisor",
-        route_to_agent,
-        {
-            "detection_agent": "detection_agent",
-            "analysis_agent": "analysis_agent",
-            "qa_agent": "qa_agent",
-            "end": END,
-        },
+    # Pydantic 校验
+    recipe = RecipeGenerateResult(**state["raw_recipe"])
+    
+    # 构建响应
+    now = datetime.now()
+    response = RecipeResponse(
+        recipe_id=1,  # Mock ID
+        recognition_id=state["recognition_id"],
+        version=1,
+        title=recipe.title,
+        summary=recipe.summary,
+        servings=recipe.servings,
+        cooking_time_minutes=recipe.cooking_time_minutes,
+        difficulty=recipe.difficulty,
+        ingredients=recipe.ingredients,
+        steps=recipe.steps,
+        nutrition=recipe.nutrition,
+        nutrition_disclaimer=NUTRITION_DISCLAIMER,
+        generator=GeneratorInfo(**MOCK_GENERATOR),
+        created_at=now,
+        updated_at=now,
     )
-
-    # 各 Agent 完成后回到 Supervisor 或结束
-    graph.add_edge("detection_agent", "supervisor")
-    graph.add_edge("analysis_agent", "supervisor")
-    graph.add_edge("qa_agent", END)
-
-    # 设置入口
-    graph.set_entry_point("supervisor")
-
-    # 编译图
-    compiled_graph = graph.compile()
-
-    logger.info("Agent 图构建完成")
-    return compiled_graph
+    
+    return {"recipe_response": response.model_dump()}
 
 
-# 全局 Agent 图实例
-agent_graph = None
-_graph_lock = threading.Lock()
+# ══════════════════════════════════════════════════════════════
+# 对话流程节点
+# ══════════════════════════════════════════════════════════════
+
+async def load_recipe_context(state: ChatRecipeState) -> dict:
+    """加载菜谱上下文（Mock 实现）"""
+    logger.info(f"加载菜谱: recipe_id={state['recipe_id']}")
+    # TODO: Day3 对接 Repository
+    return {"current_recipe": MOCK_RECIPE_RAW}
 
 
-def get_agent_graph():
-    """获取全局 Agent 图实例（线程安全）"""
-    global agent_graph
-    if agent_graph is None:
-        with _graph_lock:
-            if agent_graph is None:
-                agent_graph = build_agent_graph()
-    return agent_graph
+async def call_llm(state: ChatRecipeState) -> dict:
+    """调用 LLM（Mock 实现）"""
+    logger.info(f"调用 LLM: message={state['message']}")
+    # TODO: Day4 对接真实 LLM
+    
+    # Mock: 简单判断是否修改请求
+    if "改" in state["message"] or "调整" in state["message"]:
+        return {
+            "llm_output": {
+                "action": "update_recipe",
+                "answer": "已经调整为三人份。",
+                "recipe": {**MOCK_RECIPE_RAW, "servings": 3},
+            }
+        }
+    else:
+        return {
+            "llm_output": {
+                "action": "answer",
+                "answer": "这道番茄炒蛋营养丰富，适合日常食用。",
+                "recipe": None,
+            }
+        }
 
 
-def invalidate_agent_cache():
-    """清除 Agent 图缓存，在配置变更时调用以重建图实例"""
-    global agent_graph
-    with _graph_lock:
-        agent_graph = None
-    logger.info("Agent 图缓存已清除，下次调用时将重建")
+def route_by_action(state: ChatRecipeState) -> str:
+    """根据 action 路由"""
+    action = state["llm_output"].get("action", "answer")
+    return action
+
+
+async def answer(state: ChatRecipeState) -> dict:
+    """直接回答"""
+    logger.info("直接回答")
+    return {
+        "response": {
+            "action": "answer",
+            "answer": state["llm_output"]["answer"],
+            "message_id": 9001,  # Mock ID
+        }
+    }
+
+
+async def update_recipe(state: ChatRecipeState) -> dict:
+    """更新菜谱"""
+    logger.info("更新菜谱")
+    
+    # Pydantic 校验
+    recipe = RecipeGenerateResult(**state["llm_output"]["recipe"])
+    
+    return {
+        "response": {
+            "action": "update_recipe",
+            "answer": state["llm_output"]["answer"],
+            "recipe_id": state["recipe_id"],
+            "version": 2,  # Mock 版本
+            "message_id": 9002,  # Mock ID
+        }
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# 构建 Graph
+# ══════════════════════════════════════════════════════════════
+
+def build_generate_recipe_graph():
+    """构建首次生成流程图"""
+    graph = StateGraph(GenerateRecipeState)
+    
+    graph.add_node("load_confirmed_ingredients", load_confirmed_ingredients)
+    graph.add_node("generate_recipe", generate_recipe)
+    graph.add_node("validate_and_save", validate_and_save)
+    
+    graph.set_entry_point("load_confirmed_ingredients")
+    graph.add_edge("load_confirmed_ingredients", "generate_recipe")
+    graph.add_edge("generate_recipe", "validate_and_save")
+    graph.add_edge("validate_and_save", END)
+    
+    return graph.compile()
+
+
+def build_chat_recipe_graph():
+    """构建对话流程图"""
+    graph = StateGraph(ChatRecipeState)
+    
+    graph.add_node("load_recipe_context", load_recipe_context)
+    graph.add_node("call_llm", call_llm)
+    graph.add_node("answer", answer)
+    graph.add_node("update_recipe", update_recipe)
+    
+    graph.set_entry_point("load_recipe_context")
+    graph.add_edge("load_recipe_context", "call_llm")
+    graph.add_conditional_edges(
+        "call_llm",
+        route_by_action,
+        {"answer": "answer", "update_recipe": "update_recipe"},
+    )
+    graph.add_edge("answer", END)
+    graph.add_edge("update_recipe", END)
+    
+    return graph.compile()
+
+
+# 全局实例
+generate_recipe_graph = build_generate_recipe_graph()
+chat_recipe_graph = build_chat_recipe_graph()
