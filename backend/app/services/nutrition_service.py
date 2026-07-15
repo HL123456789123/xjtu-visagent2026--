@@ -24,7 +24,7 @@ from langchain_openai import ChatOpenAI
 
 from app.config.settings import settings
 from app.core.logger import get_logger
-from app.entity.recipe_schemas import Ingredient, NutritionInfo
+from app.entity.recipe_schema import Ingredient, NutritionInfo
 
 logger = get_logger("nutrition_service")
 

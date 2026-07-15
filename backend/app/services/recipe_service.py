@@ -1,333 +1,186 @@
 """
-菜谱服务模块（V1 执行版）
+菜谱服务模块（V1 冻结版本）
+负责人：陈煜君
 
-核心职责：
-1. 从识别记录加载确认食材
-2. 调用 LLM 生成菜谱（或使用 Mock）
-3. 校验并保存菜谱
-
-V1 规范：第六节、第七节
+职责：
+1. 调用 Agent Graph 生成菜谱
+2. Pydantic 校验
+3. 返回 RecipeResponse
 """
-import asyncio
-import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-from pydantic import ValidationError
-
-from app.config.settings import settings
-from app.core.exceptions import RecipeGenerationError, RecipeNotFoundError
+from app.core.exceptions import RecipeNotFoundError, PermissionDeniedError, RecipeGenerationError
 from app.core.logger import get_logger
-from app.entity.recipe_schemas import (
-    GeneratorInfo,
-    Ingredient,
-    NutritionInfo,
+from app.entity.recipe_schema import (
     RecipeCreateRequest,
-    RecipeGenerateResult,
-    RecipePreferences,
     RecipeResponse,
-    RecipeStep,
-)
-from app.services.agent_prompts import (
-    RECIPE_GENERATION_SYSTEM_PROMPT,
-    build_generation_user_prompt,
-    NUTRITION_DISCLAIMER,
+    RecipeGenerateResult,
+    GeneratorInfo,
+    RecipePreferences,
 )
 from app.services.agent_graph import generate_recipe_graph
+from app.services.agent_prompts import NUTRITION_DISCLAIMER
 
 logger = get_logger("recipe_service")
 
 
 class RecipeService:
-    """菜谱服务（V1 执行版）"""
+    """菜谱服务类"""
 
-    def __init__(self):
-        self._llm = None
-        self._max_retries = 2
-        self._timeout_seconds = 60  # V1 默认 60 秒
+    # Mock 存储（Day3 对接 Repository 后替换）
+    _recipes: dict = {}
+    _next_id = 1
 
-    @property
-    def llm(self) -> Optional[ChatOpenAI]:
-        """惰性初始化 LLM"""
-        if self._llm is None:
-            if not settings.OPENAI_API_KEY:
-                logger.warning("OPENAI_API_KEY 未配置，LLM 不可用")
-                return None
-            self._llm = ChatOpenAI(
-                model=settings.OPENAI_MODEL,
-                openai_api_key=settings.OPENAI_API_KEY,
-                openai_api_base=settings.OPENAI_BASE_URL,
-                temperature=0.7,
-                timeout=self._timeout_seconds,
-                max_retries=1,
-            )
-        return self._llm
-
-    async def create_recipe_from_recognition(
+    async def create_recipe(
         self,
         request: RecipeCreateRequest,
         user_id: int,
     ) -> RecipeResponse:
         """
-        V1 第六节第1点：生成菜谱
+        生成菜谱（V1 第六节第1点）
 
-        流程：
-        1. 加载确认食材
-        2. 调用 LLM 生成（或降级）
-        3. 校验并保存
+        Args:
+            request: 创建请求（recognition_id + preferences）
+            user_id: 当前用户 ID
+
+        Returns:
+            RecipeResponse
+
+        Raises:
+            RecipeGenerationError: 生成失败（含错误码）
         """
-        logger.info(
-            f"生成菜谱: recognition_id={request.recognition_id}, user_id={user_id}"
-        )
+        logger.info(f"生成菜谱: recognition_id={request.recognition_id}, user_id={user_id}")
 
-        # 1. 加载确认食材（Day3 对接 Repository）
-        # 这里暂时用 Mock，Day3 替换为 Repository 调用
-        confirmed_ingredients = [
-            {"name": "番茄", "class_name": "tomato", "quantity": 2, "unit": "个", "source": "model"},
-            {"name": "鸡蛋", "class_name": None, "quantity": 3, "unit": "个", "source": "manual"},
-        ]
-        if not confirmed_ingredients:
-            raise RecipeGenerationError("该识别任务尚未确认食材")
-
-        # 2. 尝试 LLM 生成
-        raw_result = None
-        source = "llm"
-        is_mock = False
-
-        for attempt in range(self._max_retries + 1):
-            try:
-                raw_result = await self._generate_with_llm(
-                    confirmed_ingredients=confirmed_ingredients,
-                    preferences=request.preferences,
+        try:
+            # 调用 Agent Graph
+            result = await generate_recipe_graph.ainvoke({
+                "recognition_id": request.recognition_id,
+                "user_id": user_id,
+                "preferences": request.preferences.model_dump(),
+                "confirmed_ingredients": [],
+                "raw_recipe": {},
+                "recipe_response": {},
+            })
+        except Exception as e:
+            # 根据异常类型映射错误码
+            error_msg = str(e)
+            if "未确认食材" in error_msg:
+                raise RecipeGenerationError(
+                    "该识别任务尚未确认食材",
+                    code="NO_CONFIRMED_INGREDIENTS"
                 )
-                break
-            except Exception as e:
-                logger.warning(f"LLM 生成失败 (尝试 {attempt+1}/{self._max_retries+1}): {e}")
-                if attempt >= self._max_retries:
-                    logger.info("使用降级方案")
-                    raw_result = self._generate_fallback(
-                        confirmed_ingredients=confirmed_ingredients,
-                        preferences=request.preferences,
-                    )
-                    source = "fallback"
-                    is_mock = True
+            elif "校验失败" in error_msg or "ValidationError" in error_msg:
+                raise RecipeGenerationError(
+                    "LLM 输出格式不合格",
+                    code="INVALID_LLM_OUTPUT"
+                )
+            else:
+                raise RecipeGenerationError(
+                    "LLM 服务暂时不可用",
+                    code="LLM_UNAVAILABLE"
+                )
 
-        # 3. 校验
-        try:
-            generate_result = RecipeGenerateResult(**raw_result)
-        except ValidationError as e:
-            logger.error(f"校验失败: {e}")
-            logger.info("使用降级方案替代")
-            raw_result = self._generate_fallback(
-                confirmed_ingredients=confirmed_ingredients,
-                preferences=request.preferences,
-            )
-            generate_result = RecipeGenerateResult(**raw_result)
-            source = "fallback"
-            is_mock = True
+        recipe_data = result["recipe_response"]
 
-        # 4. 保存（Day3 对接 RecipeRepository）
-        # 临时 Mock 保存
-        recipe_id = 1  # Mock ID
-        now = datetime.now()
+        # 补充 Generator 信息（V1 第六节第1点）
+        # Day4 改为真实 provider/model
         generator = GeneratorInfo(
-            provider="fake" if is_mock else "openai_compatible",
-            model="fixture-v1" if is_mock else settings.OPENAI_MODEL,
-            is_mock=is_mock,
+            provider="fake",
+            model="fixture-v1",
+            is_mock=True,
         )
 
-        response = RecipeResponse(
-            recipe_id=recipe_id,
-            recognition_id=request.recognition_id,
-            version=1,
-            title=generate_result.title,
-            summary=generate_result.summary,
-            servings=generate_result.servings,
-            cooking_time_minutes=generate_result.cooking_time_minutes,
-            difficulty=generate_result.difficulty,
-            ingredients=generate_result.ingredients,
-            steps=generate_result.steps,
-            nutrition=generate_result.nutrition,
-            nutrition_disclaimer=NUTRITION_DISCLAIMER,
-            generator=generator,
-            created_at=now,
-            updated_at=now,
-        )
-        return response
+        # 保存到 Mock 存储
+        recipe_id = self._next_id
+        self._next_id += 1
 
-    async def _generate_with_llm(
-        self,
-        confirmed_ingredients: List[Dict[str, Any]],
-        preferences: RecipePreferences,
-    ) -> Dict[str, Any]:
-        """调用 LLM 生成菜谱"""
-        llm = self.llm
-        if llm is None:
-            raise ValueError("LLM 未初始化")
-
-        # 构建 Prompt（V1 第七节第2点）
-        user_prompt = build_generation_user_prompt(
-            confirmed_ingredients=confirmed_ingredients,
-            preferences=preferences.model_dump(),
-        )
-
-        messages = [
-            SystemMessage(content=RECIPE_GENERATION_SYSTEM_PROMPT),
-            HumanMessage(content=user_prompt),
-        ]
-
-        try:
-            async with asyncio.timeout(self._timeout_seconds):
-                response = await llm.ainvoke(messages)
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"LLM 超时 ({self._timeout_seconds}s)")
-
-        # 解析 JSON
-        content = response.content
-        # 去除 Markdown 代码块
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"JSON 解析失败: {e}")
-
-        # 确保 nutrition 结构完整
-        if "nutrition" not in data:
-            data["nutrition"] = {
-                "basis": "per_serving",
-                "calories_kcal": 0,
-                "protein_g": 0,
-                "fat_g": 0,
-                "carbohydrates_g": 0,
-            }
-        elif "basis" not in data["nutrition"]:
-            data["nutrition"]["basis"] = "per_serving"
-
-        return data
-
-    def _generate_fallback(
-        self,
-        confirmed_ingredients: List[Dict[str, Any]],
-        preferences: RecipePreferences,
-    ) -> Dict[str, Any]:
-        """降级方案（V1 兼容）"""
-        logger.info("使用降级方案生成菜谱")
-
-        # 提取食材名称
-        names = [item.get("name") for item in confirmed_ingredients if item.get("name")]
-        if not names:
-            names = ["食材"]
-
-        # 构造基础菜谱
-        if len(names) == 1:
-            title = f"清炒{names[0]}"
-        else:
-            title = f"{''.join(names[:2])}小炒"
-
-        # 构建食材列表（V1 格式）
-        ingredients = [
-            {"name": name, "amount": 100, "unit": "克", "note": None}
-            for name in names
-        ]
-
-        steps = [
-            {"step_no": 1, "description": "将所有食材洗净，切成适当大小。", "duration_minutes": 5},
-            {"step_no": 2, "description": "热锅下油，油热后放入食材翻炒。", "duration_minutes": 5},
-            {"step_no": 3, "description": "加入盐、酱油等调味料调味。", "duration_minutes": 2},
-            {"step_no": 4, "description": "翻炒均匀后出锅装盘。", "duration_minutes": 1},
-        ]
-
-        nutrition = {
-            "basis": "per_serving",
-            "calories_kcal": 200,
-            "protein_g": 8,
-            "fat_g": 10,
-            "carbohydrates_g": 15,
+        recipe = {
+            "recipe_id": recipe_id,
+            "recognition_id": request.recognition_id,
+            "version": 1,
+            "title": recipe_data.get("title"),
+            "summary": recipe_data.get("summary"),
+            "servings": recipe_data.get("servings", 2),
+            "cooking_time_minutes": recipe_data.get("cooking_time_minutes", 0),
+            "difficulty": recipe_data.get("difficulty", "简单"),
+            "ingredients": recipe_data.get("ingredients", []),
+            "steps": recipe_data.get("steps", []),
+            "nutrition": recipe_data.get("nutrition"),
+            "nutrition_disclaimer": NUTRITION_DISCLAIMER,
+            "generator": generator.model_dump(),
+            "user_id": user_id,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
         }
 
-        return {
-            "title": title,
-            "summary": f"用{', '.join(names)}制作的简单家常菜。",
-            "servings": preferences.servings,
-            "cooking_time_minutes": 20,
-            "difficulty": "简单",
-            "ingredients": ingredients,
-            "steps": steps,
-            "nutrition": nutrition,
-        }
+        self._recipes[recipe_id] = recipe
+        logger.info(f"菜谱创建成功: recipe_id={recipe_id}")
 
-    # ========== 查询接口（V1 第六节第2点） ==========
+        return RecipeResponse(**recipe)
 
-    async def get_recipe(self, recipe_id: int, user_id: int) -> RecipeResponse:
-        """查询菜谱（Day3 对接 Repository）"""
-        # Mock 实现
-        now = datetime.now()
-        return RecipeResponse(
-            recipe_id=recipe_id,
-            recognition_id=1,
-            version=1,
-            title="番茄炒蛋",
-            summary="经典家常菜",
-            servings=2,
-            cooking_time_minutes=20,
-            difficulty="简单",
-            ingredients=[{"name": "番茄", "amount": 2, "unit": "个", "note": None}],
-            steps=[{"step_no": 1, "description": "番茄切块", "duration_minutes": 5}],
-            nutrition=NutritionInfo(
-                basis="per_serving",
-                calories_kcal=280,
-                protein_g=16.5,
-                fat_g=15.2,
-                carbohydrates_g=18.4,
-            ),
-            nutrition_disclaimer=NUTRITION_DISCLAIMER,
-            generator=GeneratorInfo(provider="mock", model="fixture", is_mock=True),
-            created_at=now,
-            updated_at=now,
-        )
+    async def get_recipe(
+        self,
+        recipe_id: int,
+        user_id: int,
+    ) -> RecipeResponse:
+        """
+        查询菜谱（V1 第六节第2点）
 
-    # ========== 更新接口（Agent 调用） ==========
+        Args:
+            recipe_id: 菜谱 ID
+            user_id: 当前用户 ID
 
+        Returns:
+            RecipeResponse
+
+        Raises:
+            RecipeNotFoundError: 菜谱不存在（404）
+            PermissionDeniedError: 无权访问（403）
+        """
+        logger.info(f"查询菜谱: recipe_id={recipe_id}, user_id={user_id}")
+
+        recipe = self._recipes.get(recipe_id)
+        if recipe is None:
+            raise RecipeNotFoundError(f"菜谱不存在: {recipe_id}")
+
+        if recipe.get("user_id") != user_id:
+            raise PermissionDeniedError(f"无权访问菜谱: {recipe_id}")
+
+        return RecipeResponse(**recipe)
+
+    # Day3 对接：更新菜谱（Agent 调用）
     async def update_recipe(
         self,
         recipe_id: int,
         user_id: int,
-        new_recipe_data: Dict[str, Any],
+        new_recipe_data: dict,
     ) -> RecipeResponse:
-        """更新菜谱版本（Day3 对接 Repository）"""
-        # 读取当前版本，增加 version
-        # Mock 实现
-        now = datetime.now()
-        return RecipeResponse(
-            recipe_id=recipe_id,
-            recognition_id=1,
-            version=2,  # 版本+1
-            title=new_recipe_data.get("title", "番茄炒蛋"),
-            summary=new_recipe_data.get("summary", "更新后的菜谱"),
-            servings=new_recipe_data.get("servings", 2),
-            cooking_time_minutes=new_recipe_data.get("cooking_time_minutes", 20),
-            difficulty=new_recipe_data.get("difficulty", "简单"),
-            ingredients=new_recipe_data.get("ingredients", []),
-            steps=new_recipe_data.get("steps", []),
-            nutrition=new_recipe_data.get("nutrition", NutritionInfo(
-                basis="per_serving",
-                calories_kcal=0,
-                protein_g=0,
-                fat_g=0,
-                carbohydrates_g=0,
-            )),
-            nutrition_disclaimer=NUTRITION_DISCLAIMER,
-            generator=GeneratorInfo(provider="mock", model="fixture", is_mock=True),
-            created_at=now,
-            updated_at=now,
-        )
+        """
+        更新菜谱版本（V1 第六节第3点）
+
+        Args:
+            recipe_id: 菜谱 ID
+            user_id: 当前用户 ID
+            new_recipe_data: 新菜谱数据
+
+        Returns:
+            RecipeResponse（version + 1）
+        """
+        # 先获取当前菜谱
+        current = await self.get_recipe(recipe_id, user_id)
+
+        # 更新数据，版本 + 1
+        updated = current.model_dump()
+        updated.update(new_recipe_data)
+        updated["version"] = current.version + 1
+        updated["updated_at"] = datetime.now().isoformat()
+
+        self._recipes[recipe_id] = updated
+        logger.info(f"菜谱更新成功: recipe_id={recipe_id}, version={updated['version']}")
+
+        return RecipeResponse(**updated)
 
 
-# 单例
+# 全局实例
 recipe_service = RecipeService()

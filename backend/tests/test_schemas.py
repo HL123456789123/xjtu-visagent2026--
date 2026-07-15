@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 from datetime import datetime
 from app.core.tz import now_cst
+from app.entity.recipe_schema import GeneratorInfo, RecipeResponse, RecipePreferences, Ingredient, NutritionInfo, RecipeStep
 from app.entity.schemas import (
     UserRegister, UserLogin, TokenResponse, UserResponse, UserBrief,
     UserUpdate, ChangePassword, RoleResponse, RoleCreate,
@@ -233,3 +234,58 @@ class TestPageResponse:
         assert resp.total == 100
         assert resp.total_pages == 5
         assert len(resp.items) == 2
+class TestGeneratorInfoSchema:
+    """生成器信息 Schema 测试（V1 第七节第1点）"""
+    
+    def test_valid_generator_info(self):
+        """正例：有效生成器信息"""
+        gen = GeneratorInfo(
+            provider="openai",
+            model="gpt-4",
+            is_mock=False,
+        )
+        assert gen.provider == "openai"
+        assert gen.is_mock is False
+    
+    def test_mock_generator(self):
+        """正例：Mock 生成器"""
+        gen = GeneratorInfo(
+            provider="fake",
+            model="fixture-v1",
+            is_mock=True,
+        )
+        assert gen.is_mock is True
+
+
+class TestRecipeResponseSchema:
+    """API 响应 Schema 测试（V1 第六节第1点）"""
+    
+    def test_valid_response(self):
+        """正例：有效响应"""
+        from datetime import datetime
+        response = RecipeResponse(
+            recipe_id=1,
+            recognition_id=12,
+            version=1,
+            title="番茄炒蛋",
+            summary="一道家常菜",
+            servings=2,
+            cooking_time_minutes=20,
+            difficulty="简单",
+            ingredients=[Ingredient(name="番茄", amount=2, unit="个")],
+            steps=[RecipeStep(step_no=1, description="番茄切块", duration_minutes=5)],
+            nutrition=NutritionInfo(
+                basis="per_serving",
+                calories_kcal=280,
+                protein_g=16.5,
+                fat_g=15.2,
+                carbohydrates_g=18.4,
+            ),
+            nutrition_disclaimer="营养数据由模型估算，仅供参考",
+            generator=GeneratorInfo(provider="fake", model="fixture-v1", is_mock=True),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        assert response.recipe_id == 1
+        assert response.version == 1
+        assert response.nutrition_disclaimer != ""

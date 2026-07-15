@@ -27,7 +27,6 @@ from app.core.exceptions import (
 )
 from app.middleware.request_logger import RequestLoggerMiddleware
 
-
 # 初始化日志系统
 logger = setup_logger()
 
@@ -229,7 +228,6 @@ app.include_router(knowledge_router)
 app.include_router(model_router)
 app.include_router(admin_router)
 app.include_router(dataset_router)
-
 
 @app.get("/")
 def root():

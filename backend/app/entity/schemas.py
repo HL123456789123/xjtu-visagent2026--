@@ -405,6 +405,7 @@ class SceneModelBindRequest(BaseModel):
 class CreateSessionRequest(BaseModel):
     """创建会话请求"""
     title: Optional[str] = None
+    recipe_id: Optional[int] = Field(None, description="关联的菜谱 ID（V1）")
 
 
 class SendMessageRequest(BaseModel):
@@ -418,6 +419,7 @@ class ChatSessionResponse(BaseModel):
     user_id: int
     session_uuid: str
     title: Optional[str] = None
+    recipe_id: Optional[int] = Field(None, description="关联的菜谱 ID（V1）")
     status: str = "active"
     message_count: int = 0
     last_message_at: Optional[datetime] = None
