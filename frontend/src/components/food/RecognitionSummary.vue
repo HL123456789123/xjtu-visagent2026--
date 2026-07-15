@@ -46,7 +46,7 @@ import { computed } from 'vue'
 
 const props = defineProps({
   recognitionId: {
-    type: String,
+    type: [String, Number],
     default: '',
   },
   confirmedIngredients: {

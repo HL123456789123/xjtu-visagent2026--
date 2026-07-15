@@ -23,6 +23,13 @@ describe('FoodImageUploader', () => {
     expect(wrapper.emitted('preview-change')?.[0]).toEqual([['blob:meal.jpg']])
   })
 
+  it('marks the native file input as multi-image capable', () => {
+    const wrapper = mount(FoodImageUploader)
+
+    expect(wrapper.find('[data-testid="food-image-input"]').attributes('multiple')).toBeDefined()
+    expect(wrapper.text()).toContain('1 至多张')
+  })
+
   it('rejects non JPG/PNG files', async () => {
     const wrapper = mount(FoodImageUploader)
     const file = new File(['text'], 'notes.txt', { type: 'text/plain' })

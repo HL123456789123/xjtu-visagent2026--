@@ -18,8 +18,8 @@ describe('food api contract', () => {
 
   it('keeps the day-one frozen recognition paths', () => {
     expect(FOOD_RECOGNITION_PATHS.create).toBe('/food/recognitions')
-    expect(FOOD_RECOGNITION_PATHS.get('rec_1')).toBe('/food/recognitions/rec_1')
-    expect(FOOD_RECOGNITION_PATHS.confirm('rec_1')).toBe('/food/recognitions/rec_1/ingredients')
+    expect(FOOD_RECOGNITION_PATHS.get(12)).toBe('/food/recognitions/12')
+    expect(FOOD_RECOGNITION_PATHS.confirm(12)).toBe('/food/recognitions/12/ingredients')
   })
 
   it('returns cloned success and empty fixtures through mock scenarios', async () => {
@@ -29,9 +29,17 @@ describe('food api contract', () => {
     )
     const empty = await getFoodRecognition('rec_empty', { mockScenario: 'empty' })
 
-    expect(success.data.recognition_id).toBe('rec_mock_day1_001')
-    expect(success.data.ingredients).toHaveLength(3)
-    expect(empty.data.recognition_id).toBe('rec_mock_day1_empty')
+    expect(success.code).toBe(201)
+    expect(success.data.recognition_id).toBe(12)
+    expect(success.data.ingredients).toHaveLength(2)
+    expect(success.data.ingredients[0]).toMatchObject({
+      candidate_id: 'det-1',
+      class_name: 'tomato',
+      display_name: '番茄',
+      confidence: 0.9321,
+    })
+    expect(empty.code).toBe(200)
+    expect(empty.data.recognition_id).toBe(13)
     expect(empty.data.ingredients).toHaveLength(0)
   })
 
@@ -69,16 +77,23 @@ describe('food api contract', () => {
     }
     setFoodApiClient(client)
 
-    await createFoodRecognition({ image: new File(['image'], 'meal.jpg') })
-    await getFoodRecognition('rec_injected')
-    await confirmFoodIngredients('rec_injected', [{ key: 'egg', name: '鸡蛋' }])
+    await createFoodRecognition({ images: [new File(['image'], 'meal.jpg')] })
+    await getFoodRecognition(12)
+    const confirmedIngredient = {
+      name: '鸡蛋',
+      class_name: 'egg',
+      quantity: 1,
+      unit: '个',
+      source: 'model',
+    }
+    await confirmFoodIngredients(12, [confirmedIngredient])
 
     expect(client.create).toHaveBeenCalledOnce()
-    expect(client.get).toHaveBeenCalledWith('rec_injected', {})
+    expect(client.get).toHaveBeenCalledWith(12, {})
     expect(client.confirm).toHaveBeenCalledWith(
       {
-        recognitionId: 'rec_injected',
-        ingredients: [{ key: 'egg', name: '鸡蛋' }],
+        recognitionId: 12,
+        ingredients: [confirmedIngredient],
       },
       {}
     )
@@ -88,15 +103,23 @@ describe('food api contract', () => {
     const client = createMockFoodApiClient('success')
 
     const created = await client.create()
+    const confirmedIngredient = {
+      name: '番茄',
+      class_name: 'tomato',
+      quantity: 2,
+      unit: '个',
+      source: 'model',
+    }
     const confirmed = await client.confirm({
       recognitionId: created.data.recognition_id,
-      ingredients: [{ key: 'tomato', name: '番茄' }],
+      ingredients: [confirmedIngredient],
     })
 
+    expect(created.code).toBe(201)
     expect(created.data.provider).toBe('mock')
     expect(confirmed.data).toEqual({
-      recognition_id: 'rec_mock_day1_001',
-      confirmed_ingredients: [{ key: 'tomato', name: '番茄' }],
+      recognition_id: 12,
+      confirmed_ingredients: [confirmedIngredient],
       status: 'confirmed',
     })
   })

@@ -1,64 +1,48 @@
-export function normalizeIngredientKey(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '_')
-}
+/**
+ * V1 IngredientCandidate (API response):
+ * { candidate_id, class_name, display_name, confidence, bbox, source }
+ *
+ * V1 ConfirmedIngredient (confirmation request):
+ * { name, class_name, quantity, unit, source }
+ */
 
 export function mapCandidatesToEditableIngredients(candidates = []) {
   return candidates.map((candidate, index) => ({
-    draftId: candidate.id || `${candidate.key || 'ingredient'}_${index}`,
-    key: candidate.key || normalizeIngredientKey(candidate.name),
-    name: candidate.name || '',
+    draftId: candidate.draftId || candidate.candidate_id || `candidate_${index}`,
+    candidate_id: candidate.candidate_id || null,
+    class_name: candidate.class_name || null,
+    name: candidate.display_name ?? candidate.name ?? '',
     confidence: typeof candidate.confidence === 'number' ? candidate.confidence : null,
+    quantity: candidate.quantity ?? 1,
+    unit: candidate.unit || '个',
     source: candidate.source || 'model',
     bbox: candidate.bbox || null,
   }))
 }
 
 export function buildConfirmedIngredients(ingredients = []) {
-  return ingredients.map((ingredient) => {
-    const name = String(ingredient.name || '').trim()
-    return {
-      key: ingredient.key || normalizeIngredientKey(name),
-      name,
-      confidence: ingredient.confidence,
-      source: ingredient.source || 'manual',
-    }
-  })
+  return ingredients.map((ingredient) => ({
+    name: String(ingredient.name || '').trim(),
+    class_name: ingredient.class_name || null,
+    quantity: Number(ingredient.quantity),
+    unit: String(ingredient.unit || '').trim(),
+    source: ingredient.source || 'manual',
+  }))
 }
 
 export function validateConfirmedIngredients(ingredients = []) {
   const errors = []
   const confirmed = buildConfirmedIngredients(ingredients)
-
-  if (confirmed.length === 0) {
-    errors.push('至少保留一个食材后再确认。')
-  }
-
-  const seenKeys = new Map()
+  if (confirmed.length === 0) errors.push('至少保留一个食材后再确认。')
   confirmed.forEach((ingredient, index) => {
-    if (!ingredient.name) {
-      errors.push(`第 ${index + 1} 个食材名称不能为空。`)
-      return
+    if (!ingredient.name) errors.push(`第 ${index + 1} 个食材名称不能为空。`)
+    if (!Number.isFinite(ingredient.quantity) || ingredient.quantity <= 0) {
+      errors.push(`第 ${index + 1} 个食材数量必须大于 0。`)
     }
-
-    const key = normalizeIngredientKey(ingredient.key || ingredient.name)
-    if (!key) {
-      errors.push(`第 ${index + 1} 个食材 key 不能为空。`)
-      return
-    }
-
-    if (seenKeys.has(key)) {
-      errors.push(`食材 key 重复：${key}`)
-    } else {
-      seenKeys.set(key, true)
+    if (!ingredient.unit) errors.push(`第 ${index + 1} 个食材单位不能为空。`)
+    if (!['model', 'manual'].includes(ingredient.source)) {
+      errors.push(`第 ${index + 1} 个食材来源无效。`)
     }
   })
-
-  return {
-    valid: errors.length === 0,
-    errors,
-    ingredients: confirmed,
-  }
+  return { valid: errors.length === 0, errors, ingredients: confirmed }
 }

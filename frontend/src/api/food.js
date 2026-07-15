@@ -38,18 +38,19 @@ function createMockError(status) {
   return error
 }
 
-function mockResponse(data, message = 'mock') {
+function mockResponse(data, message = 'mock', code = 200) {
   return Promise.resolve({
-    code: 200,
+    code,
     message,
     data: cloneFixture(data),
   })
 }
 
-function resolveMockScenario(scenario) {
+function resolveMockScenario(scenario, operation = 'create') {
   if (!scenario || scenario === 'off') return null
-  if (scenario === 'success') return mockResponse(foodRecognitionFixtures.success)
-  if (scenario === 'empty') return mockResponse(foodRecognitionFixtures.empty)
+  const code = operation === 'create' ? 201 : 200
+  if (scenario === 'success') return mockResponse(foodRecognitionFixtures.success, 'mock', code)
+  if (scenario === 'empty') return mockResponse(foodRecognitionFixtures.empty, 'mock', code)
   if (foodRecognitionErrorFixtures[scenario]) {
     return Promise.reject(createMockError(scenario))
   }
@@ -58,7 +59,7 @@ function resolveMockScenario(scenario) {
 
 export function createMockFoodApiClient(scenario = 'success') {
   return {
-    create: () => resolveMockScenario(scenario) || mockResponse(foodRecognitionFixtures.success),
+    create: () => resolveMockScenario(scenario, 'create') || mockResponse(foodRecognitionFixtures.success, 'mock', 201),
     get: () => mockResponse(foodRecognitionFixtures.success),
     confirm: ({ recognitionId, ingredients }) =>
       Promise.resolve({
@@ -78,13 +79,15 @@ export function unwrapFoodApiData(response) {
 }
 
 function normalizeRecognitionImages(data = {}) {
-  if (Array.isArray(data.images)) return data.images.filter(Boolean)
+  if (data.images && typeof data.images[Symbol.iterator] === 'function') {
+    return Array.from(data.images).filter(Boolean)
+  }
   return data.image ? [data.image] : []
 }
 
 export function createFoodRecognition(data, options = {}) {
   const scenario = options.mockScenario ?? options.mock
-  const mock = resolveMockScenario(scenario)
+  const mock = resolveMockScenario(scenario, 'create')
   if (mock) return mock
 
   const client = options.client || injectedClient
@@ -95,10 +98,8 @@ export function createFoodRecognition(data, options = {}) {
   images.forEach((image) => {
     formData.append('images', image)
   })
-  if (images[0]) {
-    formData.append('image', images[0])
-  }
-  formData.append('image_count', images.length)
+  if (images[0]) formData.append('image', images[0])
+  formData.append('image_count', String(images.length))
   formData.append('conf_threshold', data.conf_threshold ?? 0.25)
 
   return uploadRequest.post(FOOD_RECOGNITION_PATHS.create, formData, {
@@ -108,7 +109,7 @@ export function createFoodRecognition(data, options = {}) {
 
 export function getFoodRecognition(recognitionId, options = {}) {
   const scenario = options.mockScenario ?? options.mock
-  const mock = resolveMockScenario(scenario)
+  const mock = resolveMockScenario(scenario, 'get')
   if (mock) return mock
 
   const client = options.client || injectedClient

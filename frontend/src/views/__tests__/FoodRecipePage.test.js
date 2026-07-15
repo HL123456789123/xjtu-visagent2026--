@@ -36,35 +36,33 @@ describe('FoodRecipePage', () => {
     const ingredientNames = wrapper
       .findAll('[data-testid="ingredient-name"]')
       .map((input) => input.element.value)
-    expect(ingredientNames).toEqual(['番茄', '鸡蛋', '菠菜'])
+    expect(ingredientNames).toEqual(['番茄', '鸡蛋'])
 
     await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
-    expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('rec_mock_day1_001')
-    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('3 项')
+    expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('12')
+    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
     expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
     expect(wrapper.emitted('confirmed')?.[0][0]).toMatchObject({
-      recognition_id: 'rec_mock_day1_001',
+      recognition_id: 12,
       image_count: 2,
       source_images: ['breakfast.jpg', 'vegetables.jpg'],
       confirmed_ingredients: [
-        { key: 'tomato', name: '番茄' },
-        { key: 'egg', name: '鸡蛋' },
-        { key: 'spinach', name: '菠菜' },
+        { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
+        { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
       ],
     })
 
     await wrapper.find('[data-testid="recipe-generate"]').trigger('click')
     expect(wrapper.emitted('recipe-requested')?.[0][0]).toMatchObject({
-      recognition_id: 'rec_mock_day1_001',
+      recognition_id: 12,
       image_count: 2,
       source_images: ['breakfast.jpg', 'vegetables.jpg'],
       confirmed_ingredients: [
-        { key: 'tomato', name: '番茄' },
-        { key: 'egg', name: '鸡蛋' },
-        { key: 'spinach', name: '菠菜' },
+        { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
+        { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
       ],
     })
   })
