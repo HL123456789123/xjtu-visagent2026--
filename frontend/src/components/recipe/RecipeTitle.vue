@@ -38,7 +38,8 @@ defineProps({
 <style lang="scss" scoped>
 .recipe-title {
   display: grid;
-  gap: $spacing-sm;
+  gap: 12px;
+  padding-bottom: 6px;
 }
 
 .recipe-title__heading {
@@ -48,9 +49,11 @@ defineProps({
 
   h2 {
     margin: 0;
-    font-size: 22px;
-    font-weight: 650;
-    color: $text-primary;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 500;
+    line-height: 1.12;
   }
 }
 
@@ -60,17 +63,18 @@ defineProps({
   height: 22px;
   padding: 0 $spacing-sm;
   border-radius: 999px;
-  background: $bg-color-light-blue;
-  color: $primary-color;
+  background: #fff1d2;
+  color: #965b22;
   font-size: 12px;
   font-weight: 600;
 }
 
 .recipe-title__summary {
   margin: 0;
-  color: $text-secondary;
-  font-size: 14px;
-  line-height: 1.5;
+  max-width: 760px;
+  color: #76573f;
+  font-size: 15px;
+  line-height: 1.8;
 }
 
 .recipe-title__meta {
@@ -83,18 +87,22 @@ defineProps({
     display: flex;
     align-items: baseline;
     gap: $spacing-xs;
+    border: 1px solid rgba(121, 82, 45, 0.12);
+    border-radius: 999px;
+    background: rgba(255, 248, 234, 0.78);
+    padding: 8px 13px;
   }
 
   dt {
-    color: $text-secondary;
+    color: #9a7659;
     font-size: 13px;
   }
 
   dd {
     margin: 0;
-    color: $text-primary;
+    color: #3a2a1d;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 800;
   }
 }
 </style>

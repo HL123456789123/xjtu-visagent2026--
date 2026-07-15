@@ -34,8 +34,10 @@
         </div>
       </div>
       <div v-else class="food-uploader__placeholder">
-        <strong>选择食物图片</strong>
+        <span class="food-uploader__icon">+</span>
+        <strong>把餐桌照片放到这里</strong>
         <span>支持 1 至多张 JPG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
+        <small>点击选择，或直接拖拽图片上传</small>
       </div>
     </div>
 
@@ -208,7 +210,7 @@ defineExpose({
 <style lang="scss" scoped>
 .food-uploader {
   display: grid;
-  gap: $spacing-sm;
+  gap: 12px;
 
   &.is-disabled {
     opacity: 0.72;
@@ -223,44 +225,80 @@ defineExpose({
 .food-uploader__dropzone {
   display: grid;
   place-items: center;
-  min-height: 260px;
-  border: 1px dashed #b8c0cc;
-  border-radius: $border-radius-md;
-  background: #f8fafc;
-  color: $text-secondary;
+  min-height: 280px;
+  overflow: hidden;
+  border: 1.5px dashed rgba(135, 89, 50, 0.28);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 16% 14%, rgba(255, 205, 106, 0.34), transparent 22%),
+    radial-gradient(circle at 88% 82%, rgba(121, 165, 76, 0.18), transparent 28%),
+    #fffaf1;
+  color: #88664d;
   cursor: pointer;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.42);
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 
   &:focus-visible,
   &:hover,
   .is-dragging & {
-    border-color: $primary-color;
-    background: #eef6ff;
+    border-color: #e96d3b;
+    background:
+      radial-gradient(circle at 16% 14%, rgba(255, 205, 106, 0.42), transparent 24%),
+      radial-gradient(circle at 88% 82%, rgba(121, 165, 76, 0.24), transparent 30%),
+      #fff3da;
+    transform: translateY(-2px);
     outline: none;
   }
 }
 
 .food-uploader__placeholder {
   display: grid;
-  gap: $spacing-xs;
+  justify-items: center;
+  gap: 7px;
+  padding: 28px;
   text-align: center;
 
   strong {
-    color: $text-primary;
-    font-size: 16px;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 23px;
+    font-weight: 500;
   }
 
   span {
     font-size: 13px;
   }
+
+  small {
+    color: #b56a26;
+    font-size: 12px;
+    font-weight: 700;
+  }
+}
+
+.food-uploader__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f7c864, #e96d3b);
+  color: #fffaf0;
+  box-shadow: 0 14px 28px rgba(229, 109, 59, 0.26);
+  font-size: 34px;
+  font-weight: 300;
 }
 
 .food-uploader__preview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: $spacing-sm;
+  gap: 10px;
   width: 100%;
-  height: 260px;
+  height: 280px;
+  padding: 10px;
+  box-sizing: border-box;
   overflow: hidden;
 
   &.is-single {
@@ -272,13 +310,14 @@ defineExpose({
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: $border-radius-sm;
+  border-radius: 20px;
+  box-shadow: 0 12px 28px rgba(82, 48, 24, 0.16);
 
   img {
     width: 100%;
     height: 100%;
-    object-fit: contain;
-    background: #111827;
+    object-fit: cover;
+    background: #2e2116;
   }
 }
 
@@ -292,7 +331,7 @@ defineExpose({
 
 .food-uploader__name {
   min-width: 0;
-  color: $text-regular;
+  color: #6f5038;
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -300,10 +339,10 @@ defineExpose({
 }
 
 .food-uploader__clear {
-  border: 1px solid $border-color-light;
-  border-radius: $border-radius-sm;
-  background: #fff;
-  color: $text-regular;
+  border: 1px solid rgba(135, 89, 50, 0.18);
+  border-radius: 999px;
+  background: #fff8ea;
+  color: #8a4d2a;
   height: 32px;
   padding: 0 $spacing-md;
   cursor: pointer;
@@ -311,7 +350,7 @@ defineExpose({
 
 .food-uploader__error {
   margin: 0;
-  color: $danger-color;
+  color: #c44b37;
   font-size: 13px;
 }
 </style>

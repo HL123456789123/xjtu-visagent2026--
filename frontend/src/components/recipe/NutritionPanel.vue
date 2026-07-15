@@ -78,20 +78,25 @@ const basisLabel = computed(() => {
 <style lang="scss" scoped>
 .nutrition-panel {
   display: grid;
-  gap: $spacing-sm;
+  gap: 12px;
+  border: 1px solid rgba(121, 82, 45, 0.11);
+  border-radius: 24px;
+  background: rgba(255, 252, 245, 0.78);
+  padding: 18px;
 }
 
 .nutrition-panel__title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
+  color: #3a2a1d;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 22px;
+  font-weight: 500;
 }
 
 .nutrition-panel__basis {
   margin: 0;
   font-size: 13px;
-  color: $text-secondary;
+  color: #8a6a50;
 }
 
 .nutrition-panel__grid {
@@ -106,42 +111,42 @@ const basisLabel = computed(() => {
   align-items: center;
   gap: 2px;
   padding: $spacing-md $spacing-sm;
-  border: 1px solid $border-color;
-  border-radius: $border-radius-sm;
-  background: #fafbfc;
+  border: 1px solid rgba(121, 82, 45, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fff8ea, #fffdf8);
 }
 
 .nutrition-panel__value {
   font-size: 20px;
   font-weight: 700;
-  color: $text-primary;
+  color: #3a2a1d;
 }
 
 .nutrition-panel__unit {
   font-size: 12px;
-  color: $text-secondary;
+  color: #9a7659;
 }
 
 .nutrition-panel__label {
   font-size: 12px;
-  color: $text-secondary;
+  color: #8a6a50;
 }
 
 .nutrition-panel__empty {
   margin: 0;
   padding: $spacing-lg 0;
   text-align: center;
-  color: $text-placeholder;
+  color: #ad947d;
   font-size: 14px;
 }
 
 .nutrition-panel__disclaimer {
   margin: 0;
   padding: $spacing-sm $spacing-md;
-  border-left: 3px solid $warning-color;
-  background: #fff8ed;
-  border-radius: $border-radius-sm;
-  color: $text-secondary;
+  border-left: 3px solid #e6a23c;
+  background: #fff3d8;
+  border-radius: 14px;
+  color: #856449;
   font-size: 12px;
   line-height: 1.5;
 }

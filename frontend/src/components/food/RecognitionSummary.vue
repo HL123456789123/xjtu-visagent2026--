@@ -2,7 +2,8 @@
   <section class="recognition-summary" :class="`is-${status}`">
     <header class="recognition-summary__header">
       <div>
-        <h2>菜谱生成输入</h2>
+        <span class="recognition-summary__kicker">Step 03</span>
+        <h2>生成家常菜谱</h2>
         <p>{{ summaryText }}</p>
       </div>
       <button
@@ -101,9 +102,10 @@ function emitRecipeRequest() {
 <style lang="scss" scoped>
 .recognition-summary {
   display: grid;
-  gap: $spacing-md;
-  border-top: 1px solid $border-color;
-  padding-top: $spacing-lg;
+  gap: 18px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(121, 82, 45, 0.12);
+  padding-top: 24px;
 }
 
 .recognition-summary__header {
@@ -113,31 +115,50 @@ function emitRecipeRequest() {
   gap: $spacing-md;
 
   h2 {
-    margin: 0;
-    color: $text-primary;
-    font-size: 18px;
+    margin: 4px 0 0;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 26px;
+    font-weight: 500;
   }
 
   p {
-    margin: $spacing-xs 0 0;
-    color: $text-secondary;
+    margin: 6px 0 0;
+    color: #856449;
     font-size: 13px;
+    line-height: 1.6;
   }
 }
 
+.recognition-summary__kicker {
+  color: #b56a26;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
 .recognition-summary__button {
-  border: 1px solid $success-color;
-  border-radius: $border-radius-sm;
-  background: $success-color;
-  color: #fff;
-  height: 36px;
-  padding: 0 $spacing-md;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #89a94f, #e6a23c);
+  color: #fffaf0;
+  height: 42px;
+  padding: 0 22px;
   cursor: pointer;
+  font-weight: 800;
+  box-shadow: 0 14px 26px rgba(137, 169, 79, 0.24);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 34px rgba(137, 169, 79, 0.3);
+  }
 
   &:disabled {
-    border-color: $border-color-light;
-    background: #f2f4f7;
-    color: $text-placeholder;
+    background: #eadfce;
+    color: #ad947d;
+    box-shadow: none;
     cursor: not-allowed;
   }
 }
@@ -150,21 +171,22 @@ function emitRecipeRequest() {
 
   div {
     min-width: 0;
-    border: 1px solid $border-color;
-    border-radius: $border-radius-sm;
-    padding: $spacing-sm;
-    background: #fafafa;
+    border: 1px solid rgba(121, 82, 45, 0.12);
+    border-radius: 18px;
+    padding: 12px;
+    background: rgba(255, 250, 241, 0.82);
   }
 
   dt {
-    color: $text-secondary;
+    color: #9a7659;
     font-size: 12px;
   }
 
   dd {
     margin: $spacing-xs 0 0;
-    color: $text-primary;
+    color: #3a2a1d;
     font-size: 13px;
+    font-weight: 700;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

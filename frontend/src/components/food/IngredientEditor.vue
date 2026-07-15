@@ -2,8 +2,9 @@
   <section class="ingredient-editor">
     <header class="ingredient-editor__header">
       <div>
-        <h2>候选食材</h2>
-        <p>{{ ingredients.length }} 项待确认</p>
+        <span class="ingredient-editor__kicker">Step 02</span>
+        <h2>确认今天的食材</h2>
+        <p>{{ ingredients.length }} 项待确认，可以直接修改名称或补充遗漏食材。</p>
       </div>
       <button
         class="ingredient-editor__add"
@@ -12,7 +13,7 @@
         :disabled="disabled"
         @click="addIngredient"
       >
-        新增食材
+        + 新增食材
       </button>
     </header>
 
@@ -68,7 +69,7 @@
         :disabled="disabled"
         @click="confirmIngredients"
       >
-        确认食材
+        确认食材，准备生成菜谱
       </button>
     </footer>
   </section>
@@ -181,7 +182,7 @@ defineExpose({
 <style lang="scss" scoped>
 .ingredient-editor {
   display: grid;
-  gap: $spacing-md;
+  gap: 18px;
 }
 
 .ingredient-editor__header,
@@ -194,29 +195,47 @@ defineExpose({
 
 .ingredient-editor__header {
   h2 {
-    margin: 0;
-    color: $text-primary;
-    font-size: 18px;
-    font-weight: 600;
+    margin: 4px 0 0;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 26px;
+    font-weight: 500;
   }
 
   p {
-    margin: $spacing-xs 0 0;
-    color: $text-secondary;
+    max-width: 520px;
+    margin: 6px 0 0;
+    color: #856449;
     font-size: 13px;
+    line-height: 1.6;
   }
+}
+
+.ingredient-editor__kicker {
+  color: #b56a26;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .ingredient-editor__add,
 .ingredient-editor__confirm,
 .ingredient-editor__delete {
-  border: 1px solid $border-color-light;
-  border-radius: $border-radius-sm;
-  background: #fff;
-  color: $text-regular;
-  height: 34px;
-  padding: 0 $spacing-md;
+  border: 1px solid rgba(121, 82, 45, 0.14);
+  border-radius: 999px;
+  background: #fff8ea;
+  color: #7a4a28;
+  height: 38px;
+  padding: 0 16px;
   cursor: pointer;
+  font-weight: 700;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(102, 68, 35, 0.12);
+  }
 
   &:disabled {
     cursor: not-allowed;
@@ -226,14 +245,15 @@ defineExpose({
 
 .ingredient-editor__add,
 .ingredient-editor__confirm {
-  border-color: $primary-color;
-  background: $primary-color;
-  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  color: #fffaf0;
+  box-shadow: 0 12px 24px rgba(229, 104, 52, 0.22);
 }
 
 .ingredient-editor__list {
   display: grid;
-  gap: $spacing-sm;
+  gap: 12px;
 }
 
 .ingredient-editor__row {
@@ -241,25 +261,35 @@ defineExpose({
   grid-template-columns: minmax(160px, 1fr) 160px 72px;
   align-items: end;
   gap: $spacing-md;
-  padding: $spacing-md 0;
-  border-bottom: 1px solid $border-color;
+  padding: 14px;
+  border: 1px solid rgba(121, 82, 45, 0.11);
+  border-radius: 20px;
+  background: rgba(255, 252, 245, 0.82);
+  box-shadow: 0 12px 26px rgba(102, 68, 35, 0.06);
 
   label {
     display: grid;
     gap: $spacing-xs;
-    color: $text-secondary;
+    color: #8a6a50;
     font-size: 12px;
   }
 
   input {
     width: 100%;
-    height: 36px;
+    height: 40px;
     box-sizing: border-box;
-    border: 1px solid $border-color-light;
-    border-radius: $border-radius-sm;
-    padding: 0 $spacing-sm;
-    color: $text-primary;
+    border: 1px solid rgba(121, 82, 45, 0.16);
+    border-radius: 14px;
+    padding: 0 12px;
+    color: #3a2a1d;
+    background: #fffefa;
     font-size: 14px;
+
+    &:focus {
+      border-color: #e96d3b;
+      box-shadow: 0 0 0 3px rgba(233, 109, 59, 0.12);
+      outline: none;
+    }
   }
 }
 
@@ -281,38 +311,49 @@ defineExpose({
 }
 
 .ingredient-editor__confidence {
-  background: #ecfdf3;
-  color: #027a48;
+  background: #eff8d6;
+  color: #62772b;
 }
 
 .ingredient-editor__source {
-  background: #f2f4f7;
-  color: #475467;
+  background: #fff1d2;
+  color: #965b22;
 }
 
 .ingredient-editor__delete {
-  color: $danger-color;
+  color: #c44b37;
 }
 
 .ingredient-editor__empty {
   display: grid;
   place-items: center;
   min-height: 96px;
-  border: 1px dashed $border-color-light;
-  border-radius: $border-radius-md;
-  color: $text-secondary;
+  border: 1px dashed rgba(121, 82, 45, 0.22);
+  border-radius: 20px;
+  background: #fffaf1;
+  color: #8a6a50;
 }
 
 .ingredient-editor__errors {
   margin: 0;
   padding: $spacing-sm $spacing-md;
-  border-radius: $border-radius-sm;
-  background: #fff2f0;
-  color: $danger-color;
+  border-radius: 16px;
+  background: #fff1e9;
+  color: #c44b37;
   font-size: 13px;
 }
 
+.ingredient-editor__actions {
+  justify-content: flex-end;
+}
+
 @media (max-width: 760px) {
+  .ingredient-editor__header,
+  .ingredient-editor__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .ingredient-editor__row {
     grid-template-columns: 1fr;
     align-items: stretch;
