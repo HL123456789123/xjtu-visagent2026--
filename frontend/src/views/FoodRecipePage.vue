@@ -10,12 +10,11 @@
           <span>3 步完成：上传 · 确认 · 生成</span>
         </div>
       </div>
-      <div class="food-recipe-page__plate" aria-hidden="true">
-        <div class="food-recipe-page__plate-ring">
-          <span class="food-recipe-page__food food-recipe-page__food--egg"></span>
-          <span class="food-recipe-page__food food-recipe-page__food--toast"></span>
-          <span class="food-recipe-page__food food-recipe-page__food--leaf"></span>
-          <span class="food-recipe-page__food food-recipe-page__food--tomato"></span>
+      <div class="food-recipe-page__hero-image">
+        <img src="/food-hero.jpg" alt="番茄鸡蛋与日常食材" />
+        <div class="food-recipe-page__image-note">
+          <strong>营养美味，轻松上桌</strong>
+          <span>识别食材后生成家常菜谱</span>
         </div>
         <div class="food-recipe-page__status" data-testid="workflow-state">
           {{ workflowState }}
@@ -442,100 +441,59 @@ function emitRecipeRequest(payload) {
   }
 }
 
-.food-recipe-page__plate {
+.food-recipe-page__hero-image {
   justify-self: center;
-  width: min(360px, 78vw);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 48%, rgba(255, 255, 255, 0.94) 0 45%, transparent 46%),
-    radial-gradient(circle at 50% 50%, #fff 0 66%, #f2eee4 67% 72%, #ffffff 73% 100%);
-  box-shadow:
-    0 30px 70px rgba(82, 48, 24, 0.2),
-    inset 0 0 0 1px rgba(70, 45, 24, 0.06);
-  display: grid;
-  place-items: center;
+  width: min(460px, 88vw);
+  min-height: 330px;
+  overflow: hidden;
+  border-radius: 42px;
+  background: #fffaf1;
+  box-shadow: 0 30px 80px rgba(82, 48, 24, 0.2);
   position: relative;
 
-  &::before,
-  &::after {
+  &::before {
     content: "";
     position: absolute;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.8);
-    filter: blur(2px);
+    inset: 0;
+    z-index: 1;
+    background:
+      linear-gradient(90deg, rgba(255, 248, 234, 0.04), rgba(255, 248, 234, 0.34)),
+      radial-gradient(circle at 22% 20%, rgba(255, 255, 255, 0.36), transparent 28%);
   }
 
-  &::before {
-    width: 90px;
-    height: 16px;
-    top: 38px;
-    left: 76px;
-    transform: rotate(-22deg);
-  }
-
-  &::after {
-    width: 52px;
-    height: 52px;
-    right: -8px;
-    bottom: 54px;
-    background: #e9563f;
-    box-shadow: -22px 18px 0 #f49c35;
+  img {
+    width: 100%;
+    height: 100%;
+    min-height: 330px;
+    display: block;
+    object-fit: cover;
   }
 }
 
-.food-recipe-page__plate-ring {
+.food-recipe-page__image-note {
   position: absolute;
-  inset: 40px;
-  border-radius: 50%;
-}
+  left: 24px;
+  bottom: 24px;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+  max-width: 250px;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 253, 248, 0.88);
+  padding: 14px 16px;
+  box-shadow: 0 16px 38px rgba(102, 68, 35, 0.16);
+  backdrop-filter: blur(14px);
 
-.food-recipe-page__food {
-  position: absolute;
-  display: block;
-}
+  strong {
+    color: #31512f;
+    font-size: 14px;
+  }
 
-.food-recipe-page__food--egg {
-  width: 78px;
-  height: 56px;
-  left: 62px;
-  bottom: 60px;
-  border-radius: 52% 48% 48% 52%;
-  background: #fff8df;
-  box-shadow: inset 30px 12px 0 -14px #f3b337, 0 10px 22px rgba(82, 48, 24, 0.12);
-  transform: rotate(-18deg);
-}
-
-.food-recipe-page__food--toast {
-  width: 46px;
-  height: 138px;
-  left: 132px;
-  top: 70px;
-  border-radius: 22px;
-  background: linear-gradient(90deg, #d5802e, #f2b25b 36%, #a75325);
-  box-shadow: 34px 8px 0 -2px #cc7330, 0 18px 30px rgba(82, 48, 24, 0.18);
-  transform: rotate(15deg);
-}
-
-.food-recipe-page__food--leaf {
-  width: 92px;
-  height: 44px;
-  right: 44px;
-  top: 72px;
-  border-radius: 100% 0 100% 0;
-  background: linear-gradient(135deg, #87b84b, #f2d277);
-  box-shadow: 22px 24px 0 -8px #6fa742;
-  transform: rotate(28deg);
-}
-
-.food-recipe-page__food--tomato {
-  width: 38px;
-  height: 38px;
-  right: 86px;
-  bottom: 74px;
-  border-radius: 50%;
-  background: #e9563f;
-  box-shadow: 20px -18px 0 -4px #f6be4a, -28px -18px 0 -8px #7fb757;
+  span {
+    color: #76573f;
+    font-size: 12px;
+  }
 }
 
 .food-recipe-page__status {
@@ -544,6 +502,10 @@ function emitRecipeRequest(payload) {
   justify-content: center;
   min-width: 118px;
   height: 42px;
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  z-index: 2;
   border-radius: 999px;
   background: rgba(46, 33, 22, 0.92);
   color: #fff6df;
@@ -810,8 +772,14 @@ function emitRecipeRequest(payload) {
     padding: 30px 18px 22px;
   }
 
-  .food-recipe-page__plate {
-    width: min(300px, 86vw);
+  .food-recipe-page__hero-image {
+    width: min(360px, 90vw);
+    min-height: 260px;
+    border-radius: 28px;
+
+    img {
+      min-height: 260px;
+    }
   }
 
   .food-recipe-page__body {

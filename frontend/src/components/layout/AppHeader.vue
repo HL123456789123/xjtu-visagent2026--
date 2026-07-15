@@ -1,13 +1,52 @@
 <template>
   <header class="app-header">
-    <!-- Logo + 标题 -->
     <div class="header-left">
-      <img src="/favicon.svg" alt="logo" class="header-logo" />
-      <span class="header-title">visagent</span>
+      <router-link class="brand" to="/start" aria-label="返回开始页">
+        <span class="brand-mark">🍳</span>
+        <span class="brand-title">FridgeChef</span>
+      </router-link>
     </div>
 
-    <!-- 用户信息 + 下拉菜单 -->
+    <nav class="header-nav" aria-label="主导航">
+      <router-link
+        v-for="item in visibleMenuItems"
+        :key="item.path"
+        class="header-nav__item"
+        :class="{ active: activeMenu === item.path }"
+        :to="item.path"
+      >
+        <el-icon>
+          <component :is="item.icon" />
+        </el-icon>
+        <span>{{ item.title }}</span>
+      </router-link>
+
+      <el-dropdown v-if="showAdminMenu" trigger="click" class="header-nav__admin">
+        <button class="header-nav__item header-nav__item--button" type="button">
+          <el-icon><Setting /></el-icon>
+          <span>系统管理</span>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item
+              v-for="item in visibleAdminMenuItems"
+              :key="item.path"
+              @click="router.push(item.path)"
+            >
+              <el-icon>
+                <component :is="item.icon" />
+              </el-icon>
+              {{ item.title }}
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </nav>
+
     <div class="header-right">
+      <button class="start-detect" type="button" @click="router.push('/food-recipes')">
+        开始识别
+      </button>
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="user-info">
           <el-avatar :size="32" :src="userStore.avatar || undefined">
@@ -33,15 +72,56 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
-import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  ArrowDown,
+  ChatDotRound,
+  Clock,
+  DataAnalysis,
+  FolderOpened,
+  Goods,
+  Key,
+  Setting,
+  SwitchButton,
+  User,
+  UserFilled,
+} from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
+const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-/** 处理下拉菜单命令 */
+const menuItems = [
+  { path: '/start', title: '首页', icon: Goods },
+  { path: '/food-recipes', title: '食物识别', icon: Goods },
+  { path: '/chat', title: '智能对话', icon: ChatDotRound },
+  { path: '/history', title: '历史记录', icon: Clock },
+  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis, permission: 'system:dashboard' },
+  { path: '/models', title: '模型管理', icon: Goods, permission: 'model:view' },
+  { path: '/datasets', title: '数据集管理', icon: FolderOpened, permission: 'dataset:view' },
+]
+
+const adminMenuItems = [
+  { path: '/admin/users', title: '用户管理', icon: UserFilled, permission: 'user:list' },
+  { path: '/admin/roles', title: '角色管理', icon: Key, permission: 'role:list' },
+]
+
+const activeMenu = computed(() => {
+  if (route.path.startsWith('/admin')) return '/admin'
+  return '/' + route.path.split('/')[1]
+})
+
+function canSeeMenuItem(item) {
+  return !item.permission || userStore.hasPermission(item.permission)
+}
+
+const visibleMenuItems = computed(() => menuItems.filter(canSeeMenuItem))
+const visibleAdminMenuItems = computed(() => adminMenuItems.filter(canSeeMenuItem))
+const showAdminMenu = computed(() => visibleAdminMenuItems.value.length > 0)
+
 async function handleCommand(command) {
   switch (command) {
     case 'profile':
@@ -67,13 +147,17 @@ async function handleCommand(command) {
 <style lang="scss" scoped>
 .app-header {
   height: $header-height;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
+  position: sticky;
+  top: 0;
+  background: rgba(255, 253, 248, 0.92);
+  border-bottom: 1px solid rgba(121, 82, 45, 0.12);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 $spacing-lg;
-  box-shadow: $shadow-sm;
+  gap: 18px;
+  padding: 0 clamp(18px, 4vw, 54px);
+  box-shadow: 0 10px 30px rgba(102, 68, 35, 0.08);
+  backdrop-filter: blur(18px);
   z-index: 100;
 }
 
@@ -81,22 +165,94 @@ async function handleCommand(command) {
   display: flex;
   align-items: center;
   gap: $spacing-sm;
+  flex: 0 0 auto;
 }
 
-.header-logo {
-  width: 28px;
-  height: 28px;
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #31512f;
+  text-decoration: none;
 }
 
-.header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: #fff3d8;
+  box-shadow: inset 0 0 0 1px rgba(233, 109, 59, 0.14);
+  font-size: 19px;
+}
+
+.brand-title {
+  color: #31512f;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.header-nav__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #4c3a2c;
+  padding: 0 13px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+
+  &:hover,
+  &.active,
+  &.router-link-active {
+    background: #fff1d2;
+    color: #d76626;
+  }
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.header-nav__item--button {
+  font-family: inherit;
 }
 
 .header-right {
   display: flex;
   align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.start-detect {
+  height: 38px;
+  border: 0;
+  border-radius: 12px;
+  background: #f58220;
+  color: #fffaf0;
+  padding: 0 16px;
+  cursor: pointer;
+  font-weight: 900;
+  box-shadow: 0 10px 22px rgba(245, 130, 32, 0.22);
 }
 
 .user-info {
@@ -105,16 +261,49 @@ async function handleCommand(command) {
   gap: $spacing-sm;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: $border-radius-sm;
+  border-radius: 999px;
   transition: background 0.2s;
 
   &:hover {
-    background: #f5f7fa;
+    background: #fff1d2;
   }
 }
 
 .username {
   font-size: 14px;
-  color: $text-primary;
+  color: #4c3a2c;
+  font-weight: 700;
+}
+
+@media (max-width: 1080px) {
+  .header-nav__item {
+    padding: 0 9px;
+  }
+}
+
+@media (max-width: 920px) {
+  .app-header {
+    height: auto;
+    min-height: $header-height;
+    align-items: stretch;
+    flex-wrap: wrap;
+    padding: 12px 18px;
+  }
+
+  .header-nav {
+    order: 3;
+    justify-content: flex-start;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+}
+
+@media (max-width: 560px) {
+  .brand-title,
+  .username,
+  .start-detect {
+    display: none;
+  }
 }
 </style>
