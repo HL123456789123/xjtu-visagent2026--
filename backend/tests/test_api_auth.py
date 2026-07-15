@@ -1,8 +1,9 @@
 """
 认证 API 端点测试：注册、登录、获取当前用户
 """
+
 import pytest
-from app.database.session import get_db, Base
+from app.database.session import get_db
 from main import app
 from app.services.user_service import user_service
 
@@ -11,8 +12,12 @@ class TestAuthAPI:
     """认证 API 集成测试"""
 
     @pytest.fixture(autouse=True)
-    def setup(self, db):
+    def setup(self, db, client):
         """每个测试前重置数据库并覆盖依赖"""
+        # client 为 module scope；每个测试必须清理登录接口写入的 HttpOnly cookie，
+        # 否则“无 Token”用例会意外携带上一条测试的身份。
+        client.cookies.clear()
+
         # 覆盖 FastAPI 的 get_db 依赖
         def override_get_db():
             try:
@@ -28,11 +33,14 @@ class TestAuthAPI:
 
     def test_register_success(self, client):
         """POST /api/auth/register 正常注册"""
-        response = client.post("/api/auth/register", json={
-            "username": "newuser",
-            "email": "new@example.com",
-            "password": "password123",
-        })
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "username": "newuser",
+                "email": "new@example.com",
+                "password": "password123",
+            },
+        )
         assert response.status_code == 201
         data = response.json()
         assert data["username"] == "newuser"
@@ -44,47 +52,62 @@ class TestAuthAPI:
     def test_register_duplicate_username(self, client, db):
         """重复用户名注册返回 400"""
         user_service.register(db, "dupuser", "a@example.com", "password123")
-        response = client.post("/api/auth/register", json={
-            "username": "dupuser",
-            "email": "b@example.com",
-            "password": "password123",
-        })
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "username": "dupuser",
+                "email": "b@example.com",
+                "password": "password123",
+            },
+        )
         assert response.status_code == 400
-        assert "用户名已存在" in response.json()["detail"]
+        assert "用户名已存在" in response.json()["message"]
 
     def test_register_duplicate_email(self, client, db):
         """重复邮箱注册返回 400"""
         user_service.register(db, "user1", "dup@example.com", "password123")
-        response = client.post("/api/auth/register", json={
-            "username": "user2",
-            "email": "dup@example.com",
-            "password": "password123",
-        })
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "username": "user2",
+                "email": "dup@example.com",
+                "password": "password123",
+            },
+        )
         assert response.status_code == 400
 
     def test_register_short_username(self, client):
         """用户名过短返回 422"""
-        response = client.post("/api/auth/register", json={
-            "username": "ab",
-            "email": "short@example.com",
-            "password": "password123",
-        })
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "username": "ab",
+                "email": "short@example.com",
+                "password": "password123",
+            },
+        )
         assert response.status_code == 422
 
     def test_register_short_password(self, client):
         """密码过短返回 422"""
-        response = client.post("/api/auth/register", json={
-            "username": "validuser",
-            "email": "valid@example.com",
-            "password": "12345",
-        })
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "username": "validuser",
+                "email": "valid@example.com",
+                "password": "12345",
+            },
+        )
         assert response.status_code == 422
 
     def test_register_missing_fields(self, client):
         """缺少必填字段返回 422"""
-        response = client.post("/api/auth/register", json={
-            "username": "incomplete",
-        })
+        response = client.post(
+            "/api/auth/register",
+            json={
+                "username": "incomplete",
+            },
+        )
         assert response.status_code == 422
 
     # ── 登录接口测试 ──────────────────────────────
@@ -92,10 +115,13 @@ class TestAuthAPI:
     def test_login_success(self, client, db):
         """POST /api/auth/login 正常登录"""
         user_service.register(db, "loginuser", "login@example.com", "password123")
-        response = client.post("/api/auth/login", json={
-            "username": "loginuser",
-            "password": "password123",
-        })
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "username": "loginuser",
+                "password": "password123",
+            },
+        )
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
@@ -106,25 +132,34 @@ class TestAuthAPI:
     def test_login_wrong_password(self, client, db):
         """错误密码登录返回 401"""
         user_service.register(db, "loginuser2", "login2@example.com", "password123")
-        response = client.post("/api/auth/login", json={
-            "username": "loginuser2",
-            "password": "wrongpassword",
-        })
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "username": "loginuser2",
+                "password": "wrongpassword",
+            },
+        )
         assert response.status_code == 401
 
     def test_login_nonexistent_user(self, client):
         """不存在用户登录返回 401"""
-        response = client.post("/api/auth/login", json={
-            "username": "nobody",
-            "password": "password123",
-        })
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "username": "nobody",
+                "password": "password123",
+            },
+        )
         assert response.status_code == 401
 
     def test_login_missing_fields(self, client):
         """缺少必填字段返回 422"""
-        response = client.post("/api/auth/login", json={
-            "username": "test",
-        })
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "username": "test",
+            },
+        )
         assert response.status_code == 422
 
     # ── 获取当前用户接口测试 ──────────────────────
@@ -132,10 +167,13 @@ class TestAuthAPI:
     def test_me_authenticated(self, client, db):
         """GET /api/auth/me 认证后获取用户信息"""
         user_service.register(db, "meuser", "me@example.com", "password123")
-        login_resp = client.post("/api/auth/login", json={
-            "username": "meuser",
-            "password": "password123",
-        })
+        login_resp = client.post(
+            "/api/auth/login",
+            json={
+                "username": "meuser",
+                "password": "password123",
+            },
+        )
         token = login_resp.json()["access_token"]
 
         response = client.get(
@@ -173,18 +211,24 @@ class TestAuthAPI:
     def test_full_auth_flow(self, client):
         """完整注册 -> 登录 -> 获取用户流程"""
         # 1. 注册
-        reg_resp = client.post("/api/auth/register", json={
-            "username": "flowuser",
-            "email": "flow@example.com",
-            "password": "password123",
-        })
+        reg_resp = client.post(
+            "/api/auth/register",
+            json={
+                "username": "flowuser",
+                "email": "flow@example.com",
+                "password": "password123",
+            },
+        )
         assert reg_resp.status_code == 201
 
         # 2. 登录
-        login_resp = client.post("/api/auth/login", json={
-            "username": "flowuser",
-            "password": "password123",
-        })
+        login_resp = client.post(
+            "/api/auth/login",
+            json={
+                "username": "flowuser",
+                "password": "password123",
+            },
+        )
         assert login_resp.status_code == 200
         token = login_resp.json()["access_token"]
 

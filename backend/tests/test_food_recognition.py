@@ -1,580 +1,456 @@
-"""食物识别 Day 2：上传、YOLO 结果、持久化边界与 API 契约测试。"""
+"""Food 模块 V1 契约、Repository 与 API 回归测试。"""
 
-import asyncio
+import json
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI, UploadFile
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
+from sqlalchemy import create_engine, inspect
 
-from app.api.food import get_food_recognition_service, router
+from app.api.food import file_router, get_food_recognition_service, router
+from app.config.settings import settings
 from app.core.exceptions import AppException, app_exception_handler
 from app.core.security import get_current_user
+from app.entity.db_models import FoodRecognitionTask, User
 from app.entity.food_schemas import (
-    BoundingBox,
     ConfirmIngredientsRequest,
     ConfirmedIngredient,
-    IngredientCandidate,
+    FoodRecognitionCreateData,
+    ModelDetection,
 )
+from app.repositories.chat_repository import ChatRepository
+from app.repositories.food_repository import FoodRepository
+from app.repositories.recipe_repository import RecipeRepository
 from app.services.food_recognition_provider import (
-    FoodRecognitionProviderError,
-    FoodRecognitionProviderUnavailable,
+    FoodModelUnavailableError,
+    MockFoodRecognitionProvider,
+    YoloFoodRecognitionProvider,
+    build_food_recognition_provider,
 )
 from app.services.food_recognition_service import (
-    FoodRecognitionPersistenceError,
-    FoodRecognitionRecord,
+    FoodRecognitionAccessDeniedError,
     FoodRecognitionService,
-    FoodRecognitionStateError,
-    FoodRecognitionStorageError,
-    FoodRecognitionValidationError,
+    FoodModelUnavailableServiceError,
+    ImageTooLargeError,
+    UnsupportedImageTypeError,
 )
 
 JPEG_IMAGE = b"\xff\xd8\xff\xe0" + b"JFIF\x00" + b"food-image"
 PNG_IMAGE = b"\x89PNG\r\n\x1a\n" + b"food-image"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def make_upload(filename: str, content_type: str, content: bytes = JPEG_IMAGE) -> UploadFile:
-    """构造带 MIME 类型的单文件上传对象。"""
+def make_upload(
+    filename: str = "meal.jpg",
+    content_type: str = "image/jpeg",
+    content: bytes = JPEG_IMAGE,
+) -> UploadFile:
     return UploadFile(
-        filename=filename, file=BytesIO(content), headers={"content-type": content_type}
+        filename=filename,
+        file=BytesIO(content),
+        headers={"content-type": content_type},
     )
-
-
-def copy_record(record: FoodRecognitionRecord) -> FoodRecognitionRecord:
-    """模拟 ORM 读写边界，避免测试通过共享内存对象偶然成功。"""
-    return FoodRecognitionRecord(
-        user_id=record.user_id,
-        recognition=record.recognition.model_copy(deep=True),
-        image_mime_type=record.image_mime_type,
-        image_size=record.image_size,
-        error_message=record.error_message,
-    )
-
-
-class FakeRepository:
-    """仅位于测试文件中的 Repository Fake。"""
-
-    def __init__(self):
-        self.records: dict[str, FoodRecognitionRecord] = {}
-
-    async def create(self, record: FoodRecognitionRecord) -> FoodRecognitionRecord:
-        stored = copy_record(record)
-        self.records[stored.recognition.recognition_id] = stored
-        return copy_record(stored)
-
-    async def get(self, recognition_id: str) -> FoodRecognitionRecord | None:
-        record = self.records.get(recognition_id)
-        return copy_record(record) if record else None
-
-    async def update(self, record: FoodRecognitionRecord) -> FoodRecognitionRecord | None:
-        if record.recognition.recognition_id not in self.records:
-            return None
-        return await self.create(record)
-
-
-class FailingRepository(FakeRepository):
-    async def create(self, record: FoodRecognitionRecord) -> FoodRecognitionRecord:
-        raise RuntimeError("database unavailable")
 
 
 class FakeStorage:
-    """隔离 MinIO，并保留临时路径以验证 finally 清理。"""
-
     def __init__(self):
         self.uploads: list[tuple[str, str]] = []
-        self.deleted_objects: list[str] = []
+        self.deleted: list[str] = []
+        self.objects: dict[str, bytes] = {}
 
     def upload_file(self, object_name: str, file_path: str) -> str:
-        self.uploads.append((object_name, file_path))
         assert Path(file_path).is_file()
+        self.uploads.append((object_name, file_path))
+        self.objects[object_name] = Path(file_path).read_bytes()
         return f"https://storage.invalid/{object_name}"
 
     def delete_file(self, object_name: str) -> None:
-        self.deleted_objects.append(object_name)
+        self.deleted.append(object_name)
+        self.objects.pop(object_name, None)
+
+    def get_file(self, object_name: str) -> bytes:
+        return self.objects[object_name]
 
 
-class FailingStorage(FakeStorage):
-    def upload_file(self, object_name: str, file_path: str) -> str:
-        self.uploads.append((object_name, file_path))
-        assert Path(file_path).is_file()
-        raise RuntimeError("minio unavailable")
+class RecordingProvider(MockFoodRecognitionProvider):
+    def __init__(self, *, empty: bool = False):
+        self.empty = empty
+        self.paths: list[str] = []
 
-
-class FailingDeleteStorage(FakeStorage):
-    def delete_file(self, object_name: str) -> None:
-        self.deleted_objects.append(object_name)
-        raise RuntimeError("minio delete unavailable")
-
-
-class FakeProvider:
-    """测试专属的 YOLO Provider Fake。"""
-
-    model_version = "fake-food-yolo-v1"
-
-    def __init__(self):
-        self.image_paths: list[str] = []
-
-    async def recognize(self, image_path: str, conf_threshold: float):
-        self.image_paths.append(image_path)
+    def recognize(self, image_path: str, conf_threshold: float = 0.25) -> list[ModelDetection]:
+        self.paths.append(image_path)
+        if self.empty:
+            return []
         return [
-            {
-                "key": " Tomato ",
-                "name": "tomato",
-                "confidence": 0.95,
-                "bbox": {"x1": 1, "y1": 2, "x2": 20, "y2": 30},
-            },
-            {"key": "tomato", "name": "番茄", "confidence": 0.80},
-            {"key": "cucumber", "name": "黄瓜", "confidence": 0.20},
+            ModelDetection.model_validate(item)
+            for item in super().recognize(image_path, conf_threshold)
         ]
 
 
-class EmptyProvider(FakeProvider):
-    async def recognize(self, image_path: str, conf_threshold: float):
-        self.image_paths.append(image_path)
-        return []
+class UnavailableProvider(MockFoodRecognitionProvider):
+    provider_name = "yolo"
+    model_version = "food-yolo-v1"
+
+    def recognize(self, image_path: str, conf_threshold: float = 0.25) -> list[ModelDetection]:
+        del image_path, conf_threshold
+        raise FoodModelUnavailableError("测试模型不可用")
 
 
-class FailingProvider(FakeProvider):
-    async def recognize(self, image_path: str, conf_threshold: float):
-        self.image_paths.append(image_path)
-        raise FoodRecognitionProviderUnavailable("测试用 YOLO 不可用")
-
-
-class InvalidResultProvider(FakeProvider):
-    async def recognize(self, image_path: str, conf_threshold: float):
-        self.image_paths.append(image_path)
-        return [{"key": "tomato", "name": "番茄", "confidence": float("nan")}]
-
-
-def make_service(
-    provider: FakeProvider | None = None,
-    repository: FakeRepository | None = None,
-    storage: FakeStorage | None = None,
-    *,
-    max_upload_bytes: int | None = None,
-) -> tuple[FoodRecognitionService, FakeRepository, FakeStorage]:
-    repository = repository or FakeRepository()
+def make_service(db, *, provider=None, storage=None) -> tuple[FoodRecognitionService, FakeStorage]:
     storage = storage or FakeStorage()
     return (
         FoodRecognitionService(
-            provider=provider or FakeProvider(),
-            repository=repository,
+            repository=FoodRepository(db),
+            provider=provider or RecordingProvider(),
             object_storage=storage,
-            max_upload_bytes=max_upload_bytes,
         ),
-        repository,
         storage,
     )
 
 
-def make_api_client(service: FoodRecognitionService, *, user_id: int = 7) -> TestClient:
-    """将 food router 单独装配，以便覆盖认证与持久化依赖。"""
+def create_user(db, suffix: str) -> User:
+    user = User(
+        username=f"food_{suffix}",
+        email=f"food_{suffix}@example.com",
+        hashed_password="hash",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def make_api_client(service: FoodRecognitionService, user_id: int) -> TestClient:
     app = FastAPI()
     app.add_exception_handler(AppException, app_exception_handler)
     app.include_router(router)
+    app.include_router(file_router)
 
-    async def override_current_user():
+    async def current_user_override():
         return SimpleNamespace(id=user_id)
 
-    app.dependency_overrides[get_current_user] = override_current_user
+    app.dependency_overrides[get_current_user] = current_user_override
     app.dependency_overrides[get_food_recognition_service] = lambda: service
     return TestClient(app)
 
 
-class TestFoodRecognitionSchemas:
-    def test_bbox_and_confidence_reject_non_finite_json_numbers(self):
-        with pytest.raises(ValidationError):
-            BoundingBox(x1=0, y1=0, x2=float("inf"), y2=1)
-        with pytest.raises(ValidationError):
-            IngredientCandidate(key="tomato", name="番茄", confidence=float("nan"))
+class TestV1Fixtures:
+    def test_food_success_fixture_matches_frozen_response_shape(self):
+        payload = json.loads(
+            (FIXTURES / "food_recognition_success.json").read_text(encoding="utf-8")
+        )
+        assert payload["code"] == 201
+        parsed = FoodRecognitionCreateData.model_validate(payload["data"])
+        assert parsed.recognition_id == 12
+        assert parsed.ingredients[0].candidate_id == "det-1"
+        assert parsed.ingredients[0].source == "model"
 
-    def test_bbox_rejects_non_positive_area(self):
-        with pytest.raises(ValidationError, match="x2 > x1"):
-            BoundingBox(x1=10, y1=0, x2=10, y2=1)
+    def test_food_empty_fixture_has_no_candidates(self):
+        payload = json.loads((FIXTURES / "food_recognition_empty.json").read_text(encoding="utf-8"))
+        parsed = FoodRecognitionCreateData.model_validate(payload["data"])
+        assert parsed.ingredients == []
 
-    def test_confirmed_keys_are_normalized_before_duplicate_validation(self):
-        ingredient = {"key": " Tomato ", "name": "番茄", "source": "manual"}
-        with pytest.raises(ValidationError, match="不允许重复"):
-            ConfirmIngredientsRequest(
-                confirmed_ingredients=[ingredient, {**ingredient, "key": "tomato"}]
-            )
+    def test_confirm_request_uses_v1_ingredients_not_legacy_field(self):
+        request = ConfirmIngredientsRequest.model_validate(
+            {
+                "ingredients": [
+                    {
+                        "name": "番茄",
+                        "class_name": "tomato",
+                        "quantity": 2,
+                        "unit": "个",
+                        "source": "model",
+                    }
+                ]
+            }
+        )
+        assert request.ingredients[0].class_name == "tomato"
+        with pytest.raises(Exception):
+            ConfirmIngredientsRequest.model_validate({"confirmed_ingredients": []})
 
 
 class TestFoodRecognitionService:
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("filename", "content_type", "content"),
-        [("meal.jpg", "image/jpeg", JPEG_IMAGE), ("meal.png", "image/png", PNG_IMAGE)],
-    )
-    async def test_valid_image_creates_json_safe_persistent_record(
-        self, filename, content_type, content
-    ):
-        service, repository, storage = make_service()
+    async def test_creates_persistent_v1_record_and_removes_temp_file(self, db):
+        user = create_user(db, "create")
+        provider = RecordingProvider()
+        service, storage = make_service(db, provider=provider)
 
-        result = await service.create_recognition(
-            user_id=7,
-            image=make_upload(filename, content_type, content),
-            conf_threshold=0.5,
+        response = await service.create_recognition(
+            user_id=user.id,
+            image=make_upload(),
+            conf_threshold=0.25,
         )
 
-        assert result.provider == "yolo"
-        assert result.image_object_name.startswith("food-recognitions/7/")
-        assert result.image_object_name.endswith(Path(filename).suffix)
-        assert [(candidate.key, candidate.name) for candidate in result.raw_detections] == [
-            ("tomato", "番茄")
-        ]
-        persisted = repository.records[result.recognition_id].as_persistence_payload()
-        assert persisted["image_mime_type"] == content_type
-        assert persisted["raw_detections"][0]["key"] == "tomato"
-        assert result.created_at.utcoffset().total_seconds() == 0
-        assert result.updated_at.utcoffset().total_seconds() == 0
-        assert all("path" not in field_name for field_name in persisted)
-        assert all(not Path(path).exists() for _, path in storage.uploads)
+        assert response.recognition_id > 0
+        assert response.status == "completed"
+        assert response.provider == "mock"
+        assert response.image_url == f"/api/files/food/{response.recognition_id}"
+        assert [item.class_name for item in response.ingredients] == ["tomato", "egg"]
+        assert all(item.source == "model" for item in response.ingredients)
+        assert response.created_at.isoformat().endswith("+08:00")
+        task = db.get(FoodRecognitionTask, response.recognition_id)
+        assert task is not None
+        assert task.confirmed_ingredients == []
+        assert task.raw_detections[0]["candidate_id"] == "det-1"
+        assert storage.uploads
+        assert not Path(storage.uploads[0][1]).exists()
+        assert all(Path(path).is_absolute() for path in provider.paths)
 
     @pytest.mark.asyncio
-    async def test_new_service_instance_reads_previously_persisted_snapshot(self):
-        service, repository, storage = make_service()
-        created = await service.create_recognition(
-            user_id=7,
-            image=make_upload("meal.jpg", "image/jpeg"),
-            conf_threshold=0.5,
-        )
-        rebuilt_service = FoodRecognitionService(
-            provider=FakeProvider(),
-            repository=repository,
-            object_storage=storage,
+    async def test_empty_model_result_is_a_successful_empty_list(self, db):
+        user = create_user(db, "empty")
+        service, _ = make_service(db, provider=RecordingProvider(empty=True))
+
+        response = await service.create_recognition(
+            user_id=user.id,
+            image=make_upload(),
+            conf_threshold=0.25,
         )
 
-        queried = await rebuilt_service.get_recognition(
-            user_id=7,
-            recognition_id=created.recognition_id,
-        )
-
-        assert queried.model_dump(mode="json") == created.model_dump(mode="json")
+        assert response.status == "completed"
+        assert response.ingredients == []
 
     @pytest.mark.asyncio
-    async def test_concurrent_creations_generate_unique_object_names(self):
-        service, repository, storage = make_service()
+    async def test_rejects_oversized_and_non_image_uploads(self, db):
+        user = create_user(db, "validation")
+        service, _ = make_service(db)
+        oversized = JPEG_IMAGE + (b"x" * FoodRecognitionService.MAX_UPLOAD_BYTES)
 
-        recognitions = await asyncio.gather(
-            *(
-                service.create_recognition(
-                    user_id=7,
-                    image=make_upload(f"meal-{index}.jpg", "image/jpeg"),
-                    conf_threshold=0.5,
-                )
-                for index in range(20)
+        with pytest.raises(ImageTooLargeError):
+            await service.create_recognition(
+                user_id=user.id,
+                image=make_upload(content=oversized),
+                conf_threshold=0.25,
             )
-        )
-
-        object_names = [recognition.image_object_name for recognition in recognitions]
-        assert len(object_names) == len(set(object_names)) == 20
-        assert len(repository.records) == 20
-        assert all(not Path(path).exists() for _, path in storage.uploads)
+        with pytest.raises(UnsupportedImageTypeError):
+            await service.create_recognition(
+                user_id=user.id,
+                image=make_upload("meal.gif", "image/gif", b"GIF89a"),
+                conf_threshold=0.25,
+            )
 
     @pytest.mark.asyncio
-    async def test_empty_detection_creates_task_and_allows_manual_confirmation(self):
-        service, _, _ = make_service(provider=EmptyProvider())
-        recognition = await service.create_recognition(
-            user_id=7,
-            image=make_upload("meal.jpg", "image/jpeg"),
-            conf_threshold=0.5,
+    async def test_confirm_overwrites_snapshot_and_enforces_user_ownership(self, db):
+        owner = create_user(db, "owner")
+        other = create_user(db, "other")
+        service, _ = make_service(db)
+        created = await service.create_recognition(
+            user_id=owner.id,
+            image=make_upload(),
+            conf_threshold=0.25,
         )
 
-        confirmed = await service.confirm_ingredients(
-            user_id=7,
-            recognition_id=recognition.recognition_id,
-            confirmed_ingredients=[
+        first = service.confirm_ingredients(
+            user_id=owner.id,
+            recognition_id=created.recognition_id,
+            ingredients=[
                 ConfirmedIngredient(
-                    key="egg", name="鸡蛋", quantity="2", unit="个", source="manual"
+                    name="番茄", class_name="tomato", quantity=2, unit="个", source="model"
+                ),
+                ConfirmedIngredient(
+                    name="鸡蛋", class_name="egg", quantity=3, unit="个", source="manual"
+                ),
+            ],
+        )
+        second = service.confirm_ingredients(
+            user_id=owner.id,
+            recognition_id=created.recognition_id,
+            ingredients=[
+                ConfirmedIngredient(
+                    name="鸡蛋", class_name=None, quantity=1, unit="个", source="manual"
                 )
             ],
         )
 
-        assert recognition.raw_detections == []
-        assert confirmed.status == "confirmed"
-        assert confirmed.confirmed_ingredients[0].source == "manual"
+        assert len(first.confirmed_ingredients) == 2
+        assert [item.name for item in second.confirmed_ingredients] == ["鸡蛋"]
+        with pytest.raises(FoodRecognitionAccessDeniedError):
+            service.get_recognition(user_id=other.id, recognition_id=created.recognition_id)
 
+
+class TestRepositories:
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("filename", "content_type", "content"),
-        [
-            ("meal.gif", "image/gif", JPEG_IMAGE),
-            ("meal.jpg", "image/png", JPEG_IMAGE),
-            ("meal.jpg", "image/jpeg", b"not-a-jpeg"),
-        ],
-    )
-    async def test_invalid_extension_mime_or_header_is_rejected(
-        self, filename, content_type, content
-    ):
-        service, _, _ = make_service()
-        with pytest.raises(FoodRecognitionValidationError):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload(filename, content_type, content),
-                conf_threshold=0.5,
-            )
+    async def test_recipe_and_chat_repositories_work_with_food_task(self, db):
+        user = create_user(db, "repositories")
+        food_service, _ = make_service(db)
+        recognition = await food_service.create_recognition(
+            user_id=user.id,
+            image=make_upload(),
+            conf_threshold=0.25,
+        )
+        recipe_repository = RecipeRepository(db)
+        recipe = recipe_repository.create_recipe(
+            user.id,
+            recognition.recognition_id,
+            {"title": "番茄炒蛋", "servings": 2},
+            {"provider": "fake", "model": "fixture-v1", "is_mock": True},
+        )
+        updated = recipe_repository.save_new_recipe_version(
+            recipe.id,
+            user.id,
+            {"title": "少油版番茄炒蛋", "servings": 3},
+        )
+        chat_repository = ChatRepository(db)
+        session = chat_repository.create_session(user.id, recipe.id)
+        message = chat_repository.save_message(session.id, "user", "改成三人份")
 
-    @pytest.mark.asyncio
-    async def test_oversized_file_and_invalid_threshold_are_rejected(self):
-        service, _, _ = make_service(max_upload_bytes=len(JPEG_IMAGE))
-        with pytest.raises(FoodRecognitionValidationError, match="不能超过"):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg", JPEG_IMAGE + b"x"),
-                conf_threshold=0.5,
-            )
-        with pytest.raises(FoodRecognitionValidationError, match="0 到 1"):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=float("nan"),
-            )
-
-    @pytest.mark.asyncio
-    async def test_provider_failure_creates_failed_record_and_cleans_temp_file(self):
-        provider = FailingProvider()
-        service, repository, storage = make_service(provider=provider)
-
-        with pytest.raises(FoodRecognitionProviderUnavailable):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
-
-        failed_record = next(iter(repository.records.values()))
-        assert failed_record.recognition.status == "failed"
-        assert failed_record.error_message == "测试用 YOLO 不可用"
-        assert all(not Path(path).exists() for _, path in storage.uploads)
-        assert all(not Path(path).exists() for path in provider.image_paths)
-
-    @pytest.mark.asyncio
-    async def test_storage_failure_creates_failed_record_and_cleans_temp_file(self):
-        storage = FailingStorage()
-        service, repository, _ = make_service(storage=storage)
-
-        with pytest.raises(FoodRecognitionStorageError):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
-
-        failed_record = next(iter(repository.records.values()))
-        assert failed_record.recognition.status == "failed"
-        assert failed_record.error_message == "食物图片存储服务不可用"
-        assert all(not Path(path).exists() for _, path in storage.uploads)
-
-    @pytest.mark.asyncio
-    async def test_invalid_provider_result_is_rejected_and_recorded_as_failed(self):
-        service, repository, _ = make_service(provider=InvalidResultProvider())
-        with pytest.raises(FoodRecognitionProviderError):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
-        assert next(iter(repository.records.values())).recognition.status == "failed"
-
-    @pytest.mark.asyncio
-    async def test_failed_task_cannot_be_confirmed_as_recipe_input(self):
-        service, repository, _ = make_service(provider=FailingProvider())
-        with pytest.raises(FoodRecognitionProviderUnavailable):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
-
-        failed_recognition_id = next(iter(repository.records))
-        with pytest.raises(FoodRecognitionStateError, match="失败"):
-            await service.confirm_ingredients(
-                user_id=7,
-                recognition_id=failed_recognition_id,
-                confirmed_ingredients=[
-                    ConfirmedIngredient(key="egg", name="鸡蛋", source="manual")
-                ],
-            )
-
-        failed = await service.get_recognition(user_id=7, recognition_id=failed_recognition_id)
-        assert failed.status == "failed"
-        assert failed.confirmed_ingredients == []
-        assert failed.confirmed_at is None
-
-    @pytest.mark.asyncio
-    async def test_database_failure_compensates_uploaded_object(self):
-        repository = FailingRepository()
-        storage = FakeStorage()
-        service, _, _ = make_service(repository=repository, storage=storage)
-
-        with pytest.raises(FoodRecognitionPersistenceError):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
-
-        assert storage.deleted_objects == [storage.uploads[0][0]]
-        assert not Path(storage.uploads[0][1]).exists()
-
-    @pytest.mark.asyncio
-    async def test_database_failure_is_not_masked_when_object_compensation_fails(self):
-        storage = FailingDeleteStorage()
-        service, _, _ = make_service(repository=FailingRepository(), storage=storage)
-
-        with pytest.raises(FoodRecognitionPersistenceError):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
-
-        assert storage.deleted_objects == [storage.uploads[0][0]]
-        assert not Path(storage.uploads[0][1]).exists()
-
-    @pytest.mark.asyncio
-    async def test_no_repository_is_not_treated_as_in_memory_persistence(self):
-        service = FoodRecognitionService(provider=FakeProvider(), object_storage=FakeStorage())
-        with pytest.raises(FoodRecognitionPersistenceError, match="尚未接入"):
-            await service.create_recognition(
-                user_id=7,
-                image=make_upload("meal.jpg", "image/jpeg"),
-                conf_threshold=0.5,
-            )
+        assert updated is not None and updated.version == 2
+        assert session.recipe_id == recipe.id
+        assert message.session_id == session.id
+        assert chat_repository.get_session_for_user(session.id, user.id) is not None
 
 
-class TestFoodRecognitionApi:
-    def test_all_food_routes_declare_authentication_dependency(self):
-        food_routes = [route for route in router.routes if isinstance(route, APIRoute)]
-        assert len(food_routes) == 3
-        for route in food_routes:
-            assert any(
-                dependency.call is get_current_user for dependency in route.dependant.dependencies
-            )
+class TestFoodMigration:
+    def test_upgrade_and_downgrade_food_v1_schema(self, tmp_path):
+        database_url = f"sqlite:///{tmp_path / 'food_v1.sqlite'}"
+        previous_database_url = settings.DATABASE_URL
+        config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+        try:
+            settings.DATABASE_URL = database_url
+            command.upgrade(config, "head")
+            engine = create_engine(database_url)
+            inspector = inspect(engine)
+            assert {"food_recognition_tasks", "recipes"}.issubset(inspector.get_table_names())
+            assert "recipe_id" in {
+                column["name"] for column in inspector.get_columns("chat_sessions")
+            }
+            engine.dispose()
 
-    def test_create_get_and_complete_confirmation_overwrite(self):
-        service, _, _ = make_service()
-        with make_api_client(service) as client:
-            create = client.post(
+            command.downgrade(config, "-1")
+            engine = create_engine(database_url)
+            inspector = inspect(engine)
+            assert "food_recognition_tasks" not in inspector.get_table_names()
+            assert "recipes" not in inspector.get_table_names()
+            assert "recipe_id" not in {
+                column["name"] for column in inspector.get_columns("chat_sessions")
+            }
+            engine.dispose()
+        finally:
+            settings.DATABASE_URL = previous_database_url
+
+
+class TestFoodApi:
+    def test_main_app_registers_exact_v1_food_routes(self):
+        from main import app
+
+        paths = app.openapi()["paths"]
+        assert "/api/food/recognitions" in paths
+        assert "/api/food/recognitions/{recognition_id}" in paths
+        assert "/api/food/recognitions/{recognition_id}/ingredients" in paths
+        assert "/api/food/recognitions/{recognition_id}/confirmed-ingredients" not in paths
+
+    def test_create_get_confirm_and_cross_user_forbidden(self, db):
+        owner = create_user(db, "apiowner")
+        other = create_user(db, "apiother")
+        service, _ = make_service(db)
+
+        with make_api_client(service, owner.id) as client:
+            created = client.post(
                 "/api/food/recognitions",
-                data={"conf_threshold": "0.5"},
+                data={"conf_threshold": "0.25"},
                 files={"image": ("meal.jpg", JPEG_IMAGE, "image/jpeg")},
             )
-            assert create.status_code == 201
-            recognition_id = create.json()["data"]["recognition_id"]
+            assert created.status_code == 201
+            assert created.json()["message"] == "识别完成"
+            recognition_id = created.json()["data"]["recognition_id"]
 
             queried = client.get(f"/api/food/recognitions/{recognition_id}")
             assert queried.status_code == 200
-            assert queried.json()["data"]["recognition_id"] == recognition_id
+            assert queried.json()["data"]["confirmed_ingredients"] == []
 
-            first = client.put(
-                f"/api/food/recognitions/{recognition_id}/confirmed-ingredients",
+            image = client.get(f"/api/files/food/{recognition_id}")
+            assert image.status_code == 200
+            assert image.content == JPEG_IMAGE
+            assert image.headers["content-type"] == "image/jpeg"
+
+            confirmed = client.put(
+                f"/api/food/recognitions/{recognition_id}/ingredients",
                 json={
-                    "confirmed_ingredients": [
-                        {"key": "tomato", "name": "番茄", "source": "yolo"},
-                        {"key": "egg", "name": "鸡蛋", "source": "manual"},
+                    "ingredients": [
+                        {
+                            "name": "番茄",
+                            "class_name": "tomato",
+                            "quantity": 2,
+                            "unit": "个",
+                            "source": "model",
+                        }
                     ]
                 },
             )
-            assert first.status_code == 200
+            assert confirmed.status_code == 200
+            assert confirmed.json()["message"] == "食材已确认"
 
-            second = client.put(
-                f"/api/food/recognitions/{recognition_id}/confirmed-ingredients",
-                json={
-                    "confirmed_ingredients": [{"key": "egg", "name": "鸡蛋", "source": "manual"}]
+        with make_api_client(service, other.id) as client:
+            forbidden = client.get(f"/api/food/recognitions/{recognition_id}")
+            assert forbidden.status_code == 403
+            assert forbidden.json() == {"code": 403, "message": "无权访问该识别记录", "data": None}
+
+    def test_api_maps_image_and_model_errors_to_v1_status_codes(self, db):
+        user = create_user(db, "apierrors")
+        unavailable_service, _ = make_service(db, provider=UnavailableProvider())
+        with make_api_client(unavailable_service, user.id) as client:
+            model_error = client.post(
+                "/api/food/recognitions",
+                files={"image": ("meal.jpg", JPEG_IMAGE, "image/jpeg")},
+            )
+            too_large = client.post(
+                "/api/food/recognitions",
+                files={
+                    "image": (
+                        "meal.jpg",
+                        JPEG_IMAGE + (b"x" * FoodRecognitionService.MAX_UPLOAD_BYTES),
+                        "image/jpeg",
+                    )
                 },
             )
-            assert second.status_code == 200
-            assert [item["key"] for item in second.json()["data"]["confirmed_ingredients"]] == [
-                "egg"
-            ]
-
-    def test_get_other_users_task_is_forbidden(self):
-        service, _, _ = make_service()
-        with make_api_client(service, user_id=7) as owner_client:
-            created = owner_client.post(
+            invalid_type = client.post(
                 "/api/food/recognitions",
-                files={"image": ("meal.jpg", JPEG_IMAGE, "image/jpeg")},
+                files={"image": ("meal.gif", b"GIF89a", "image/gif")},
             )
-        recognition_id = created.json()["data"]["recognition_id"]
+        assert model_error.status_code == 503
+        assert model_error.json() == {
+            "code": 503,
+            "message": "食物识别模型暂不可用",
+            "data": None,
+        }
+        assert too_large.status_code == 413
+        assert invalid_type.status_code == 415
 
-        with make_api_client(service, user_id=8) as other_client:
-            response = other_client.get(f"/api/food/recognitions/{recognition_id}")
 
-        assert response.status_code == 403
-        assert response.json()["code"] == 403
+class TestProviders:
+    def test_mock_provider_follows_frozen_model_interface(self):
+        result = MockFoodRecognitionProvider().recognize("/tmp/example.jpg", 0.25)
+        assert all(isinstance(item, ModelDetection) for item in result)
+        assert result[0].class_name == "tomato"
 
-    def test_other_user_cannot_overwrite_confirmed_ingredients(self):
-        service, _, _ = make_service()
-        with make_api_client(service, user_id=7) as owner_client:
-            created = owner_client.post(
-                "/api/food/recognitions",
-                files={"image": ("meal.jpg", JPEG_IMAGE, "image/jpeg")},
+    def test_yolo_provider_reports_unavailable_without_weights(self, tmp_path):
+        classes_path = Path(__file__).parents[1] / "scripts" / "food_model" / "classes.yaml"
+        provider = YoloFoodRecognitionProvider(
+            model_path=str(tmp_path / "missing.pt"),
+            classes_path=str(classes_path),
+        )
+        with pytest.raises(FoodModelUnavailableError):
+            provider.recognize(str(tmp_path / "meal.jpg"))
+
+    @pytest.mark.asyncio
+    async def test_configured_yolo_without_files_maps_to_api_503(self, db, monkeypatch, tmp_path):
+        user = create_user(db, "configuredyolo")
+        classes_path = Path(__file__).parents[1] / "scripts" / "food_model" / "classes.yaml"
+        monkeypatch.setattr(settings, "FOOD_PROVIDER", "yolo")
+        monkeypatch.setattr(settings, "FOOD_MODEL_PATH", str(tmp_path / "missing.pt"))
+        monkeypatch.setattr(settings, "FOOD_CLASSES_PATH", str(classes_path))
+        provider = build_food_recognition_provider()
+        service, _ = make_service(db, provider=provider)
+
+        with pytest.raises(FoodModelUnavailableServiceError):
+            await service.create_recognition(
+                user_id=user.id,
+                image=make_upload(),
+                conf_threshold=0.25,
             )
-        recognition_id = created.json()["data"]["recognition_id"]
-
-        with make_api_client(service, user_id=8) as other_client:
-            response = other_client.put(
-                f"/api/food/recognitions/{recognition_id}/confirmed-ingredients",
-                json={
-                    "confirmed_ingredients": [{"key": "egg", "name": "鸡蛋", "source": "manual"}]
-                },
-            )
-
-        assert response.status_code == 403
-        assert response.json()["code"] == 403
-
-    def test_empty_or_duplicate_confirmation_is_rejected(self):
-        service, _, _ = make_service()
-        with make_api_client(service) as client:
-            created = client.post(
-                "/api/food/recognitions",
-                files={"image": ("meal.jpg", JPEG_IMAGE, "image/jpeg")},
-            )
-            recognition_id = created.json()["data"]["recognition_id"]
-            empty = client.put(
-                f"/api/food/recognitions/{recognition_id}/confirmed-ingredients",
-                json={"confirmed_ingredients": []},
-            )
-            duplicate = client.put(
-                f"/api/food/recognitions/{recognition_id}/confirmed-ingredients",
-                json={
-                    "confirmed_ingredients": [
-                        {"key": "tomato", "name": "番茄", "source": "yolo"},
-                        {"key": "Tomato", "name": "番茄", "source": "manual"},
-                    ]
-                },
-            )
-
-        assert empty.status_code == 422
-        assert duplicate.status_code == 422
-
-    @pytest.mark.parametrize("failure", ["storage", "provider"])
-    def test_minio_and_provider_failures_map_to_503(self, failure):
-        if failure == "storage":
-            service, _, _ = make_service(storage=FailingStorage())
-        else:
-            service, _, _ = make_service(provider=FailingProvider())
-
-        with make_api_client(service) as client:
-            response = client.post(
-                "/api/food/recognitions",
-                files={"image": ("meal.jpg", JPEG_IMAGE, "image/jpeg")},
-            )
-
-        assert response.status_code == 503
-        assert response.json()["code"] == 503
-
-    def test_openapi_schema_contains_all_food_endpoints(self):
-        service, _, _ = make_service()
-        with make_api_client(service) as client:
-            schema = client.get("/openapi.json").json()
-
-        assert "/api/food/recognitions" in schema["paths"]
-        assert "/api/food/recognitions/{recognition_id}" in schema["paths"]
-        assert "/api/food/recognitions/{recognition_id}/confirmed-ingredients" in schema["paths"]

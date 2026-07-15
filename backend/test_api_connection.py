@@ -1,7 +1,11 @@
 """测试 OpenAI API 连接"""
+
 import asyncio
 import httpx
 from app.config.settings import settings
+
+# 这是需要真实凭据和外网的人工诊断脚本，不应被 pytest 当作离线回归测试收集。
+__test__ = False
 
 
 async def test_api_connection():
@@ -10,7 +14,7 @@ async def test_api_connection():
     print(f"API Key: {settings.OPENAI_API_KEY[:10]}...")
     print(f"Model: {settings.OPENAI_MODEL}")
     print()
-    
+
     # 测试1: 检查 API 端点是否可达
     print("测试1: 检查 API 端点...")
     try:
@@ -18,7 +22,7 @@ async def test_api_connection():
             response = await client.get(
                 f"{settings.OPENAI_BASE_URL}/models",
                 headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-                timeout=10.0
+                timeout=10.0,
             )
             print(f"  状态码: {response.status_code}")
             if response.status_code == 200:
@@ -35,9 +39,9 @@ async def test_api_connection():
         print("  请检查网络连接")
     except Exception as e:
         print(f"  ✗ 错误: {type(e).__name__}: {e}")
-    
+
     print()
-    
+
     # 测试2: 检查模型列表
     print("测试2: 检查可用模型...")
     try:
@@ -45,7 +49,7 @@ async def test_api_connection():
             response = await client.get(
                 f"{settings.OPENAI_BASE_URL}/models",
                 headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
-                timeout=10.0
+                timeout=10.0,
             )
             if response.status_code == 200:
                 models = response.json()

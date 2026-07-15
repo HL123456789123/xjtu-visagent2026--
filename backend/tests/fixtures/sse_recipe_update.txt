@@ -1,0 +1,8 @@
+event: token
+data: {"content":"已经调整为三人份，并减少了食用油用量。"}
+
+event: recipe_updated
+data: {"recipe_id":101,"version":2}
+
+event: done
+data: {"message_id":9001}
