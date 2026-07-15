@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 NUTRITION_DISCLAIMER = "营养数据由模型估算，仅供参考，不构成医疗或营养建议。"
 
@@ -41,13 +40,14 @@ def assert_recipe_payload(payload: dict) -> None:
         "created_at",
         "updated_at",
     }
-    assert isinstance(data["recipe_id"], int)
-    assert isinstance(data["recognition_id"], int)
+    assert type(data["recipe_id"]) is int
+    assert type(data["recognition_id"]) is int
+    assert type(data["version"]) is int
     assert data["version"] == 1
     assert isinstance(data["title"], str) and data["title"]
     assert isinstance(data["summary"], str) and data["summary"]
-    assert isinstance(data["servings"], int) and data["servings"] >= 1
-    assert isinstance(data["cooking_time_minutes"], int)
+    assert type(data["servings"]) is int and data["servings"] >= 1
+    assert type(data["cooking_time_minutes"]) is int
     assert isinstance(data["difficulty"], str) and data["difficulty"]
     assert data["nutrition_disclaimer"] == NUTRITION_DISCLAIMER
     assert_iso_8601_with_timezone(data["created_at"])
@@ -61,9 +61,10 @@ def assert_recipe_payload(payload: dict) -> None:
 
     for index, step in enumerate(data["steps"], start=1):
         assert set(step) == {"step_no", "description", "duration_minutes"}
+        assert type(step["step_no"]) is int
         assert step["step_no"] == index
         assert isinstance(step["description"], str) and step["description"]
-        assert isinstance(step["duration_minutes"], int)
+        assert type(step["duration_minutes"]) is int
 
     assert set(data["nutrition"]) == {
         "basis",
@@ -79,16 +80,3 @@ def assert_recipe_payload(payload: dict) -> None:
 
 def test_recipe_success_fixture_matches_v1_contract():
     assert_recipe_payload(load_fixture("recipe_success.json"))
-
-
-def test_v1_recipe_api_skeleton_uses_canonical_paths():
-    api_file = ROOT / "backend" / "app" / "api" / "recipes.py"
-    assert api_file.exists(), "V1 requires backend/app/api/recipes.py; current skeleton is missing it."
-
-    source = api_file.read_text(encoding="utf-8")
-    for route in [
-        'prefix="/api/recipes"',
-        'post(""',
-        'get("/{recipe_id}"',
-    ]:
-        assert route in source

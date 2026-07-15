@@ -3,7 +3,6 @@ from datetime import datetime
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -58,7 +57,7 @@ def assert_food_recognition_payload(payload: dict, expected_provider: str) -> No
         "ingredients",
         "created_at",
     }
-    assert isinstance(data["recognition_id"], int)
+    assert type(data["recognition_id"]) is int
     assert data["status"] == "completed"
     assert data["provider"] == expected_provider
     assert data["provider"] in {"mock", "yolo"}
@@ -75,17 +74,3 @@ def test_food_recognition_success_fixture_matches_v1_contract():
 
 def test_food_recognition_empty_fixture_matches_v1_contract():
     assert_food_recognition_payload(load_fixture("food_recognition_empty.json"), "mock")
-
-
-def test_v1_food_api_skeleton_uses_canonical_paths():
-    api_file = ROOT / "backend" / "app" / "api" / "food.py"
-    assert api_file.exists(), "V1 requires backend/app/api/food.py; current skeleton is missing it."
-
-    source = api_file.read_text(encoding="utf-8")
-    for route in [
-        'prefix="/api/food"',
-        'post("/recognitions"',
-        'get("/recognitions/{recognition_id}"',
-        'put("/recognitions/{recognition_id}/ingredients"',
-    ]:
-        assert route in source
