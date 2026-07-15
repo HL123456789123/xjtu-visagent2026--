@@ -57,16 +57,6 @@
           </div>
           <!-- 消息内容 -->
           <div class="message-content">
-            <!-- 工具调用展示 -->
-            <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
-              <div v-for="(tool, tIdx) in msg.tool_calls" :key="tIdx" class="tool-call">
-                <el-tag type="info" size="small">
-                  <el-icon><SetUp /></el-icon>
-                  {{ tool.name }}
-                </el-tag>
-                <span class="tool-desc">{{ tool.description }}</span>
-              </div>
-            </div>
             <!-- 消息文本 -->
             <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
             <!-- 时间 -->
@@ -88,6 +78,11 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- 503 服务不可用提示 (V1) -->
+      <div v-if="serviceUnavailable" class="service-unavailable-banner" data-testid="service-unavailable-banner">
+        <span>智能服务暂时不可用，请稍后重试。</span>
       </div>
 
       <!-- 输入区域 -->
@@ -115,12 +110,27 @@
 
 <script setup>
 import { ref, onMounted, nextTick, watch } from 'vue'
-import { Plus, ChatDotRound, Delete, Monitor, User, SetUp, Promotion } from '@element-plus/icons-vue'
+import { Plus, ChatDotRound, Delete, Monitor, User, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createSessionApi, getSessionsApi, getMessagesApi, deleteSessionApi } from '@/api/chat'
-import { streamChat } from '@/utils/sse'
+import {
+  createChatSession,
+  createSessionApi,
+  getSessionsApi,
+  getMessagesApi,
+  deleteSessionApi,
+  sendChatMessage,
+} from '@/api/chat'
 import { renderMarkdown } from '@/utils/markdown'
 import { formatTime } from '@/utils/format'
+
+const props = defineProps({
+  recipeId: {
+    type: Number,
+    default: null,
+  },
+})
+
+const emit = defineEmits(['recipe-updated', 'service-unavailable'])
 
 // 会话列表
 const sessions = ref([])
@@ -129,6 +139,7 @@ const messages = ref([])
 const inputMessage = ref('')
 const loading = ref(false)
 const messageListRef = ref(null)
+const serviceUnavailable = ref(false)
 
 // 加载会话列表
 async function loadSessions() {
@@ -140,20 +151,26 @@ async function loadSessions() {
   }
 }
 
-// 创建新会话
+// 创建新会话（V1: 只传 recipe_id）
 async function createSession() {
   try {
-    const res = await createSessionApi({ title: `对话 ${sessions.value.length + 1}` })
+    let res
+    if (props.recipeId) {
+      // V1: POST /api/chat/sessions 只传 recipe_id
+      res = await createChatSession(props.recipeId)
+    } else {
+      // 兼容：无 recipeId 时使用旧版接口
+      res = await createSessionApi({ title: `对话 ${sessions.value.length + 1}` })
+    }
     if (res.data) {
-      // 后端返回的数据结构：{ session_id, session_uuid, title }
-      // 需要转换为前端期望的数据结构：{ id, session_uuid, title, ... }
       const session = {
         id: res.data.session_id,
+        recipe_id: res.data.recipe_id,
         session_uuid: res.data.session_uuid,
-        title: res.data.title,
+        title: res.data.title || `对话 ${sessions.value.length + 1}`,
         message_count: 0,
         last_message_at: new Date().toISOString(),
-        created_at: new Date().toISOString()
+        created_at: res.data.created_at || new Date().toISOString()
       }
       sessions.value.unshift(session)
       await selectSession(session)
@@ -228,64 +245,51 @@ function doSendMessage(message) {
   })
   inputMessage.value = ''
   loading.value = true
+  serviceUnavailable.value = false
   scrollToBottom()
 
-  // 发起 SSE 流式请求
-  // 后端期望 message 作为 JSON body
-  const url = `/api/chat/sessions/${currentSession.value.id}/messages`
-  const stop = streamChat(
-    url,
-    { message },
+  // V1: POST /api/chat/sessions/{session_id}/messages
+  // 请求体只传 content，SSE 只解析 token/recipe_updated/done/error
+  const stop = sendChatMessage(
+    currentSession.value.id,
+    message,
     {
-      onMessage: (data) => {
-        if (typeof data === 'string') {
-          // 普通文本消息
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += data
-          } else {
-            messages.value.push({
-              role: 'assistant',
-              content: data,
-              created_at: new Date().toISOString()
-            })
-          }
-        } else if (data.type === 'tool_call') {
-          // 工具调用
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            if (!lastMsg.tool_calls) lastMsg.tool_calls = []
-            lastMsg.tool_calls.push({
-              name: data.name,
-              description: data.description
-            })
-          }
-        } else if (data.type === 'error') {
-          // 错误消息
-          ElMessage.error(data.content || '处理消息时出现错误')
-        } else if (data.type === 'token') {
-          // 流式 token
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += data.content
-          } else {
-            messages.value.push({
-              role: 'assistant',
-              content: data.content,
-              created_at: new Date().toISOString()
-            })
-          }
+      onToken: (payload) => {
+        // token 事件: {"content":"..."}
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg?.role === 'assistant') {
+          lastMsg.content += payload.content
+        } else {
+          messages.value.push({
+            role: 'assistant',
+            content: payload.content,
+            created_at: new Date().toISOString()
+          })
         }
         scrollToBottom()
+      },
+      onRecipeUpdated: (payload) => {
+        // recipe_updated 事件: {"recipe_id":101,"version":2}
+        // 受控刷新：emit 事件交由父组件决策是否重新 GET
+        emit('recipe-updated', {
+          recipe_id: payload.recipe_id,
+          version: payload.version,
+        })
       },
       onDone: () => {
         loading.value = false
       },
-      onError: (err) => {
+      onError: (payload) => {
         loading.value = false
-        ElMessage.error('发送消息失败')
-        console.error('Stream error:', err)
-      }
+        // 503 / LLM_UNAVAILABLE
+        if (payload?.code === 'LLM_UNAVAILABLE' || payload?.code === 'HTTP_ERROR') {
+          serviceUnavailable.value = true
+          emit('service-unavailable', payload)
+          ElMessage.error(payload.message || '智能服务暂时不可用')
+        } else {
+          ElMessage.error(payload?.message || '处理消息时出现错误')
+        }
+      },
     }
   )
 }
@@ -470,25 +474,6 @@ onMounted(() => {
   max-width: 70%;
   padding: $spacing-md;
 
-  .tool-calls {
-    margin-bottom: $spacing-sm;
-    padding: $spacing-sm;
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: $border-radius-sm;
-
-    .tool-call {
-      display: flex;
-      align-items: center;
-      gap: $spacing-sm;
-      margin-bottom: $spacing-xs;
-
-      .tool-desc {
-        font-size: 12px;
-        color: $text-secondary;
-      }
-    }
-  }
-
   .message-text {
     line-height: 1.6;
     word-break: break-word;
@@ -540,6 +525,15 @@ onMounted(() => {
 @keyframes bounce {
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1); }
+}
+
+.service-unavailable-banner {
+  padding: $spacing-md $spacing-lg;
+  border-top: 1px solid #ffd3cc;
+  background: #fff7f6;
+  color: $danger-color;
+  font-size: 14px;
+  text-align: center;
 }
 
 .input-area {
