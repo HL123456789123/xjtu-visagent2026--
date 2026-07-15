@@ -3,6 +3,10 @@
 使用 pydantic-settings 管理所有配置项，支持从 .env 文件和环境变量读取
 加载优先级：环境变量（系统级别）> .env 文件 > 代码中的默认值
 """
+
+from typing import Literal
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -58,6 +62,13 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o"
 
+    # ── 食物识别配置（V1） ───────────────────────────────
+    FOOD_PROVIDER: Literal["mock", "yolo"] = "mock"
+    FOOD_MODEL_PATH: str = "models/food/best.pt"
+    FOOD_CLASSES_PATH: str = "scripts/food_model/classes.yaml"
+    FOOD_CONF_THRESHOLD: float = 0.25
+    FOOD_MODEL_VERSION: str = "food-yolo-v1"
+
     # ── LangChain 配置 ────────────────────────────────
     LANGCHAIN_TRACING_V2: bool = False
     LANGCHAIN_API_KEY: str = ""
@@ -70,6 +81,21 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list:
         """将 CORS 配置字符串转为列表"""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def normalize_debug_value(cls, value):
+        """兼容本地开发环境中常见的 ``release`` 配置写法。"""
+        if isinstance(value, str) and value.strip().lower() in {"release", "production"}:
+            return False
+        return value
+
+    @field_validator("FOOD_CONF_THRESHOLD")
+    @classmethod
+    def validate_food_conf_threshold(cls, value: float) -> float:
+        if not 0 <= value <= 1:
+            raise ValueError("FOOD_CONF_THRESHOLD 必须位于 0 到 1 之间")
+        return value
 
     class Config:
         env_file = ".env"

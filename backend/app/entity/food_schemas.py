@@ -1,4 +1,4 @@
-"""食物识别接口的数据传输对象。"""
+"""食物识别模块 V1 冻结契约的数据传输对象。"""
 
 import math
 from datetime import datetime
@@ -7,21 +7,14 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-def normalize_ingredient_key(value: str) -> str:
-    """将 Provider 和用户输入中的类别键统一为稳定的小写形式。"""
-    if not isinstance(value, str):
-        return value
-    return value.strip().lower().replace(" ", "_")
-
-
 class FoodSchemaBase(BaseModel):
-    """食物识别 DTO 的公共配置。"""
+    """Food DTO 的公共校验设置。"""
 
     model_config = {"str_strip_whitespace": True, "allow_inf_nan": False}
 
 
 class BoundingBox(FoodSchemaBase):
-    """YOLO 检测框，坐标使用原图像素坐标。"""
+    """原图像素坐标的检测框。"""
 
     x1: float
     y1: float
@@ -31,40 +24,30 @@ class BoundingBox(FoodSchemaBase):
     @field_validator("x1", "y1", "x2", "y2")
     @classmethod
     def validate_finite_coordinate(cls, value: float) -> float:
-        """JSON 结果中不能出现 NaN 或 Infinity。"""
         if not math.isfinite(value):
             raise ValueError("bbox 坐标必须是有限数值")
         return value
 
     @model_validator(mode="after")
     def validate_coordinate_order(self) -> "BoundingBox":
-        """确保检测框具有正面积。"""
-        if self.x2 <= self.x1:
-            raise ValueError("bbox 坐标必须满足 x2 > x1")
-        if self.y2 <= self.y1:
-            raise ValueError("bbox 坐标必须满足 y2 > y1")
+        if self.x2 <= self.x1 or self.y2 <= self.y1:
+            raise ValueError("bbox 坐标必须满足 x2 > x1 且 y2 > y1")
         return self
 
 
-class IngredientCandidate(FoodSchemaBase):
-    """YOLO 返回的单个食材候选项。"""
+class ModelDetection(FoodSchemaBase):
+    """黄小石模型接口固定输出，不含中文名和数据库信息。"""
 
-    key: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        pattern=r"^[a-z0-9][a-z0-9_-]*$",
-        description="稳定的英文食材类别键",
-    )
-    name: str = Field(..., min_length=1, max_length=100, description="中文展示名称")
-    confidence: float = Field(..., ge=0, le=1, description="YOLO 置信度")
-    bbox: BoundingBox | None = Field(default=None, description="检测框；无定位信息时为空")
-    source: Literal["yolo"] = "yolo"
+    class_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    confidence: float = Field(..., ge=0, le=1)
+    bbox: BoundingBox
 
-    @field_validator("key", mode="before")
+    @field_validator("class_name", mode="before")
     @classmethod
-    def normalize_key(cls, value: str) -> str:
-        return normalize_ingredient_key(value)
+    def normalize_class_name(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        return value.strip().lower().replace(" ", "_")
 
     @field_validator("confidence")
     @classmethod
@@ -74,60 +57,70 @@ class IngredientCandidate(FoodSchemaBase):
         return value
 
 
-class ConfirmedIngredient(FoodSchemaBase):
-    """用户最终确认的食材快照项。"""
+class IngredientCandidate(FoodSchemaBase):
+    """Food API 返回给前端的候选食材。"""
 
-    key: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        pattern=r"^[a-z0-9][a-z0-9_-]*$",
-        description="稳定的英文食材类别键",
-    )
-    name: str = Field(..., min_length=1, max_length=100, description="中文展示名称")
-    quantity: str | None = Field(default=None, max_length=100, description="数量，如“2”或“适量”")
-    unit: str | None = Field(default=None, max_length=50, description="单位，如“个”或“克”")
-    source: Literal["yolo", "manual"] = Field(..., description="食材来源")
+    candidate_id: str = Field(..., min_length=1, max_length=100)
+    class_name: str = Field(..., min_length=1, max_length=100)
+    display_name: str = Field(..., min_length=1, max_length=100)
+    confidence: float = Field(..., ge=0, le=1)
+    bbox: BoundingBox
+    source: Literal["model", "manual"] = "model"
 
-    @field_validator("key", mode="before")
+    @field_validator("class_name", mode="before")
     @classmethod
-    def normalize_key(cls, value: str) -> str:
-        return normalize_ingredient_key(value)
+    def normalize_class_name(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        return value.strip().lower().replace(" ", "_")
 
 
-def _validate_unique_ingredient_keys(ingredients: list[ConfirmedIngredient]) -> None:
-    keys = [ingredient.key for ingredient in ingredients]
-    if len(keys) != len(set(keys)):
-        raise ValueError("食材 key 不允许重复")
+class ConfirmedIngredient(FoodSchemaBase):
+    """用户确认后的最终食材快照。"""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    class_name: str | None = Field(default=None, max_length=100)
+    quantity: int = Field(..., ge=1, le=100000)
+    unit: str = Field(..., min_length=1, max_length=50)
+    source: Literal["model", "manual"]
+
+    @field_validator("class_name", mode="before")
+    @classmethod
+    def normalize_class_name(cls, value: str | None) -> str | None:
+        if value is None or not isinstance(value, str):
+            return value
+        normalized = value.strip().lower().replace(" ", "_")
+        return normalized or None
 
 
 class ConfirmIngredientsRequest(FoodSchemaBase):
-    """完整覆盖识别任务确认食材快照的请求体。"""
+    """V1 确认食材请求，数组将完整覆盖旧快照。"""
 
-    confirmed_ingredients: list[ConfirmedIngredient] = Field(
-        ...,
-        description="用户确认后的完整食材列表，不能为空",
-    )
+    ingredients: list[ConfirmedIngredient]
 
     @model_validator(mode="after")
-    def validate_unique_keys(self) -> "ConfirmIngredientsRequest":
-        if not self.confirmed_ingredients:
-            raise ValueError("确认食材列表不能为空")
-        _validate_unique_ingredient_keys(self.confirmed_ingredients)
+    def validate_ingredients_not_empty(self) -> "ConfirmIngredientsRequest":
+        if not self.ingredients:
+            raise ValueError("食材不能为空")
         return self
 
 
-class FoodRecognitionResponse(FoodSchemaBase):
-    """食物识别任务对外响应；不包含本地临时文件路径。"""
-
-    recognition_id: str = Field(..., min_length=1, description="识别任务 ID")
-    status: Literal["recognized", "confirmed", "failed"] = Field(..., description="识别任务状态")
-    image_object_name: str = Field(..., min_length=1, description="MinIO 对象名")
-    provider: Literal["yolo"] = "yolo"
-    model_version: str = Field(..., min_length=1)
-    conf_threshold: float = Field(..., ge=0, le=1)
-    raw_detections: list[IngredientCandidate] = Field(default_factory=list)
-    confirmed_ingredients: list[ConfirmedIngredient] = Field(default_factory=list)
+class FoodRecognitionCreateData(FoodSchemaBase):
+    recognition_id: int
+    status: Literal["completed"]
+    provider: Literal["mock", "yolo"]
+    model_version: str
+    image_url: str
+    ingredients: list[IngredientCandidate]
     created_at: datetime
+
+
+class FoodRecognitionDetailData(FoodRecognitionCreateData):
+    confirmed_ingredients: list[ConfirmedIngredient]
     updated_at: datetime
-    confirmed_at: datetime | None = None
+
+
+class ConfirmIngredientsData(FoodSchemaBase):
+    recognition_id: int
+    confirmed_ingredients: list[ConfirmedIngredient]
+    confirmed_at: datetime

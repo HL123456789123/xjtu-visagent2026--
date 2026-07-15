@@ -2,6 +2,7 @@
 MinIO 对象存储客户端封装
 用于存储检测图像、训练模型等文件
 """
+
 import io
 from datetime import timedelta
 from minio import Minio
@@ -84,3 +85,15 @@ class MinIOClient:
             bucket_name=self.bucket_name,
             object_name=object_name,
         )
+
+    def get_file(self, object_name: str) -> bytes:
+        """读取一个对象的完整字节内容，并确保释放底层 HTTP 连接。"""
+        response = self.client.get_object(
+            bucket_name=self.bucket_name,
+            object_name=object_name,
+        )
+        try:
+            return response.read()
+        finally:
+            response.close()
+            response.release_conn()
