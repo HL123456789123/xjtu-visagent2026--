@@ -7,7 +7,7 @@
       </router-link>
       <h1>登录后，开启你的专属美食之旅</h1>
       <p>识别食材、确认清单、生成家常食谱，把每天吃什么变得轻松一点。</p>
-      <img src="/food-hero.jpg" alt="番茄鸡蛋与日常食材" />
+      <img src="/login-hero.jpg" alt="新鲜蔬果食材" />
     </section>
 
     <section class="login-card">

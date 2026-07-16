@@ -11,7 +11,9 @@
         </div>
       </div>
       <div class="food-recipe-page__hero-image">
-        <img src="/food-hero.jpg" alt="番茄鸡蛋与日常食材" />
+        <img class="food-recipe-page__slide" src="/food-carousel-1.jpg" alt="早餐拼盘" />
+        <img class="food-recipe-page__slide" src="/food-carousel-2.jpg" alt="芒果豆类沙拉" />
+        <img class="food-recipe-page__slide" src="/food-carousel-3.jpg" alt="家常套餐" />
         <div class="food-recipe-page__image-note">
           <strong>营养美味，轻松上桌</strong>
           <span>识别食材后生成家常菜谱</span>
@@ -476,13 +478,29 @@ function emitRecipeRequest(payload) {
       linear-gradient(90deg, rgba(255, 248, 234, 0.04), rgba(255, 248, 234, 0.34)),
       radial-gradient(circle at 22% 20%, rgba(255, 255, 255, 0.36), transparent 28%);
   }
+}
 
-  img {
-    width: 100%;
-    height: 100%;
-    min-height: 330px;
-    display: block;
-    object-fit: cover;
+.food-recipe-page__slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 330px;
+  display: block;
+  object-fit: cover;
+  opacity: 0;
+  animation: food-recipe-carousel 12s infinite;
+
+  &:nth-of-type(1) {
+    animation-delay: 0s;
+  }
+
+  &:nth-of-type(2) {
+    animation-delay: 4s;
+  }
+
+  &:nth-of-type(3) {
+    animation-delay: 8s;
   }
 }
 
@@ -793,7 +811,7 @@ function emitRecipeRequest(payload) {
     min-height: 260px;
     border-radius: 28px;
 
-    img {
+    .food-recipe-page__slide {
       min-height: 260px;
     }
   }
@@ -806,6 +824,20 @@ function emitRecipeRequest(payload) {
   .food-recipe-page__hero-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@keyframes food-recipe-carousel {
+  0%,
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  38%,
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
   }
 }
 </style>

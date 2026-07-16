@@ -12,11 +12,13 @@
         </button>
       </div>
 
-      <div class="start-hero__visual" aria-label="家常美食图片">
-        <img src="/food-hero.jpg" alt="番茄鸡蛋与日常食材" />
+      <div class="start-hero__visual" aria-label="家常美食轮播图片">
+        <img class="start-hero__slide" src="/food-carousel-1.jpg" alt="早餐拼盘" />
+        <img class="start-hero__slide" src="/food-carousel-2.jpg" alt="芒果豆类沙拉" />
+        <img class="start-hero__slide" src="/food-carousel-3.jpg" alt="家常套餐" />
         <div class="start-hero__note">
           <strong>今日推荐</strong>
-          <span>番茄鸡蛋 · 清爽黄瓜 · 土豆浓汤</span>
+          <span>早餐灵感 · 清爽沙拉 · 家常套餐</span>
         </div>
       </div>
     </section>
@@ -139,12 +141,28 @@ function goToFoodRecipes() {
     z-index: 1;
   }
 
-  img {
+  .start-hero__slide {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     min-height: 420px;
     object-fit: cover;
     display: block;
+    opacity: 0;
+    animation: start-hero-carousel 12s infinite;
+
+    &:nth-of-type(1) {
+      animation-delay: 0s;
+    }
+
+    &:nth-of-type(2) {
+      animation-delay: 4s;
+    }
+
+    &:nth-of-type(3) {
+      animation-delay: 8s;
+    }
   }
 }
 
@@ -236,13 +254,27 @@ function goToFoodRecipes() {
     min-height: 300px;
     border-radius: 28px;
 
-    img {
+    .start-hero__slide {
       min-height: 300px;
     }
   }
 
   .start-cards {
     padding: 0 18px 36px;
+  }
+}
+
+@keyframes start-hero-carousel {
+  0%,
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  38%,
+  100% {
+    opacity: 0;
+    transform: scale(1.02);
   }
 }
 </style>

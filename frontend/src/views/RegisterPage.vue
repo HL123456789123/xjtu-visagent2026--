@@ -7,7 +7,7 @@
       </router-link>
       <h1>创建账号，保存你的每日美食灵感</h1>
       <p>把识别到的食材、生成过的菜谱和日常偏好沉淀成你的个人厨房助手。</p>
-      <img src="/food-hero.jpg" alt="番茄鸡蛋与日常食材" />
+      <img src="/login-hero.jpg" alt="新鲜蔬果食材" />
     </section>
 
     <section class="register-card">
