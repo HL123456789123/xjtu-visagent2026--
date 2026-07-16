@@ -1,37 +1,37 @@
 names:
   0:
-    class_name: tomato
-    display_name: 番茄
+    class_name: sugar
+    display_name: 糖
   1:
-    class_name: egg
-    display_name: 鸡蛋
+    class_name: strawberry
+    display_name: 草莓
   2:
-    class_name: potato
-    display_name: 土豆
-  3:
-    class_name: carrot
-    display_name: 胡萝卜
-  4:
-    class_name: cucumber
-    display_name: 黄瓜
-  5:
-    class_name: onion
-    display_name: 洋葱
-  6:
-    class_name: pork
-    display_name: 猪肉
-  7:
     class_name: beef
     display_name: 牛肉
-  8:
+  3:
     class_name: chicken
     display_name: 鸡肉
+  4:
+    class_name: cheese
+    display_name: 奶酪
+  5:
+    class_name: milk
+    display_name: 牛奶
+  6:
+    class_name: tomato
+    display_name: 番茄
+  7:
+    class_name: butter
+    display_name: 黄油
+  8:
+    class_name: corn
+    display_name: 玉米
   9:
-    class_name: fish
-    display_name: 鱼肉
+    class_name: banana
+    display_name: 香蕉
   10:
-    class_name: tofu
-    display_name: 豆腐
+    class_name: egg
+    display_name: 鸡蛋
   11:
-    class_name: mushroom
-    display_name: 蘑菇
+    class_name: carrot
+    display_name: 胡萝卜
