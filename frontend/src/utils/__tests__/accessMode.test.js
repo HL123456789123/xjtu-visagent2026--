@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   ACCESS_MODE_KEY,
   ACCESS_MODES,
+  MANAGER_ACCESS_PERMISSION,
   clearStoredAccessMode,
   getStoredAccessMode,
   isManagerPath,
@@ -15,6 +16,7 @@ describe('access mode helpers', () => {
   })
 
   it('normalizes unknown mode values to user mode', () => {
+    expect(MANAGER_ACCESS_PERMISSION).toBe('system:manager_access')
     expect(normalizeAccessMode(ACCESS_MODES.ADMIN)).toBe(ACCESS_MODES.ADMIN)
     expect(normalizeAccessMode('guest')).toBe(ACCESS_MODES.USER)
     expect(normalizeAccessMode()).toBe(ACCESS_MODES.USER)

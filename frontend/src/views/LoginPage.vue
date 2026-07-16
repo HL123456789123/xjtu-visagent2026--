@@ -122,7 +122,7 @@ const visualCopy = computed(() =>
 const loginTitle = computed(() => (isAdminLogin.value ? '管理者登录' : '欢迎回来'))
 const loginCopy = computed(() =>
   isAdminLogin.value
-    ? '请使用管理员账号进入管理端。'
+    ? '请使用已开通管理者入口权限的账号进入管理端。'
     : '登录 FridgeChef，继续你的日常美食计划。'
 )
 const loginButtonText = computed(() => (isAdminLogin.value ? '登录并进入管理端' : '登录并进入开始页'))
@@ -184,7 +184,7 @@ async function handleLogin() {
 
     if (mode === ACCESS_MODES.ADMIN && !userStore.canUseAdminMode) {
       await userStore.logout()
-      ElMessage.error('该账号不是管理者账号，请使用管理员账号登录。')
+      ElMessage.error('该账号没有管理者入口权限，请联系管理员开通。')
       return
     }
 

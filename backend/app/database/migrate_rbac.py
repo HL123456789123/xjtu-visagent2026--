@@ -36,6 +36,7 @@ def migrate_rbac(db: Session):
         {"code": "user:manage", "name": "管理用户", "module": "auth"},
         {"code": "role:list", "name": "查看角色列表", "module": "auth"},
         {"code": "role:manage", "name": "管理角色", "module": "auth"},
+        {"code": "system:manager_access", "name": "进入管理者入口", "module": "system"},
     ]
     
     existing_perms = {p.code for p in db.query(Permission).all()}

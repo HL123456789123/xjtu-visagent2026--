@@ -214,7 +214,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (to.matched.some((record) => record.meta.requiresManager)) {
-    // 管理端页面需要真实管理者账号，并且当前处于管理端入口模式
+    // 管理端页面需要入口权限，并且当前处于管理端入口模式
     if (!userStore.canUseAdminMode) {
       next({ name: 'NotFound' })
       return

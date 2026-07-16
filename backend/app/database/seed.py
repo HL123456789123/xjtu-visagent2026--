@@ -74,16 +74,17 @@ DEFAULT_PERMISSIONS = [
     {"code": "knowledge:manage", "name": "管理知识库", "module": "knowledge"},
     {"code": "knowledge:search", "name": "检索知识库", "module": "knowledge"},
     # 系统模块
+    {"code": "system:manager_access", "name": "进入管理者入口", "module": "system"},
     {"code": "system:dashboard", "name": "查看仪表盘", "module": "system"},
     {"code": "system:admin", "name": "系统管理", "module": "system"},
 ]
 
 # ── 各角色权限配置 ──────────────────────────────────────
 
-# super_admin 拥有所有权限（20个）
+# super_admin 拥有所有权限
 SUPER_ADMIN_PERMISSIONS = [p["code"] for p in DEFAULT_PERMISSIONS]
 
-# admin 拥有除 system:admin 外的所有权限（19个）
+# admin 拥有除 system:admin 外的所有权限
 ADMIN_PERMISSIONS = [p["code"] for p in DEFAULT_PERMISSIONS if p["code"] != "system:admin"]
 
 # operator 拥有日常业务操作权限（13个）

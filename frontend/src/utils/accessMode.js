@@ -1,4 +1,5 @@
 export const ACCESS_MODE_KEY = 'visagent_access_mode'
+export const MANAGER_ACCESS_PERMISSION = 'system:manager_access'
 
 export const ACCESS_MODES = {
   USER: 'user',

@@ -11,6 +11,7 @@ import { loginApi, getUserInfoApi, logoutApi } from '@/api/auth'
 import { hasRole, isAdmin, isSuperAdmin, hasPermission } from '@/utils/permission'
 import {
   ACCESS_MODES,
+  MANAGER_ACCESS_PERMISSION,
   clearStoredAccessMode,
   getStoredAccessMode,
   setStoredAccessMode,
@@ -61,10 +62,11 @@ export const useUserStore = defineStore('user', {
     isAdmin: (state) => isAdmin(state.user),
     /** 是否为超级管理员（通过角色判断） */
     isSuperAdmin: (state) => isSuperAdmin(state.user),
-    /** 是否可以进入管理端 */
-    canUseAdminMode: (state) => isAdmin(state.user),
+    /** 是否拥有进入管理端的入口权限 */
+    canUseAdminMode: (state) => hasPermission(state.user, MANAGER_ACCESS_PERMISSION),
     /** 当前是否处于管理端模式 */
-    isAdminMode: (state) => state.accessMode === ACCESS_MODES.ADMIN && isAdmin(state.user),
+    isAdminMode: (state) =>
+      state.accessMode === ACCESS_MODES.ADMIN && hasPermission(state.user, MANAGER_ACCESS_PERMISSION),
     /**
      * 返回一个函数，用于判断用户是否拥有指定角色
      * 用法：const userStore = useUserStore()

@@ -92,7 +92,7 @@ async function chooseMode(mode) {
 
   if (mode === ACCESS_MODES.ADMIN && !userStore.canUseAdminMode) {
     userStore.setAccessMode(ACCESS_MODES.USER)
-    ElMessage.warning('当前账号不是管理者账号，请切换管理者账号后进入。')
+    ElMessage.warning('当前账号没有管理者入口权限，请联系管理员开通。')
     return
   }
 
