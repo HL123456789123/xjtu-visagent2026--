@@ -28,8 +28,18 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 # 安装 Python 依赖
 RUN uv sync --no-dev --no-install-project
 
-# 复制应用代码
-COPY . .
+# 复制运行时必需的后端文件。
+#
+# - app：FastAPI 应用及业务代码
+# - alembic / alembic.ini：容器启动时执行数据库迁移
+# - scripts：包含 Food Provider 所需的类别文件
+# - main.py：Uvicorn 启动入口
+#
+# 不复制本地 .env、测试数据、虚拟环境与缓存，运行配置统一由容器环境变量提供。
+COPY app ./app
+COPY alembic ./alembic
+COPY scripts ./scripts
+COPY alembic.ini main.py ./
 
 # 创建数据目录
 RUN mkdir -p data/models data/visagent.db logs
