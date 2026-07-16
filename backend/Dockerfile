@@ -8,7 +8,7 @@ WORKDIR /app
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -29,7 +29,7 @@ RUN uv sync --no-dev --no-install-project
 COPY . .
 
 # 创建数据目录
-RUN mkdir -p data/models data/visagent.db logs
+RUN mkdir -p data/models logs
 
 # 暴露端口
 EXPOSE 8888
