@@ -34,6 +34,7 @@ from app.services.food_recognition_provider import (
 )
 from app.services.food_recognition_service import (
     FoodRecognitionAccessDeniedError,
+    FoodPersistenceError,
     FoodRecognitionService,
     FoodModelUnavailableServiceError,
     ImageTooLargeError,
@@ -99,6 +100,14 @@ class UnavailableProvider(MockFoodRecognitionProvider):
     def recognize(self, image_path: str, conf_threshold: float = 0.25) -> list[ModelDetection]:
         del image_path, conf_threshold
         raise FoodModelUnavailableError("测试模型不可用")
+
+
+class SecondImageUnavailableProvider(RecordingProvider):
+    def recognize(self, image_path: str, conf_threshold: float = 0.25) -> list[ModelDetection]:
+        self.paths.append(image_path)
+        if len(self.paths) == 2:
+            raise FoodModelUnavailableError("第二张图片推理失败")
+        return MockFoodRecognitionProvider.recognize(self, image_path, conf_threshold)
 
 
 def make_service(db, *, provider=None, storage=None) -> tuple[FoodRecognitionService, FakeStorage]:
@@ -205,6 +214,14 @@ class TestFoodRecognitionService:
             "det-3",
             "det-4",
         ]
+        assert [item.image_url for item in response.images] == [
+            f"/api/files/food/{response.recognition_id}",
+            f"/api/files/food/{response.recognition_id}?image_index=1",
+        ]
+        assert [[item.candidate_id for item in image.ingredients] for image in response.images] == [
+            ["det-1", "det-2"],
+            ["det-3", "det-4"],
+        ]
 
         image_content, media_type = await service.get_image(
             user_id=user.id,
@@ -212,6 +229,54 @@ class TestFoodRecognitionService:
         )
         assert image_content == JPEG_IMAGE
         assert media_type == "image/jpeg"
+
+        second_image_content, second_media_type = await service.get_image(
+            user_id=user.id,
+            recognition_id=response.recognition_id,
+            image_index=1,
+        )
+        assert second_image_content == PNG_IMAGE
+        assert second_media_type == "image/png"
+
+    @pytest.mark.asyncio
+    async def test_cleans_every_uploaded_image_when_one_image_inference_fails(self, db):
+        user = create_user(db, "cleanup_inference")
+        provider = SecondImageUnavailableProvider()
+        service, storage = make_service(db, provider=provider)
+
+        with pytest.raises(FoodModelUnavailableServiceError):
+            await service.create_recognition(
+                user_id=user.id,
+                images=[
+                    make_upload("first.jpg", "image/jpeg", JPEG_IMAGE),
+                    make_upload("second.png", "image/png", PNG_IMAGE),
+                ],
+                conf_threshold=0.25,
+            )
+
+        assert len(storage.uploads) == len(storage.deleted) == 2
+        assert storage.objects == {}
+        assert db.query(FoodRecognitionTask).count() == 0
+
+    @pytest.mark.asyncio
+    async def test_cleans_task_and_images_when_detection_persistence_fails(self, db, monkeypatch):
+        user = create_user(db, "cleanup_persistence")
+        service, storage = make_service(db)
+
+        def fail_to_save(*args, **kwargs):
+            raise RuntimeError("模拟保存失败")
+
+        monkeypatch.setattr(service.repository, "save_raw_detections", fail_to_save)
+        with pytest.raises(FoodPersistenceError):
+            await service.create_recognition(
+                user_id=user.id,
+                images=[make_upload()],
+                conf_threshold=0.25,
+            )
+
+        assert len(storage.uploads) == len(storage.deleted) == 1
+        assert storage.objects == {}
+        assert db.query(FoodRecognitionTask).count() == 0
 
     @pytest.mark.asyncio
     async def test_creates_persistent_v1_record_and_removes_temp_file(self, db):
@@ -466,6 +531,27 @@ class TestFoodApi:
         assert task.image_object_names == [object_name for object_name, _ in storage.uploads]
         assert len(task.raw_detections) == 2
         assert len(created.json()["data"]["ingredients"]) == 4
+        assert [image["image_index"] for image in created.json()["data"]["images"]] == [0, 1]
+        assert created.json()["data"]["images"][1]["image_url"] == (
+            f"/api/files/food/{recognition_id}?image_index=1"
+        )
+
+        with make_api_client(service, user.id) as client:
+            detail = client.get(f"/api/food/recognitions/{recognition_id}")
+            second_image = client.get(f"/api/files/food/{recognition_id}?image_index=1")
+            missing_image = client.get(f"/api/files/food/{recognition_id}?image_index=2")
+
+        assert detail.status_code == 200
+        assert [image["image_index"] for image in detail.json()["data"]["images"]] == [0, 1]
+        assert [
+            [ingredient["candidate_id"] for ingredient in image["ingredients"]]
+            for image in detail.json()["data"]["images"]
+        ] == [["det-1", "det-2"], ["det-3", "det-4"]]
+        assert second_image.status_code == 200
+        assert second_image.content == PNG_IMAGE
+        assert second_image.headers["content-type"] == "image/png"
+        assert missing_image.status_code == 400
+        assert missing_image.json() == {"code": 400, "message": "图片序号不存在", "data": None}
 
     def test_api_maps_image_and_model_errors_to_v1_status_codes(self, db):
         user = create_user(db, "apierrors")
