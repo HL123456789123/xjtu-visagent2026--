@@ -7,8 +7,9 @@
       text-color="#bfcbd9"
       active-text-color="#409eff"
     >
+      <!-- 普通菜单项 -->
       <el-menu-item
-        v-for="item in menuItems"
+        v-for="item in visibleMenuItems"
         :key="item.path"
         :index="item.path"
       >
@@ -17,6 +18,24 @@
         </el-icon>
         <span>{{ item.title }}</span>
       </el-menu-item>
+
+      <!-- 系统管理菜单组（按权限显示） -->
+      <el-sub-menu v-if="showAdminMenu" index="/admin">
+        <template #title>
+          <el-icon><Setting /></el-icon>
+          <span>系统管理</span>
+        </template>
+        <el-menu-item
+          v-for="item in visibleAdminMenuItems"
+          :key="item.path"
+          :index="item.path"
+        >
+          <el-icon>
+            <component :is="item.icon" />
+          </el-icon>
+          <span>{{ item.title }}</span>
+        </el-menu-item>
+      </el-sub-menu>
     </el-menu>
   </aside>
 </template>
@@ -24,31 +43,64 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import {
   ChatDotRound,
-  Camera,
-  Cpu,
   Clock,
+  Cpu,
   DataAnalysis,
-  User,
+  Goods,
+  Setting,
+  UserFilled,
+  Key,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const userStore = useUserStore()
 
 /** 当前激活的菜单项 */
 const activeMenu = computed(() => {
-  return '/' + route.path.split('/')[1]
+  const path = route.path
+  // 处理管理员子菜单激活状态
+  if (path.startsWith('/admin')) {
+    return path
+  }
+  return '/' + path.split('/')[1]
 })
 
-/** 侧边栏菜单项 */
+/** 普通菜单项（含权限标识） */
 const menuItems = [
+  { path: '/start', title: '首页', icon: Goods },
+  { path: '/food-recipes', title: '食物菜谱', icon: Goods },
   { path: '/chat', title: '智能对话', icon: ChatDotRound },
-  { path: '/detection', title: '目标检测', icon: Camera },
-  { path: '/training', title: '模型训练', icon: Cpu },
   { path: '/history', title: '历史记录', icon: Clock },
-  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis },
-  { path: '/profile', title: '个人信息', icon: User },
+  { path: '/training', title: '模型训练', icon: Cpu, permission: 'training:task:view', managerOnly: true },
+  { path: '/dashboard', title: '数据看板', icon: DataAnalysis, permission: 'system:dashboard', managerOnly: true },
 ]
+
+/** 管理员菜单项（含权限标识） */
+const adminMenuItems = [
+  { path: '/admin/users', title: '用户管理', icon: UserFilled, permission: 'user:list' },
+  { path: '/admin/roles', title: '角色管理', icon: Key, permission: 'role:list' },
+]
+
+function canSeeMenuItem(item) {
+  if (item.managerOnly && !userStore.isAdminMode) return false
+  return !item.permission || userStore.hasPermission(item.permission)
+}
+
+/** 可见的普通菜单项（根据用户权限过滤） */
+const visibleMenuItems = computed(() =>
+  menuItems.filter(canSeeMenuItem)
+)
+
+/** 可见的管理员菜单项（根据用户权限过滤） */
+const visibleAdminMenuItems = computed(() =>
+  userStore.isAdminMode ? adminMenuItems.filter(canSeeMenuItem) : []
+)
+
+/** 是否显示系统管理菜单组（有任一子权限时显示） */
+const showAdminMenu = computed(() => visibleAdminMenuItems.value.length > 0)
 </script>
 
 <style lang="scss" scoped>

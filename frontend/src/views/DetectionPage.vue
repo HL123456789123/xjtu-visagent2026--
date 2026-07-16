@@ -20,6 +20,19 @@
         </el-select>
       </div>
 
+      <!-- 检测模型选择 -->
+      <div class="control-section">
+        <label>检测模型</label>
+        <el-select v-model="selectedModelId" placeholder="请选择检测模型">
+          <el-option
+            v-for="m in sceneModels"
+            :key="m.model_id"
+            :label="`${m.model_name}${m.is_default ? ' (默认)' : ''}`"
+            :value="m.model_id"
+          />
+        </el-select>
+      </div>
+
       <!-- 检测模式 -->
       <div class="control-section">
         <label>检测模式</label>
@@ -67,7 +80,7 @@
         type="primary"
         size="large"
         :loading="detecting"
-        :disabled="!selectedScene || fileList.length === 0"
+        :disabled="!selectedScene || !selectedModelId || fileList.length === 0"
         @click="startDetection"
         class="detect-btn"
       >
@@ -80,7 +93,7 @@
         :type="cameraActive ? 'danger' : 'success'"
         size="large"
         @click="toggleCamera"
-        :disabled="!selectedScene"
+        :disabled="!selectedScene || !selectedModelId"
         class="detect-btn"
       >
         <el-icon><VideoCamera /></el-icon>
@@ -128,8 +141,8 @@
         </div>
       </div>
       
-      <!-- 检测结果 -->
-      <div v-else-if="detectionResult" class="result-content">
+      <!-- 单图/视频检测结果 -->
+      <div v-else-if="detectionResult && detectMode !== 'batch'" class="result-content">
         <div class="result-header">
           <h3>检测结果</h3>
           <div class="result-stats">
@@ -167,6 +180,45 @@
         </div>
       </div>
 
+      <!-- 批量检测结果 -->
+      <div v-else-if="detectMode === 'batch' && batchResults.length > 0" class="result-content">
+        <div class="result-header">
+          <h3>批量检测结果</h3>
+          <div class="result-stats">
+            <el-tag type="success">图片数量: {{ batchResults.length }}</el-tag>
+            <el-tag type="info">总目标数: {{ batchResults.reduce((sum, r) => sum + (r.total_objects || 0), 0) }}</el-tag>
+          </div>
+        </div>
+        <div class="batch-grid">
+          <div v-for="(result, idx) in batchResults" :key="idx" class="batch-item">
+            <div class="batch-item-header">
+              <span class="batch-filename">{{ result.image_name || `图片 ${idx + 1}` }}</span>
+              <div class="batch-item-stats">
+                <el-tag size="small" type="success">{{ result.total_objects || 0 }} 个目标</el-tag>
+                <el-tag size="small" type="info">{{ result.inference_time?.toFixed(1) }}ms</el-tag>
+              </div>
+            </div>
+            <div class="batch-canvas-wrap">
+              <canvas :ref="el => batchCanvasRefs[idx] = el" class="detection-canvas"></canvas>
+            </div>
+            <el-table v-if="result.detections?.length" :data="result.detections" stripe size="small" max-height="160">
+              <el-table-column prop="class_name" label="类别" width="100" />
+              <el-table-column prop="confidence" label="置信度" width="90">
+                <template #default="{ row }">
+                  {{ (row.confidence * 100).toFixed(1) }}%
+                </template>
+              </el-table-column>
+              <el-table-column label="位置">
+                <template #default="{ row }">
+                  {{ row.bbox.map(v => v.toFixed(0)).join(', ') }}
+                </template>
+              </el-table-column>
+            </el-table>
+            <div v-else class="batch-no-detection">未检测到目标</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 空状态 -->
       <div v-else class="empty-result">
         <el-icon :size="64"><Aim /></el-icon>
@@ -183,10 +235,13 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { UploadFilled, Aim, VideoCamera } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getScenesApi, detectSingleApi, detectBatchApi, detectVideoApi } from '@/api/detection'
+import { getSceneModelsApi } from '@/api/model'
 
 // 场景列表
 const scenes = ref([])
 const selectedScene = ref(null)
+const selectedModelId = ref(null)
+const sceneModels = ref([])
 const detectMode = ref('single')
 const confThreshold = ref(0.25)
 const iouThreshold = ref(0.45)
@@ -198,6 +253,8 @@ const uploadRef = ref(null)
 // 检测状态
 const detecting = ref(false)
 const detectionResult = ref(null)
+const batchResults = ref([])
+const batchCanvasRefs = ref([])
 const canvasRef = ref(null)
 const currentImage = ref(null)
 
@@ -219,6 +276,8 @@ async function loadScenes() {
     scenes.value = res.data || []
     if (scenes.value.length > 0) {
       selectedScene.value = scenes.value[0].id
+      // 自动选中首个场景后加载其关联模型
+      await onSceneChange()
     }
   } catch (error) {
     console.error('加载场景失败:', error)
@@ -226,14 +285,36 @@ async function loadScenes() {
 }
 
 // 场景变更
-function onSceneChange() {
+async function onSceneChange() {
   detectionResult.value = null
   fileList.value = []
+  selectedModelId.value = null
+  // 加载场景关联的已启用模型
+  if (selectedScene.value) {
+    try {
+      const res = await getSceneModelsApi(selectedScene.value)
+      sceneModels.value = res.data || []
+      // 自动选中场景的默认模型
+      const defaultModel = sceneModels.value.find(m => m.is_default)
+      if (defaultModel) {
+        selectedModelId.value = defaultModel.model_id
+      }
+    } catch (error) {
+      console.error('加载模型列表失败:', error)
+      sceneModels.value = []
+    }
+  } else {
+    sceneModels.value = []
+  }
 }
 
 // 文件变更
-function handleFileChange(file) {
-  if (detectMode.value !== 'batch') {
+function handleFileChange(file, uploadFiles) {
+  if (detectMode.value === 'batch') {
+    // 批量模式：使用 uploadFiles（el-upload 内部完整文件列表）
+    fileList.value = uploadFiles
+  } else {
+    // 单图/视频模式：只保留当前文件
     fileList.value = [file]
   }
 }
@@ -254,6 +335,13 @@ async function startDetection() {
       conf_threshold: confThreshold.value,
       iou_threshold: iouThreshold.value
     }
+    // 根据选中的模型获取其默认版本ID
+    if (selectedModelId.value) {
+      const selectedModel = sceneModels.value.find(m => m.model_id === selectedModelId.value)
+      if (selectedModel?.default_version_id) {
+        params.model_version_id = selectedModel.default_version_id
+      }
+    }
 
     let res
     if (detectMode.value === 'single') {
@@ -261,25 +349,36 @@ async function startDetection() {
         ...params,
         image: fileList.value[0].raw
       })
+      detectionResult.value = res.data
     } else if (detectMode.value === 'batch') {
       res = await detectBatchApi({
         ...params,
         images: fileList.value.map(f => f.raw)
       })
+      // 批量结果：附带文件名便于展示
+      batchResults.value = (res.data?.results || []).map((r, i) => ({
+        ...r,
+        image_name: fileList.value[i]?.name || `图片 ${i + 1}`,
+      }))
     } else {
       res = await detectVideoApi({
         ...params,
         video: fileList.value[0].raw
       })
+      detectionResult.value = res.data
     }
 
-    detectionResult.value = res.data
     ElMessage.success('检测完成')
 
     // 绘制检测框
-    if (detectMode.value !== 'video') {
-      await nextTick()
+    await nextTick()
+    if (detectMode.value === 'single') {
       drawDetections()
+    } else if (detectMode.value === 'batch') {
+      drawBatchDetections()
+      // 批量检测完成后清理已上传的文件列表
+      fileList.value = []
+      uploadRef.value?.clearFiles()
     }
   } catch (error) {
     ElMessage.error('检测失败: ' + (error.message || '未知错误'))
@@ -308,6 +407,9 @@ function drawDetections() {
     // 绘制图像
     ctx.drawImage(img, 0, 0)
     
+    // 释放 Object URL，避免内存泄漏
+    URL.revokeObjectURL(img.src)
+    
     // 绘制检测框
     const detections = detectionResult.value.detections || []
     detections.forEach(det => {
@@ -334,10 +436,52 @@ function drawDetections() {
   img.src = URL.createObjectURL(file.raw)
 }
 
+// 绘制批量检测框
+function drawBatchDetections() {
+  if (batchResults.value.length === 0) return
+
+  batchResults.value.forEach((result, idx) => {
+    const file = fileList.value[idx]
+    if (!file) return
+
+    const canvas = batchCanvasRefs.value[idx]
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    const img = new Image()
+
+    img.onload = () => {
+      canvas.width = img.width
+      canvas.height = img.height
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(img.src)
+
+      const detections = result.detections || []
+      detections.forEach(det => {
+        const [x1, y1, x2, y2] = det.bbox
+        ctx.strokeStyle = '#409eff'
+        ctx.lineWidth = 2
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+
+        const label = `${det.class_name} ${(det.confidence * 100).toFixed(0)}%`
+        ctx.font = '14px Arial'
+        const textWidth = ctx.measureText(label).width
+        ctx.fillStyle = '#409eff'
+        ctx.fillRect(x1, y1 - 24, textWidth + 10, 24)
+        ctx.fillStyle = '#fff'
+        ctx.fillText(label, x1 + 5, y1 - 6)
+      })
+    }
+
+    img.src = URL.createObjectURL(file.raw)
+  })
+}
+
 // 监听检测模式变化
 watch(detectMode, () => {
   fileList.value = []
   detectionResult.value = null
+  batchResults.value = []
   if (detectMode.value !== 'camera' && cameraActive.value) {
     stopCamera()
   }
@@ -370,12 +514,15 @@ async function startCamera() {
       videoRef.value.srcObject = mediaStream
     }
     
-    // 连接 WebSocket（动态获取后端地址）
+    // 连接 WebSocket
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsHost = import.meta.env.DEV 
-      ? `${window.location.hostname}:8888`  // 开发环境直连后端
-      : window.location.host                  // 生产环境使用当前 host
-    const wsUrl = `${protocol}//${wsHost}/api/camera/detect?scene_id=${selectedScene.value}`
+    // 开发环境直连后端 WebSocket（Vite 代理不转发 WS 消息体）
+    const wsHost = import.meta.env.DEV
+      ? `${window.location.hostname}:8888`
+      : window.location.host
+    // 认证：优先通过 query 参数传递 token（HttpOnly cookie 在 ws:// 下不可用）
+    const wsToken = localStorage.getItem('ws_token') || ''
+    const wsUrl = `${protocol}//${wsHost}/api/camera/detect?scene_id=${selectedScene.value}&token=${encodeURIComponent(wsToken)}`
     ws = new WebSocket(wsUrl)
     
     ws.onopen = () => {
@@ -439,6 +586,17 @@ function stopCamera() {
   cameraObjects.value = 0
 }
 
+// 复用离屏 canvas，避免帧循环中重复创建导致内存泄漏
+let _frameCanvas = null
+function getFrameCanvas(width, height) {
+  if (!_frameCanvas) {
+    _frameCanvas = document.createElement('canvas')
+  }
+  _frameCanvas.width = width
+  _frameCanvas.height = height
+  return _frameCanvas
+}
+
 // 循环发送帧
 function sendFrameLoop() {
   if (!cameraActive.value || !ws || ws.readyState !== WebSocket.OPEN) return
@@ -449,17 +607,23 @@ function sendFrameLoop() {
     return
   }
   
-  // 创建临时 canvas 抽帧
-  const tempCanvas = document.createElement('canvas')
-  tempCanvas.width = video.videoWidth
-  tempCanvas.height = video.videoHeight
+  // 复用离屏 canvas 抽帧
+  const tempCanvas = getFrameCanvas(video.videoWidth, video.videoHeight)
   const tempCtx = tempCanvas.getContext('2d')
   tempCtx.drawImage(video, 0, 0)
   
-  // 转换为 JPEG 并发送
+  // 转换为 JPEG 并发送（使用 base64 文本编码，避免 Vite 代理二进制 WebSocket 消息问题）
   tempCanvas.toBlob((blob) => {
     if (blob && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(blob)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        // reader.result 是 "data:image/jpeg;base64,..." 格式
+        const base64 = reader.result.split(',')[1]
+        if (base64 && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(base64)
+        }
+      }
+      reader.readAsDataURL(blob)
     }
   }, 'image/jpeg', 0.7)
   
@@ -555,6 +719,11 @@ onUnmounted(() => {
       color: $text-secondary;
       font-size: 12px;
     }
+
+    .optional-hint {
+      color: $text-placeholder;
+      font-size: 12px;
+    }
   }
 
   .detect-btn {
@@ -602,6 +771,61 @@ onUnmounted(() => {
     max-height: 500px;
     border: 1px solid #ebeef5;
     border-radius: $border-radius-md;
+  }
+}
+
+.batch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: $spacing-lg;
+  margin-bottom: $spacing-lg;
+}
+
+.batch-item {
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: $border-radius-md;
+  padding: $spacing-md;
+
+  .batch-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: $spacing-sm;
+
+    .batch-filename {
+      font-weight: 500;
+      font-size: 14px;
+      color: $text-primary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+    }
+
+    .batch-item-stats {
+      display: flex;
+      gap: 4px;
+    }
+  }
+
+  .batch-canvas-wrap {
+    text-align: center;
+    margin-bottom: $spacing-sm;
+
+    .detection-canvas {
+      max-width: 100%;
+      max-height: 280px;
+      border: 1px solid #ebeef5;
+      border-radius: $border-radius-sm;
+    }
+  }
+
+  .batch-no-detection {
+    text-align: center;
+    padding: $spacing-sm;
+    color: $text-placeholder;
+    font-size: 13px;
   }
 }
 

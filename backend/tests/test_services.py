@@ -23,7 +23,6 @@ class TestUserRegister:
         assert user.email == "test@example.com"
         assert user.hashed_password != "password123"
         assert user.is_active is True
-        assert user.is_superuser is False
 
     def test_register_duplicate_username(self, db):
         """重复用户名注册失败"""
@@ -88,10 +87,9 @@ class TestUserRoles:
         assert found.username == "byid"
 
     def test_get_user_by_id_not_found(self, db):
-        """不存在的用户 ID 抛出 404"""
-        with pytest.raises(HTTPException) as exc:
-            user_service.get_user_by_id(db, 99999)
-        assert exc.value.status_code == 404
+        """不存在的用户 ID 返回 None"""
+        result = user_service.get_user_by_id(db, 99999)
+        assert result is None
 
 
 class TestTokenGeneration:

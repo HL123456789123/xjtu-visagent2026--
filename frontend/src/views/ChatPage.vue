@@ -57,16 +57,6 @@
           </div>
           <!-- 消息内容 -->
           <div class="message-content">
-            <!-- 工具调用展示 -->
-            <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
-              <div v-for="(tool, tIdx) in msg.tool_calls" :key="tIdx" class="tool-call">
-                <el-tag type="info" size="small">
-                  <el-icon><SetUp /></el-icon>
-                  {{ tool.name }}
-                </el-tag>
-                <span class="tool-desc">{{ tool.description }}</span>
-              </div>
-            </div>
             <!-- 消息文本 -->
             <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
             <!-- 时间 -->
@@ -88,6 +78,11 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- 503 服务不可用提示 (V1) -->
+      <div v-if="serviceUnavailable" class="service-unavailable-banner" data-testid="service-unavailable-banner">
+        <span>智能服务暂时不可用，请稍后重试。</span>
       </div>
 
       <!-- 输入区域 -->
@@ -115,11 +110,27 @@
 
 <script setup>
 import { ref, onMounted, nextTick, watch } from 'vue'
-import { Plus, ChatDotRound, Delete, Monitor, User, SetUp, Promotion } from '@element-plus/icons-vue'
+import { Plus, ChatDotRound, Delete, Monitor, User, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createSessionApi, getSessionsApi, getMessagesApi, deleteSessionApi } from '@/api/chat'
-import { streamChat } from '@/utils/stream'
+import {
+  createChatSession,
+  createSessionApi,
+  getSessionsApi,
+  getMessagesApi,
+  deleteSessionApi,
+  sendChatMessage,
+} from '@/api/chat'
 import { renderMarkdown } from '@/utils/markdown'
+import { formatTime } from '@/utils/format'
+
+const props = defineProps({
+  recipeId: {
+    type: Number,
+    default: null,
+  },
+})
+
+const emit = defineEmits(['recipe-updated', 'service-unavailable'])
 
 // 会话列表
 const sessions = ref([])
@@ -128,6 +139,7 @@ const messages = ref([])
 const inputMessage = ref('')
 const loading = ref(false)
 const messageListRef = ref(null)
+const serviceUnavailable = ref(false)
 
 // 加载会话列表
 async function loadSessions() {
@@ -139,20 +151,26 @@ async function loadSessions() {
   }
 }
 
-// 创建新会话
+// 创建新会话（V1: 只传 recipe_id）
 async function createSession() {
   try {
-    const res = await createSessionApi({ title: `对话 ${sessions.value.length + 1}` })
+    let res
+    if (props.recipeId) {
+      // V1: POST /api/chat/sessions 只传 recipe_id
+      res = await createChatSession(props.recipeId)
+    } else {
+      // 兼容：无 recipeId 时使用旧版接口
+      res = await createSessionApi({ title: `对话 ${sessions.value.length + 1}` })
+    }
     if (res.data) {
-      // 后端返回的数据结构：{ session_id, session_uuid, title }
-      // 需要转换为前端期望的数据结构：{ id, session_uuid, title, ... }
       const session = {
         id: res.data.session_id,
+        recipe_id: res.data.recipe_id,
         session_uuid: res.data.session_uuid,
-        title: res.data.title,
+        title: res.data.title || `对话 ${sessions.value.length + 1}`,
         message_count: 0,
         last_message_at: new Date().toISOString(),
-        created_at: new Date().toISOString()
+        created_at: res.data.created_at || new Date().toISOString()
       }
       sessions.value.unshift(session)
       await selectSession(session)
@@ -204,9 +222,15 @@ async function sendMessage() {
 
   // 如果没有会话，先创建
   if (!currentSession.value) {
-    await createSession()
-    // 创建会话成功后，currentSession.value 已经被设置
-    doSendMessage(message)
+    try {
+      await createSession()
+      // 创建会话失败则中止
+      if (!currentSession.value) return
+      doSendMessage(message)
+    } catch (error) {
+      ElMessage.error('创建会话失败')
+      return
+    }
   } else {
     doSendMessage(message)
   }
@@ -221,64 +245,51 @@ function doSendMessage(message) {
   })
   inputMessage.value = ''
   loading.value = true
+  serviceUnavailable.value = false
   scrollToBottom()
 
-  // 发起 SSE 流式请求
-  // 后端期望 message 作为 JSON body
-  const url = `/api/chat/sessions/${currentSession.value.id}/messages`
-  const stop = streamChat(
-    url,
-    { message },
+  // V1: POST /api/chat/sessions/{session_id}/messages
+  // 请求体只传 content，SSE 只解析 token/recipe_updated/done/error
+  const stop = sendChatMessage(
+    currentSession.value.id,
+    message,
     {
-      onMessage: (data) => {
-        if (typeof data === 'string') {
-          // 普通文本消息
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += data
-          } else {
-            messages.value.push({
-              role: 'assistant',
-              content: data,
-              created_at: new Date().toISOString()
-            })
-          }
-        } else if (data.type === 'tool_call') {
-          // 工具调用
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            if (!lastMsg.tool_calls) lastMsg.tool_calls = []
-            lastMsg.tool_calls.push({
-              name: data.name,
-              description: data.description
-            })
-          }
-        } else if (data.type === 'error') {
-          // 错误消息
-          ElMessage.error(data.content || '处理消息时出现错误')
-        } else if (data.type === 'token') {
-          // 流式 token
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += data.content
-          } else {
-            messages.value.push({
-              role: 'assistant',
-              content: data.content,
-              created_at: new Date().toISOString()
-            })
-          }
+      onToken: (payload) => {
+        // token 事件: {"content":"..."}
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg?.role === 'assistant') {
+          lastMsg.content += payload.content
+        } else {
+          messages.value.push({
+            role: 'assistant',
+            content: payload.content,
+            created_at: new Date().toISOString()
+          })
         }
         scrollToBottom()
+      },
+      onRecipeUpdated: (payload) => {
+        // recipe_updated 事件: {"recipe_id":101,"version":2}
+        // 受控刷新：emit 事件交由父组件决策是否重新 GET
+        emit('recipe-updated', {
+          recipe_id: payload.recipe_id,
+          version: payload.version,
+        })
       },
       onDone: () => {
         loading.value = false
       },
-      onError: (err) => {
+      onError: (payload) => {
         loading.value = false
-        ElMessage.error('发送消息失败')
-        console.error('Stream error:', err)
-      }
+        // 503 / LLM_UNAVAILABLE
+        if (payload?.code === 'LLM_UNAVAILABLE' || payload?.code === 'HTTP_ERROR') {
+          serviceUnavailable.value = true
+          emit('service-unavailable', payload)
+          ElMessage.error(payload.message || '智能服务暂时不可用')
+        } else {
+          ElMessage.error(payload?.message || '处理消息时出现错误')
+        }
+      },
     }
   )
 }
@@ -292,12 +303,7 @@ function scrollToBottom() {
   })
 }
 
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  const date = new Date(timestamp)
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
+// 使用公共的 formatTime 函数
 
 // 监听消息变化，自动滚动
 watch(messages, () => {
@@ -311,29 +317,53 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .chat-page {
-  display: flex;
-  height: calc(100vh - #{$header-height} - 40px);
-  background: $bg-color;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 22px;
+  min-height: calc(100vh - #{$header-height});
+  padding: clamp(18px, 4vw, 42px);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 213, 118, 0.34), transparent 28%),
+    radial-gradient(circle at 86% 8%, rgba(137, 169, 79, 0.18), transparent 26%),
+    linear-gradient(180deg, #fff8ea 0%, #fffdf7 48%, #f8efe3 100%);
+  color: #3a2a1d;
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
 .session-list {
-  width: 280px;
-  background: #fff;
-  border-right: 1px solid #ebeef5;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.12);
+  backdrop-filter: blur(18px);
   display: flex;
   flex-direction: column;
 
   .session-header {
-    padding: $spacing-md;
-    border-bottom: 1px solid #ebeef5;
+    padding: 20px;
+    border-bottom: 1px solid rgba(121, 82, 45, 0.1);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
 
     h3 {
       margin: 0;
-      font-size: 16px;
-      color: $text-primary;
+      color: #3a2a1d;
+      font-family: Georgia, "Songti SC", serif;
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    :deep(.el-button) {
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #f1a93b, #e96d3b);
+      color: #fffaf0;
+      font-weight: 800;
+      box-shadow: 0 10px 22px rgba(229, 104, 52, 0.18);
     }
   }
 
@@ -347,18 +377,23 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: $spacing-sm;
-    padding: $spacing-sm $spacing-md;
-    border-radius: $border-radius-md;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-radius: 18px;
+    color: #6f5038;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, color 0.2s, transform 0.2s;
 
     &:hover {
-      background: #f5f7fa;
+      background: #fff8ea;
+      transform: translateY(-1px);
     }
 
     &.active {
-      background: #ecf5ff;
-      color: $primary-color;
+      border-color: rgba(233, 109, 59, 0.2);
+      background: #fff1d2;
+      color: #d76626;
+      font-weight: 800;
     }
 
     .session-title {
@@ -371,25 +406,32 @@ onMounted(() => {
 }
 
 .chat-container {
-  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  overflow: hidden;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.12);
+  backdrop-filter: blur(18px);
 }
 
 .chat-header {
-  padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid #ebeef5;
+  padding: 22px 26px;
+  border-bottom: 1px solid rgba(121, 82, 45, 0.1);
 
   h3 {
     margin: 0;
-    font-size: 18px;
-    color: $text-primary;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 28px;
+    font-weight: 500;
   }
 
   .session-info {
     font-size: 12px;
-    color: $text-secondary;
+    color: #9a7659;
   }
 }
 
@@ -405,16 +447,24 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: $text-secondary;
+  color: #856449;
+  border: 1px dashed rgba(121, 82, 45, 0.18);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 218, 132, 0.24), transparent 34%),
+    rgba(255, 252, 244, 0.55);
 
   p {
     margin: $spacing-md 0 0;
-    font-size: 16px;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 24px;
   }
 
   .hint {
     font-size: 14px;
-    color: $text-placeholder;
+    color: #9a7659;
+    font-family: inherit;
   }
 }
 
@@ -427,9 +477,10 @@ onMounted(() => {
     justify-content: flex-end;
 
     .message-content {
-      background: $primary-color;
-      color: #fff;
-      border-radius: $border-radius-lg $border-radius-lg 0 $border-radius-lg;
+      background: linear-gradient(135deg, #f1a93b, #e96d3b);
+      color: #fffaf0;
+      border-radius: 22px 22px 4px 22px;
+      box-shadow: 0 12px 26px rgba(229, 104, 52, 0.16);
     }
   }
 
@@ -437,9 +488,10 @@ onMounted(() => {
     justify-content: flex-start;
 
     .message-content {
-      background: #f5f7fa;
-      color: $text-primary;
-      border-radius: $border-radius-lg $border-radius-lg $border-radius-lg 0;
+      border: 1px solid rgba(121, 82, 45, 0.1);
+      background: #fffaf1;
+      color: #3a2a1d;
+      border-radius: 22px 22px 22px 4px;
     }
   }
 }
@@ -454,38 +506,19 @@ onMounted(() => {
   flex-shrink: 0;
 
   &.ai-avatar {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: #fff;
+    background: linear-gradient(135deg, #89a94f, #e6a23c);
+    color: #fffaf0;
   }
 
   &.user-avatar {
-    background: $primary-color;
-    color: #fff;
+    background: #f58220;
+    color: #fffaf0;
   }
 }
 
 .message-content {
   max-width: 70%;
   padding: $spacing-md;
-
-  .tool-calls {
-    margin-bottom: $spacing-sm;
-    padding: $spacing-sm;
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: $border-radius-sm;
-
-    .tool-call {
-      display: flex;
-      align-items: center;
-      gap: $spacing-sm;
-      margin-bottom: $spacing-xs;
-
-      .tool-desc {
-        font-size: 12px;
-        color: $text-secondary;
-      }
-    }
-  }
 
   .message-text {
     line-height: 1.6;
@@ -503,8 +536,8 @@ onMounted(() => {
     }
 
     :deep(pre) {
-      background: #1e1e1e;
-      color: #d4d4d4;
+      background: $code-bg;
+      color: $code-text;
       padding: $spacing-md;
       border-radius: $border-radius-md;
       overflow-x: auto;
@@ -540,9 +573,18 @@ onMounted(() => {
   40% { transform: scale(1); }
 }
 
-.input-area {
+.service-unavailable-banner {
   padding: $spacing-md $spacing-lg;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid rgba(224, 82, 62, 0.16);
+  background: #fff1e9;
+  color: #c44b37;
+  font-size: 14px;
+  text-align: center;
+}
+
+.input-area {
+  padding: 18px 22px;
+  border-top: 1px solid rgba(121, 82, 45, 0.1);
   display: flex;
   gap: $spacing-md;
 
@@ -552,6 +594,28 @@ onMounted(() => {
 
   .el-button {
     align-self: flex-end;
+    min-width: 92px;
+    border: 0;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #f1a93b, #e96d3b);
+    color: #fffaf0;
+    font-weight: 900;
+    box-shadow: 0 12px 26px rgba(229, 104, 52, 0.18);
+  }
+
+  :deep(.el-textarea__inner) {
+    border-radius: 18px;
+    box-shadow: 0 0 0 1px rgba(121, 82, 45, 0.14) inset;
+  }
+}
+
+@media (max-width: 860px) {
+  .chat-page {
+    grid-template-columns: 1fr;
+  }
+
+  .session-list {
+    max-height: 260px;
   }
 }
 </style>

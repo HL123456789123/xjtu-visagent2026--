@@ -1,174 +1,187 @@
 <template>
   <div class="training-page">
-    <!-- 左侧任务列表 -->
-    <div class="task-list-panel">
-      <div class="panel-header">
-        <h3>训练任务</h3>
-        <div class="header-actions">
-          <el-button type="primary" size="small" @click="showCreateDialog = true">
-            <el-icon><Plus /></el-icon>新建任务
-          </el-button>
-          <el-button type="success" size="small" @click="showUploadDialog = true">
-            <el-icon><Upload /></el-icon>上传模型
-          </el-button>
-        </div>
-      </div>
-      
-      <!-- 任务状态筛选 -->
-      <div class="status-filter">
-        <el-radio-group v-model="statusFilter" size="small" @change="loadTasks">
-          <el-radio-button value="">全部</el-radio-button>
-          <el-radio-button value="pending">等待中</el-radio-button>
-          <el-radio-button value="running">运行中</el-radio-button>
-          <el-radio-button value="completed">已完成</el-radio-button>
-          <el-radio-button value="failed">失败</el-radio-button>
-        </el-radio-group>
-      </div>
-
-      <!-- 任务列表 -->
-      <div class="task-items">
-        <div
-          v-for="task in tasks"
-          :key="task.id"
-          :class="['task-item', { active: currentTask?.id === task.id, running: task.status === 'running' }]"
-          @click="selectTask(task)"
-        >
-          <div class="task-info">
-            <div class="task-name">{{ task.model_name }} - 场景 #{{ task.scene_id }}</div>
-            <div class="task-meta">
-              <el-tag :type="getStatusType(task.status)" size="small">
-                {{ getStatusText(task.status) }}
-              </el-tag>
-              <span class="task-time">{{ formatTime(task.created_at) }}</span>
-            </div>
-          </div>
-          <el-progress
-            v-if="task.status === 'running'"
-            :percentage="task.progress || 0"
-            :stroke-width="4"
-            :show-text="false"
-          />
-        </div>
-        <div v-if="tasks.length === 0" class="empty-tasks">
-          <el-icon :size="48"><Cpu /></el-icon>
-          <p>暂无训练任务</p>
-        </div>
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <h3>训练任务</h3>
+      <div class="header-actions">
+        <el-button type="primary" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>新建任务
+        </el-button>
       </div>
     </div>
 
-    <!-- 右侧详情面板 -->
-    <div class="detail-panel">
-      <template v-if="currentTask">
-        <!-- 任务信息 -->
-        <div class="task-detail-card">
-          <div class="card-header">
-            <h3>任务详情</h3>
-            <div class="task-actions">
+    <!-- 状态筛选 -->
+    <div class="filter-bar">
+      <el-radio-group v-model="statusFilter" size="default" @change="loadTasks">
+        <el-radio-button value="">全部</el-radio-button>
+        <el-radio-button value="pending">等待中</el-radio-button>
+        <el-radio-button value="running">运行中</el-radio-button>
+        <el-radio-button value="paused">已暂停</el-radio-button>
+        <el-radio-button value="completed">已完成</el-radio-button>
+        <el-radio-button value="failed">失败</el-radio-button>
+        <el-radio-button value="cancelled">已取消</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <!-- 任务列表 -->
+    <div class="task-table-wrapper">
+      <el-table
+        :data="tasks"
+        v-loading="loading"
+        stripe
+        style="width: 100%"
+        empty-text="暂无训练任务"
+      >
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="base_architecture" label="基础架构" width="120" />
+        <el-table-column prop="epochs" label="轮数" width="70" />
+        <el-table-column prop="batch_size" label="批次" width="70" />
+        <el-table-column prop="device" label="设备" width="70" />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" size="small">
+              {{ getStatusText(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="进度" width="140">
+          <template #default="{ row }">
+            <el-progress
+              v-if="row.status === 'running'"
+              :percentage="row.progress || 0"
+              :stroke-width="6"
+              :width="100"
+            />
+            <span v-else-if="row.status === 'completed'">100%</span>
+            <span v-else class="text-muted">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="170">
+          <template #default="{ row }">
+            {{ formatTime(row.created_at) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="260" fixed="right">
+          <template #default="{ row }">
+            <div class="row-actions">
               <el-button
-                v-if="currentTask.status === 'pending'"
+                v-if="row.status === 'pending'"
                 type="success"
                 size="small"
-                @click="startTask"
+                link
+                @click="startTask(row)"
               >
                 <el-icon><VideoPlay /></el-icon>启动
               </el-button>
               <el-button
-                v-if="currentTask.status === 'running'"
+                v-if="row.status === 'running'"
                 type="warning"
                 size="small"
-                @click="pauseTask"
+                link
+                @click="pauseTask(row)"
               >
                 <el-icon><VideoPause /></el-icon>暂停
               </el-button>
               <el-button
-                v-if="['pending', 'running', 'paused'].includes(currentTask.status)"
+                v-if="row.status === 'paused'"
+                type="success"
+                size="small"
+                link
+                @click="resumeTask(row)"
+              >
+                <el-icon><VideoPlay /></el-icon>恢复
+              </el-button>
+              <el-button
+                v-if="['pending', 'running', 'paused'].includes(row.status)"
+                type="warning"
+                size="small"
+                link
+                @click="cancelTask(row)"
+              >
+                取消
+              </el-button>
+              <el-button
+                v-if="row.status !== 'running'"
                 type="danger"
                 size="small"
-                @click="cancelTask"
+                link
+                @click="deleteTask(row)"
               >
-                <el-icon><Close /></el-icon>取消
+                删除
+              </el-button>
+              <el-button
+                type="primary"
+                size="small"
+                link
+                @click="showDetail(row)"
+              >
+                详情
               </el-button>
             </div>
-          </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="任务ID">{{ currentTask.id }}</el-descriptions-item>
-            <el-descriptions-item label="模型">{{ currentTask.model_name }}</el-descriptions-item>
-            <el-descriptions-item label="状态">
-              <el-tag :type="getStatusType(currentTask.status)">
-                {{ getStatusText(currentTask.status) }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="场景ID">{{ currentTask.scene_id }}</el-descriptions-item>
-            <el-descriptions-item label="训练轮数">{{ currentTask.epochs }}</el-descriptions-item>
-            <el-descriptions-item label="批次大小">{{ currentTask.batch_size }}</el-descriptions-item>
-            <el-descriptions-item label="学习率">{{ currentTask.lr0 }}</el-descriptions-item>
-            <el-descriptions-item label="设备">{{ currentTask.device }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间" :span="2">
-              {{ formatTime(currentTask.created_at) }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </div>
+    <!-- 任务详情对话框 -->
+    <el-dialog
+      v-model="showDetailDialog"
+      title="任务详情"
+      width="800px"
+      destroy-on-close
+      @closed="onDetailClosed"
+    >
+      <div v-if="detailTask">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="任务ID">{{ detailTask.id }}</el-descriptions-item>
+          <el-descriptions-item label="基础架构">{{ detailTask.base_architecture }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="getStatusType(detailTask.status)">
+              {{ getStatusText(detailTask.status) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="训练轮数">{{ detailTask.epochs }}</el-descriptions-item>
+          <el-descriptions-item label="批次大小">{{ detailTask.batch_size }}</el-descriptions-item>
+          <el-descriptions-item label="学习率">{{ detailTask.lr0 }}</el-descriptions-item>
+          <el-descriptions-item label="设备">{{ detailTask.device }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间" :span="2">
+            {{ formatTime(detailTask.created_at) }}
+          </el-descriptions-item>
+        </el-descriptions>
 
-        <!-- 训练指标图表 -->
-        <div v-if="metrics && metrics.length > 0" class="metrics-card">
-          <div class="card-header">
-            <h3>训练指标</h3>
-            <el-button size="small" @click="refreshMetrics">
-              <el-icon><Refresh /></el-icon>刷新
-            </el-button>
-          </div>
-          
+        <div v-if="metrics && metrics.length > 0" class="detail-metrics">
+          <h4>训练指标</h4>
           <div class="charts-container">
             <div class="chart-item">
-              <h4>损失函数 (Loss)</h4>
+              <h5>损失函数 (Loss)</h5>
               <div ref="lossChartRef" class="chart"></div>
             </div>
             <div class="chart-item">
-              <h4>mAP 指标</h4>
+              <h5>mAP 指标</h5>
               <div ref="mapChartRef" class="chart"></div>
             </div>
           </div>
         </div>
 
-        <!-- 训练日志 -->
-        <div class="log-card">
-          <div class="card-header">
-            <h3>训练日志</h3>
-          </div>
+        <div class="detail-logs">
+          <h4>训练日志</h4>
           <div class="log-content">
-            <pre>{{ currentTask.logs || '暂无日志' }}</pre>
+            <pre>{{ detailTask.logs || '暂无日志' }}</pre>
           </div>
         </div>
-      </template>
-
-      <!-- 空状态 -->
-      <div v-else class="empty-detail">
-        <el-icon :size="64"><Cpu /></el-icon>
-        <p>选择任务查看详情</p>
       </div>
-    </div>
+    </el-dialog>
 
     <!-- 创建任务对话框 -->
     <el-dialog v-model="showCreateDialog" title="创建训练任务" width="500px">
       <el-form :model="createForm" label-width="100px">
-        <el-form-item label="检测场景" required>
-          <el-select v-model="createForm.scene_id" placeholder="选择场景">
-            <el-option
-              v-for="scene in scenes"
-              :key="scene.id"
-              :label="scene.display_name"
-              :value="scene.id"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item label="基础模型">
           <el-select v-model="createForm.model_name">
-            <el-option label="YOLOv11n (轻量)" value="yolov11n" />
-            <el-option label="YOLOv11s (小型)" value="yolov11s" />
-            <el-option label="YOLOv11m (中型)" value="yolov11m" />
-            <el-option label="YOLOv11l (大型)" value="yolov11l" />
-            <el-option label="YOLOv11x (超大)" value="yolov11x" />
+            <el-option label="YOLO26n (轻量)" value="yolo26n" />
+            <el-option label="YOLO26s (小型)" value="yolo26s" />
+            <el-option label="YOLO26m (中型)" value="yolo26m" />
+            <el-option label="YOLO26l (大型)" value="yolo26l" />
+            <el-option label="YOLO26x (超大)" value="yolo26x" />
           </el-select>
         </el-form-item>
         <el-form-item label="训练轮数">
@@ -181,16 +194,35 @@
           <el-input-number v-model="createForm.lr0" :min="0.0001" :max="0.1" :step="0.001" :precision="4" />
         </el-form-item>
         <el-form-item label="训练设备">
-          <el-select v-model="createForm.device">
-            <el-option label="CPU" value="cpu" />
-            <el-option label="GPU 0" value="0" />
+          <el-select v-model="createForm.device" placeholder="选择训练设备">
+            <el-option
+              v-for="d in devices"
+              :key="d.value"
+              :label="d.label"
+              :value="d.value"
+            >
+              <span>{{ d.label }}</span>
+              <span style="color: #999; font-size: 12px; margin-left: 8px">{{ d.description }}</span>
+            </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="数据集路径" required>
-          <el-input v-model="createForm.dataset_path" placeholder="数据集根目录路径" />
-        </el-form-item>
-        <el-form-item label="配置文件" required>
-          <el-input v-model="createForm.data_yaml" placeholder="data.yaml 文件路径" />
+        <el-form-item label="数据集" required>
+          <el-select
+            v-model="createForm.dataset_id"
+            placeholder="选择已注册的数据集"
+            filterable
+            @change="onDatasetSelected"
+          >
+            <el-option
+              v-for="ds in datasets"
+              :key="ds.id"
+              :label="ds.name"
+              :value="ds.id"
+            >
+              <span>{{ ds.name }}</span>
+              <span style="color: #999; font-size: 12px; margin-left: 8px">{{ ds.num_images }}张 / {{ ds.num_classes }}类</span>
+            </el-option>
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -199,123 +231,65 @@
       </template>
     </el-dialog>
 
-    <!-- 上传模型对话框 -->
-    <el-dialog v-model="showUploadDialog" title="上传训练模型" width="500px">
-      <el-form :model="uploadForm" label-width="100px">
-        <el-form-item label="检测场景" required>
-          <el-select v-model="uploadForm.scene_id" placeholder="选择模型对应的场景">
-            <el-option
-              v-for="scene in scenes"
-              :key="scene.id"
-              :label="scene.display_name"
-              :value="scene.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="模型文件" required>
-          <el-upload
-            :auto-upload="false"
-            :limit="1"
-            accept=".pt"
-            :on-change="handleModelFileChange"
-            :file-list="uploadForm.model_file ? [{ name: uploadForm.model_file.name }] : []"
-          >
-            <el-button type="primary" size="small">选择文件</el-button>
-            <template #tip>
-              <div class="el-upload__tip">支持 .pt 格式的 YOLO 模型文件</div>
-            </template>
-          </el-upload>
-        </el-form-item>
-        <el-form-item label="模型名称" required>
-          <el-input v-model="uploadForm.model_name" placeholder="如 visagent_yolov11n" />
-        </el-form-item>
-        <el-form-item label="版本号" required>
-          <el-input v-model="uploadForm.version" placeholder="如 v1.0.0" />
-        </el-form-item>
-        <el-form-item label="模型类型">
-          <el-select v-model="uploadForm.model_type">
-            <el-option label="YOLOv11n (轻量)" value="yolov11n" />
-            <el-option label="YOLOv11s (小型)" value="yolov11s" />
-            <el-option label="YOLOv11m (中型)" value="yolov11m" />
-            <el-option label="YOLOv11l (大型)" value="yolov11l" />
-            <el-option label="YOLOv11x (超大)" value="yolov11x" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="模型描述">
-          <el-input v-model="uploadForm.description" type="textarea" :rows="2" placeholder="模型说明（可选）" />
-        </el-form-item>
-        <el-form-item label="设为默认">
-          <el-switch v-model="uploadForm.is_default" />
-          <span class="form-tip">开启后该场景的检测将使用此模型</span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showUploadDialog = false">取消</el-button>
-        <el-button type="primary" @click="uploadModel" :loading="uploading">上传</el-button>
-      </template>
-    </el-dialog>
+
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { Plus, Cpu, VideoPlay, VideoPause, Close, Refresh, Upload } from '@element-plus/icons-vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { Plus, VideoPlay, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 import {
   getTrainingTasksApi,
   createTrainingTaskApi,
   startTrainingApi,
   pauseTrainingApi,
   cancelTrainingApi,
+  deleteTrainingTaskApi,
   getTrainingMetricsApi,
-  uploadModelApi
+  getTrainingDevicesApi
 } from '@/api/training'
-import { getScenesApi } from '@/api/detection'
+import { getDatasetsApi } from '@/api/dataset'
+import { formatTime } from '@/utils/format'
 
-// 任务列表
 const tasks = ref([])
-const currentTask = ref(null)
 const statusFilter = ref('')
+const loading = ref(false)
 const pollingTimer = ref(null)
 
-// 创建任务
-const showCreateDialog = ref(false)
-const creating = ref(false)
-const scenes = ref([])
-const createForm = ref({
-  scene_id: null,
-  model_name: 'yolov11n',
-  epochs: 100,
-  batch_size: 16,
-  lr0: 0.01,
-  device: 'cpu',
-  dataset_path: '',
-  data_yaml: ''
-})
-
-// 上传模型
-const showUploadDialog = ref(false)
-const uploading = ref(false)
-const uploadForm = ref({
-  scene_id: null,
-  model_file: null,
-  version: 'v1.0.0',
-  model_name: '',
-  model_type: 'yolov11n',
-  description: '',
-  is_default: true
-})
-
-// 训练指标
+const showDetailDialog = ref(false)
+const detailTask = ref(null)
 const metrics = ref([])
 const lossChartRef = ref(null)
 const mapChartRef = ref(null)
 let lossChart = null
 let mapChart = null
 
-// 加载任务列表
+const showCreateDialog = ref(false)
+const creating = ref(false)
+const devices = ref([])
+const datasets = ref([])
+const createForm = ref({
+  model_name: 'yolo26n',
+  epochs: 100,
+  batch_size: 16,
+  lr0: 0.01,
+  device: 'cpu',
+  dataset_id: null,
+  dataset_path: '',
+  data_yaml: ''
+})
+
+
+
 async function loadTasks() {
+  loading.value = true
   try {
     const params = { page: 1, page_size: 100 }
     if (statusFilter.value) {
@@ -325,32 +299,134 @@ async function loadTasks() {
     tasks.value = res.data?.items || []
   } catch (error) {
     console.error('加载任务失败:', error)
+  } finally {
+    loading.value = false
   }
 }
 
-// 加载场景列表
-async function loadScenes() {
+async function loadDevices() {
   try {
-    const res = await getScenesApi()
-    scenes.value = res.data || []
+    const res = await getTrainingDevicesApi()
+    devices.value = res.data || []
+    // 默认选择第一个 GPU，没有则选 CPU
+    if (!createForm.value.device && devices.value.length > 0) {
+      const gpu = devices.value.find(d => d.value !== 'cpu')
+      createForm.value.device = gpu ? gpu.value : devices.value[0].value
+    }
   } catch (error) {
-    console.error('加载场景失败:', error)
+    console.error('加载设备列表失败:', error)
+    devices.value = [{ value: 'cpu', label: 'CPU', description: '使用处理器训练' }]
   }
 }
 
-// 选择任务
-async function selectTask(task) {
-  currentTask.value = task
+async function loadDatasets() {
+  try {
+    const res = await getDatasetsApi({ page: 1, page_size: 100, status: 'active' })
+    datasets.value = res.data?.items || []
+  } catch (error) {
+    console.error('加载数据集列表失败:', error)
+  }
+}
+
+function onDatasetSelected(datasetId) {
+  const ds = datasets.value.find(d => d.id === datasetId)
+  if (ds) {
+    createForm.value.dataset_path = ds.path
+    createForm.value.data_yaml = ds.yaml_path
+  }
+}
+
+async function showDetail(task) {
+  detailTask.value = task
+  showDetailDialog.value = true
   await loadMetrics()
 }
 
-// 创建任务
+function onDetailClosed() {
+  lossChart?.dispose()
+  lossChart = null
+  mapChart?.dispose()
+  mapChart = null
+  metrics.value = []
+}
+
+async function startTask(task) {
+  try {
+    await startTrainingApi(task.id)
+    ElMessage.success('任务已启动')
+    loadTasks()
+    // 重新开始轮询
+    if (!pollingTimer.value) {
+      startPolling()
+    }
+  } catch (error) {
+    ElMessage.error('启动任务失败')
+  }
+}
+
+async function pauseTask(task) {
+  try {
+    await pauseTrainingApi(task.id)
+    ElMessage.success('任务已暂停')
+    loadTasks()
+  } catch (error) {
+    ElMessage.error('暂停任务失败')
+  }
+}
+
+async function resumeTask(task) {
+  try {
+    await startTrainingApi(task.id)
+    ElMessage.success('任务已恢复')
+    // 重新开始轮询
+    if (!pollingTimer.value) {
+      startPolling()
+    }
+    loadTasks()
+  } catch (error) {
+    ElMessage.error('恢复任务失败')
+  }
+}
+
+async function cancelTask(task) {
+  try {
+    await ElMessageBox.confirm('确定取消此训练任务吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await cancelTrainingApi(task.id)
+    ElMessage.success('任务已取消')
+    loadTasks()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('取消任务失败')
+    }
+  }
+}
+
+async function deleteTask(task) {
+  try {
+    await ElMessageBox.confirm('确定删除此训练任务吗？此操作不可恢复。', '警告', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'error'
+    })
+    await deleteTrainingTaskApi(task.id)
+    ElMessage.success('任务已删除')
+    loadTasks()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除任务失败')
+    }
+  }
+}
+
 async function createTask() {
-  if (!createForm.value.scene_id || !createForm.value.dataset_path || !createForm.value.data_yaml) {
+  if (!createForm.value.dataset_id) {
     ElMessage.warning('请填写必填项')
     return
   }
-  
   creating.value = true
   try {
     await createTrainingTaskApi(createForm.value)
@@ -364,90 +440,12 @@ async function createTask() {
   }
 }
 
-// 启动任务
-async function startTask() {
-  try {
-    await startTrainingApi(currentTask.value.id)
-    ElMessage.success('任务已启动')
-    loadTasks()
-  } catch (error) {
-    ElMessage.error('启动任务失败')
-  }
-}
 
-// 暂停任务
-async function pauseTask() {
-  try {
-    await pauseTrainingApi(currentTask.value.id)
-    ElMessage.success('任务已暂停')
-    loadTasks()
-  } catch (error) {
-    ElMessage.error('暂停任务失败')
-  }
-}
 
-// 取消任务
-async function cancelTask() {
-  try {
-    await ElMessageBox.confirm('确定取消此训练任务吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    await cancelTrainingApi(currentTask.value.id)
-    ElMessage.success('任务已取消')
-    loadTasks()
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('取消任务失败')
-    }
-  }
-}
-
-// 处理模型文件选择
-function handleModelFileChange(file) {
-  uploadForm.value.model_file = file.raw
-  // 自动填充模型名称
-  if (!uploadForm.value.model_name) {
-    uploadForm.value.model_name = file.name.replace('.pt', '')
-  }
-}
-
-// 上传模型
-async function uploadModel() {
-  if (!uploadForm.value.scene_id || !uploadForm.value.model_file || !uploadForm.value.version || !uploadForm.value.model_name) {
-    ElMessage.warning('请填写必填项')
-    return
-  }
-  
-  uploading.value = true
-  try {
-    const res = await uploadModelApi(uploadForm.value)
-    ElMessage.success(`模型上传成功：${res.data?.model_name} ${res.data?.version}`)
-    showUploadDialog.value = false
-    // 重置表单
-    uploadForm.value = {
-      scene_id: null,
-      model_file: null,
-      version: 'v1.0.0',
-      model_name: '',
-      model_type: 'yolov11n',
-      description: '',
-      is_default: true
-    }
-  } catch (error) {
-    ElMessage.error('上传模型失败')
-  } finally {
-    uploading.value = false
-  }
-}
-
-// 加载训练指标
 async function loadMetrics() {
-  if (!currentTask.value) return
-  
+  if (!detailTask.value) return
   try {
-    const res = await getTrainingMetricsApi(currentTask.value.id)
+    const res = await getTrainingMetricsApi(detailTask.value.id)
     metrics.value = res.data || []
     await nextTick()
     renderCharts()
@@ -456,24 +454,14 @@ async function loadMetrics() {
   }
 }
 
-// 刷新指标
-function refreshMetrics() {
-  loadMetrics()
-}
-
-// 渲染图表
 function renderCharts() {
   if (!metrics.value.length) return
-
-  // 损失函数图表
   if (lossChartRef.value) {
     if (lossChart) lossChart.dispose()
     lossChart = echarts.init(lossChartRef.value)
-    
     const epochs = metrics.value.map(m => m.epoch)
     const trainLoss = metrics.value.map(m => m.train_loss)
     const valLoss = metrics.value.map(m => m.val_loss)
-    
     lossChart.setOption({
       tooltip: { trigger: 'axis' },
       legend: { data: ['训练损失', '验证损失'] },
@@ -485,16 +473,12 @@ function renderCharts() {
       ]
     })
   }
-
-  // mAP 图表
   if (mapChartRef.value) {
     if (mapChart) mapChart.dispose()
     mapChart = echarts.init(mapChartRef.value)
-    
     const epochs = metrics.value.map(m => m.epoch)
     const map50 = metrics.value.map(m => m.mAP50)
     const map5095 = metrics.value.map(m => m.mAP50_95)
-    
     mapChart.setOption({
       tooltip: { trigger: 'axis' },
       legend: { data: ['mAP@0.5', 'mAP@0.5:0.95'] },
@@ -508,51 +492,32 @@ function renderCharts() {
   }
 }
 
-// 状态文本
 function getStatusType(status) {
-  const map = {
-    pending: 'info',
-    running: 'warning',
-    paused: 'warning',
-    completed: 'success',
-    failed: 'danger',
-    cancelled: 'info'
-  }
+  const map = { pending: 'info', running: 'warning', paused: 'warning', completed: 'success', failed: 'danger', cancelled: 'info' }
   return map[status] || 'info'
 }
 
 function getStatusText(status) {
-  const map = {
-    pending: '等待中',
-    running: '运行中',
-    paused: '已暂停',
-    completed: '已完成',
-    failed: '失败',
-    cancelled: '已取消'
-  }
+  const map = { pending: '等待中', running: '运行中', paused: '已暂停', completed: '已完成', failed: '失败', cancelled: '已取消' }
   return map[status] || status
 }
 
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString('zh-CN')
-}
-
-// 轮询运行中的任务
 function startPolling() {
   pollingTimer.value = setInterval(() => {
     const hasRunning = tasks.value.some(t => t.status === 'running')
     if (hasRunning) {
       loadTasks()
-      if (currentTask.value?.status === 'running') {
+      if (showDetailDialog.value && detailTask.value?.status === 'running') {
         loadMetrics()
       }
+    } else {
+      // 没有运行中的任务时，停止轮询以节省资源
+      clearInterval(pollingTimer.value)
+      pollingTimer.value = null
     }
   }, 5000)
 }
 
-// 监听窗口大小变化，重绘图表
 function handleResize() {
   lossChart?.resize()
   mapChart?.resize()
@@ -560,15 +525,14 @@ function handleResize() {
 
 onMounted(() => {
   loadTasks()
-  loadScenes()
+  loadDevices()
+  loadDatasets()
   startPolling()
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-  if (pollingTimer.value) {
-    clearInterval(pollingTimer.value)
-  }
+  if (pollingTimer.value) clearInterval(pollingTimer.value)
   window.removeEventListener('resize', handleResize)
   lossChart?.dispose()
   mapChart?.dispose()
@@ -577,139 +541,65 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .training-page {
-  display: flex;
+  padding: $spacing-lg;
   height: calc(100vh - #{$header-height} - 40px);
   background: $bg-color;
-}
-
-.task-list-panel {
-  width: 320px;
-  background: #fff;
-  border-right: 1px solid #ebeef5;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
 
-  .panel-header {
-    padding: $spacing-md;
-    border-bottom: 1px solid #ebeef5;
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-md;
+
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    color: $text-primary;
+  }
+
+  .header-actions {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: $text-primary;
-    }
-
-    .header-actions {
-      display: flex;
-      gap: $spacing-sm;
-    }
-  }
-
-  .status-filter {
-    padding: $spacing-sm $spacing-md;
-    border-bottom: 1px solid #ebeef5;
-  }
-
-  .task-items {
-    flex: 1;
-    overflow-y: auto;
-    padding: $spacing-sm;
-  }
-
-  .task-item {
-    padding: $spacing-md;
-    border-radius: $border-radius-md;
-    cursor: pointer;
-    transition: background 0.2s;
-    margin-bottom: $spacing-sm;
-
-    &:hover {
-      background: #f5f7fa;
-    }
-
-    &.active {
-      background: #ecf5ff;
-    }
-
-    &.running {
-      border-left: 3px solid $warning-color;
-    }
-
-    .task-info {
-      .task-name {
-        font-size: 14px;
-        color: $text-primary;
-        margin-bottom: $spacing-xs;
-      }
-
-      .task-meta {
-        display: flex;
-        align-items: center;
-        gap: $spacing-sm;
-
-        .task-time {
-          font-size: 12px;
-          color: $text-secondary;
-        }
-      }
-    }
-
-    .el-progress {
-      margin-top: $spacing-sm;
-    }
-  }
-
-  .empty-tasks {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 200px;
-    color: $text-secondary;
-
-    p {
-      margin: $spacing-md 0 0;
-    }
+    gap: $spacing-sm;
   }
 }
 
-.detail-panel {
+.filter-bar {
+  margin-bottom: $spacing-md;
+}
+
+.task-table-wrapper {
   flex: 1;
-  padding: $spacing-lg;
-  overflow-y: auto;
-}
-
-.task-detail-card,
-.metrics-card,
-.log-card {
   background: #fff;
   border-radius: $border-radius-lg;
-  padding: $spacing-lg;
-  margin-bottom: $spacing-lg;
-
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: $spacing-lg;
-
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: $text-primary;
-    }
-
-    .task-actions {
-      display: flex;
-      gap: $spacing-sm;
-    }
-  }
+  padding: $spacing-md;
+  overflow: auto;
 }
 
-.metrics-card {
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  flex-wrap: wrap;
+}
+
+.text-muted {
+  color: $text-secondary;
+  font-size: 13px;
+}
+
+.detail-metrics {
+  margin-top: $spacing-lg;
+
+  h4 {
+    margin: 0 0 $spacing-md;
+    font-size: 15px;
+    color: $text-primary;
+  }
+
   .charts-container {
     display: flex;
     gap: $spacing-lg;
@@ -717,26 +607,34 @@ onUnmounted(() => {
     .chart-item {
       flex: 1;
 
-      h4 {
-        margin: 0 0 $spacing-md;
-        font-size: 14px;
+      h5 {
+        margin: 0 0 $spacing-sm;
+        font-size: 13px;
         color: $text-regular;
         text-align: center;
       }
 
       .chart {
-        height: 300px;
+        height: 250px;
       }
     }
   }
 }
 
-.log-card {
+.detail-logs {
+  margin-top: $spacing-lg;
+
+  h4 {
+    margin: 0 0 $spacing-md;
+    font-size: 15px;
+    color: $text-primary;
+  }
+
   .log-content {
     background: #1e1e1e;
     border-radius: $border-radius-md;
     padding: $spacing-md;
-    max-height: 300px;
+    max-height: 250px;
     overflow-y: auto;
 
     pre {
@@ -748,22 +646,6 @@ onUnmounted(() => {
       white-space: pre-wrap;
       word-break: break-all;
     }
-  }
-}
-
-.empty-detail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  color: $text-secondary;
-
-  p {
-    margin: $spacing-md 0 0;
-    font-size: 16px;
   }
 }
 

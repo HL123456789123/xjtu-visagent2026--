@@ -8,7 +8,7 @@
  *   - 将错误信息上报到后端（用于分析和告警）
  *
  * 使用方式（在 main.js 中）：
- *   import { setupErrorReporting } from "@/utils/errorReporter";
+ *   import { setupErrorReporting } from "@/utils/error_reporter";
  *   setupErrorReporting(app);
  */
 import { ElMessage } from "element-plus";
@@ -52,6 +52,7 @@ function reportError(errorInfo) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(errorInfo),
+      credentials: "include",  // 携带认证信息，后端可识别上报来源
     }).catch(() => {
       // 上报失败时静默处理，不能因为上报失败而再次报错
     });

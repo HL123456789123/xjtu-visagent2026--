@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.entity.db_models import (
     User, Role, Permission, UserRole, RolePermission,
     DetectionScene, DetectionTask, DetectionResult,
-    TrainingTask, TrainingMetric, ModelVersion,
+    Model, SceneModel, TrainingTask, TrainingMetric, ModelVersion,
     ChatSession, ChatMessage, OperationLog,
 )
 
@@ -30,7 +30,6 @@ class TestUserModel:
         assert user.username == "testuser"
         assert user.email == "test@example.com"
         assert user.is_active is True
-        assert user.is_superuser is False
         assert user.created_at is not None
 
     def test_username_unique_constraint(self, db):
@@ -48,19 +47,6 @@ class TestUserModel:
         db.add(User(username="user_b", email="same@example.com", hashed_password="hash"))
         with pytest.raises(IntegrityError):
             db.commit()
-
-    def test_superuser_flag(self, db):
-        """超级管理员标记"""
-        user = User(
-            username="admin",
-            email="admin@example.com",
-            hashed_password="hash",
-            is_superuser=True,
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        assert user.is_superuser is True
 
     def test_inactive_user(self, db):
         """禁用用户标记"""
@@ -219,18 +205,20 @@ class TestTrainingModels:
     def test_create_training_task(self, db):
         """创建训练任务"""
         user = User(username="trainuser", email="train@example.com", hashed_password="hash")
-        scene = DetectionScene(
-            name="train_scene", display_name="训练场景", category="industry",
+        model = Model(
+            name="测试训练模型",
+            base_architecture="yolo26n",
+            category="industry",
             class_names=["item"],
         )
-        db.add_all([user, scene])
+        db.add_all([user, model])
         db.flush()
 
         task = TrainingTask(
             user_id=user.id,
-            scene_id=scene.id,
+            model_id=model.id,
             task_uuid="uuid-12345",
-            model_name="yolov11n",
+            base_architecture="yolo26n",
             epochs=100,
             batch_size=16,
         )
@@ -240,22 +228,24 @@ class TestTrainingModels:
 
         assert task.id is not None
         assert task.status == "pending"
-        assert task.model_name == "yolov11n"
+        assert task.base_architecture == "yolo26n"
         assert task.task_uuid == "uuid-12345"
 
     def test_training_metric(self, db):
         """创建训练指标"""
         user = User(username="metricuser", email="metric@example.com", hashed_password="hash")
-        scene = DetectionScene(
-            name="metric_scene", display_name="指标场景", category="traffic",
+        model = Model(
+            name="测试指标模型",
+            base_architecture="yolo26s",
+            category="traffic",
             class_names=["car"],
         )
-        db.add_all([user, scene])
+        db.add_all([user, model])
         db.flush()
 
         task = TrainingTask(
-            user_id=user.id, scene_id=scene.id, task_uuid="uuid-metric",
-            model_name="yolov11s",
+            user_id=user.id, model_id=model.id, task_uuid="uuid-metric",
+            base_architecture="yolo26s",
         )
         db.add(task)
         db.flush()

@@ -4,21 +4,25 @@
 - POST /api/auth/login 用户登录
 - GET /api/auth/me 获取当前用户信息
 """
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.core.security import get_current_user
+from app.core.security import get_current_user, is_super_admin
+from app.core.rate_limiter import limiter
 from app.database.session import get_db
 from app.entity.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
 from app.services.user_service import user_service
+from app.middleware.request_logger import log_operation
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
-async def register(request: UserRegister, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, body: UserRegister, db: Session = Depends(get_db)):
     """
     用户注册
     - **username**: 用户名（3-50 字符）
@@ -27,15 +31,30 @@ async def register(request: UserRegister, db: Session = Depends(get_db)):
     """
     user = user_service.register(
         db=db,
-        username=request.username,
-        email=request.email,
-        password=request.password,
+        username=body.username,
+        email=body.email,
+        password=body.password,
+    )
+    log_operation(
+        db=db,
+        user_id=user.id,
+        username=user.username,
+        module="auth",
+        action="create",
+        target_type="user",
+        target_id=user.id,
+        description=f"用户注册: {user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        request_method=request.method,
+        request_path=str(request.url.path),
     )
     return user
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(request: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, body: UserLogin, db: Session = Depends(get_db)):
     """
     用户登录
     - 设置 HttpOnly cookie 存储 JWT token
@@ -43,12 +62,13 @@ async def login(request: UserLogin, db: Session = Depends(get_db)):
     """
     user = user_service.login(
         db=db,
-        username=request.username,
-        password=request.password,
+        username=body.username,
+        password=body.password,
     )
 
     access_token = user_service.create_access_token_for_user(user)
     roles = user_service.get_user_roles(db, user)
+    permissions = user_service.get_user_permissions(db, user)
 
     response_data = {
         "access_token": access_token,
@@ -59,20 +79,38 @@ async def login(request: UserLogin, db: Session = Depends(get_db)):
             "email": user.email,
             "avatar": user.avatar,
             "roles": roles,
+            "permissions": permissions,
         },
     }
-    
+
     response = JSONResponse(content=response_data)
     # 设置 HttpOnly cookie，防止 XSS 读取
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # 生产环境应设为 True（需要 HTTPS）
+        secure=settings.COOKIE_SECURE,
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
     )
+
+    # 记录登录操作日志
+    log_operation(
+        db=db,
+        user_id=user.id,
+        username=user.username,
+        module="auth",
+        action="login",
+        target_type="user",
+        target_id=user.id,
+        description=f"用户登录: {user.username}",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        request_method=request.method,
+        request_path=str(request.url.path),
+    )
+
     return response
 
 
@@ -83,6 +121,7 @@ async def get_current_user_info(
 ):
     """获取当前登录用户信息（需要 Token 认证）"""
     roles = user_service.get_user_roles(db, current_user)
+    permissions = user_service.get_user_permissions(db, current_user)
     return {
         "id": current_user.id,
         "username": current_user.username,
@@ -90,8 +129,9 @@ async def get_current_user_info(
         "phone": current_user.phone,
         "avatar": current_user.avatar,
         "is_active": current_user.is_active,
-        "is_superuser": current_user.is_superuser,
+        "is_superuser": is_super_admin(current_user, db),
         "roles": roles,
+        "permissions": permissions,
         "last_login_at": current_user.last_login_at,
         "created_at": current_user.created_at,
     }
@@ -104,5 +144,7 @@ async def logout():
     response.delete_cookie(
         key="access_token",
         path="/",
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
     )
     return response

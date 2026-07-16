@@ -37,6 +37,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+.qoder/*
 
 # Test artifacts
 *.db
@@ -46,3 +47,8 @@ cookies.txt
 backend/data
 backend/logs
 backend/uv.lock
+docs/*
+!docs/contracts/
+docs/contracts/*
+!docs/contracts/api_v1.md
+backend/runs/

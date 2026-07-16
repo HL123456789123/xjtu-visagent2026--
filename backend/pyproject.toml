@@ -1,7 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "VisAgent - 基于 YOLOv11 的目标检测智能体平台后端"
+description = "VisAgent - 基于 YOLO26 的目标检测智能体平台后端"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,7 +21,7 @@ dependencies = [
     "langgraph>=1.2.0",
     # LLM 服务
     "openai>=2.44.0",
-    # 目标检测
+    # 目标检测 (YOLO26)
     # numpy<2 约束：PyTorch 2.2.2 编译时使用 NumPy 1.x ABI，NumPy 2.x 不兼容
     "numpy<2",
     "ultralytics>=8.4.0",
@@ -36,6 +36,10 @@ dependencies = [
     # 环境变量
     "python-dotenv>=1.2.0",
     "langchain-openai>=1.3.3",
+    # API 限流
+    "slowapi>=0.1.9",
+    "email-validator>=2.3.0",
+    "defusedxml>=0.7.1",
 ]
 
 [dependency-groups]
@@ -45,6 +49,19 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.15.0",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[project.scripts]
+dev = "main:startup"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100

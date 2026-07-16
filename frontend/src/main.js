@@ -22,7 +22,7 @@ import router from './router'
 import pinia from './stores'
 
 // 全局错误监控
-import { setupErrorReporting } from "@/utils/errorReporter";
+import { setupErrorReporting } from "@/utils/error_reporter";
 
 // 创建应用
 const app = createApp(App)

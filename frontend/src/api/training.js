@@ -1,7 +1,14 @@
 /**
  * 训练相关 API
  */
-import request from '@/utils/request'
+import request, { uploadRequest } from '@/utils/request'
+
+/**
+ * 获取可用训练设备列表
+ */
+export function getTrainingDevicesApi() {
+  return request.get('/training/devices')
+}
 
 /**
  * 创建训练任务
@@ -42,8 +49,16 @@ export function cancelTrainingApi(taskId) {
 }
 
 /**
+ * 删除训练任务
+ * @param {number} taskId
+ */
+export function deleteTrainingTaskApi(taskId) {
+  return request.delete(`/training/tasks/${taskId}`)
+}
+
+/**
  * 获取训练任务列表
- * @param {Object} params - { scene_id, status, page, page_size }
+ * @param {Object} params - { model_id, status, page, page_size }
  */
 export function getTrainingTasksApi(params) {
   return request.get('/training/tasks', { params })
@@ -117,20 +132,16 @@ export function generateDataYamlApi(data) {
 
 /**
  * 上传训练好的模型文件
- * @param {Object} data - { scene_id, model_file, version, model_name, model_type, description, is_default }
+ * @param {Object} data - { model_id, model_file, version, description, is_default }
  */
 export function uploadModelApi(data) {
   const formData = new FormData()
-  formData.append('scene_id', data.scene_id)
+  formData.append('model_id', data.model_id)
   formData.append('model_file', data.model_file)
   formData.append('version', data.version)
-  formData.append('model_name', data.model_name)
-  formData.append('model_type', data.model_type || 'yolov11n')
   formData.append('description', data.description || '')
   formData.append('is_default', data.is_default ?? true)
-  return request.post('/training/models/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
+  return uploadRequest.post('/training/models/upload', formData)
 }
 
 /**

@@ -3,6 +3,7 @@
 Redis 客户端封装
 提供缓存、会话管理等基础功能
 """
+
 import json
 from typing import Any, Optional
 import redis
@@ -23,7 +24,7 @@ class RedisClient:
         """建立 Redis 连接"""
         try:
             self._client = redis.from_url(
-                settings.REDIS_URL,
+                settings.redis_url,
                 decode_responses=True,  # 自动解码为字符串
                 socket_connect_timeout=5,
                 socket_timeout=5,
@@ -31,7 +32,7 @@ class RedisClient:
             )
             # 测试连接
             self._client.ping()
-            logger.info(f"Redis 连接成功: {settings.REDIS_URL}")
+            logger.info(f"Redis 连接成功: {settings.redis_url}")
         except Exception as e:
             logger.error(f"Redis 连接失败: {e}")
             self._client = None
@@ -61,7 +62,7 @@ class RedisClient:
             if self.client:
                 return self.client.get(key)
         except Exception as e:
-            logger.error(f"Redis GET 失败: {key}, {e}")
+            logger.warning(f"Redis GET 失败: {key}: {e}")
         return None
 
     def set(
@@ -83,7 +84,7 @@ class RedisClient:
                 self.client.set(key, value, ex=ex)
                 return True
         except Exception as e:
-            logger.error(f"Redis SET 失败: {key}, {e}")
+            logger.warning(f"Redis SET 失败: {key}: {e}")
         return False
 
     def delete(self, key: str) -> bool:
@@ -93,7 +94,7 @@ class RedisClient:
                 self.client.delete(key)
                 return True
         except Exception as e:
-            logger.error(f"Redis DELETE 失败: {key}, {e}")
+            logger.warning(f"Redis DELETE 失败: {key}: {e}")
         return False
 
     def exists(self, key: str) -> bool:
@@ -102,7 +103,7 @@ class RedisClient:
             if self.client:
                 return self.client.exists(key) > 0
         except Exception as e:
-            logger.error(f"Redis EXISTS 失败: {key}, {e}")
+            logger.warning(f"Redis EXISTS 失败: {key}: {e}")
         return False
 
     # ── JSON 操作 ─────────────────────────────────────
@@ -151,14 +152,22 @@ class RedisClient:
         return self.delete(f"{prefix}:{key}")
 
     def cache_clear_prefix(self, prefix: str) -> int:
-        """清除指定前缀的所有缓存"""
+        """清除指定前缀的所有缓存（使用 SCAN 避免阻塞 Redis）"""
         try:
             if self.client:
-                keys = self.client.keys(f"{prefix}:*")
-                if keys:
-                    return self.client.delete(*keys)
+                deleted = 0
+                cursor = 0
+                while True:
+                    cursor, keys = self.client.scan(
+                        cursor=cursor, match=f"{prefix}:*", count=100
+                    )
+                    if keys:
+                        deleted += self.client.delete(*keys)
+                    if cursor == 0:
+                        break
+                return deleted
         except Exception as e:
-            logger.error(f"Redis 清除缓存失败: {prefix}:*, {e}")
+            logger.warning(f"Redis 清除缓存失败: {prefix}:*: {e}")
         return 0
 
 

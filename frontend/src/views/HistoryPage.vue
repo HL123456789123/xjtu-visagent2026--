@@ -1,5 +1,11 @@
 <template>
   <div class="history-page">
+    <section class="history-hero">
+      <span>Kitchen records</span>
+      <h1>历史记录</h1>
+      <p>查看过往的识别与训练记录，继续追踪每一次厨房灵感与模型任务。</p>
+    </section>
+
     <!-- 顶部筛选栏 -->
     <div class="filter-bar">
       <div class="filter-left">
@@ -178,6 +184,7 @@ import { getDetectionTasksApi, getDetectionResultsApi } from '@/api/detection'
 import { getTrainingTasksApi } from '@/api/training'
 import { getScenesApi } from '@/api/detection'
 import { useRouter } from 'vue-router'
+import { formatTime } from '@/utils/format'
 
 const router = useRouter()
 
@@ -296,12 +303,6 @@ function getStatusText(status) {
   return map[status] || status
 }
 
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString('zh-CN')
-}
-
 onMounted(async () => {
   await loadScenes()
   await loadHistory()
@@ -310,19 +311,57 @@ onMounted(async () => {
 
 <style lang="scss" scoped>
 .history-page {
-  padding: $spacing-lg;
-  background: $bg-color;
-  min-height: calc(100vh - #{$header-height} - 40px);
+  padding: clamp(18px, 4vw, 42px);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 213, 118, 0.34), transparent 28%),
+    radial-gradient(circle at 86% 8%, rgba(137, 169, 79, 0.18), transparent 26%),
+    linear-gradient(180deg, #fff8ea 0%, #fffdf7 48%, #f8efe3 100%);
+  min-height: calc(100vh - #{$header-height});
+  color: #3a2a1d;
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+.history-hero {
+  margin-bottom: 22px;
+
+  span {
+    color: #b56a26;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 8px 0 0;
+    color: #2e2116;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: clamp(34px, 5vw, 54px);
+    font-weight: 500;
+    letter-spacing: -0.045em;
+  }
+
+  p {
+    max-width: 620px;
+    margin: 12px 0 0;
+    color: #76573f;
+    font-size: 15px;
+    line-height: 1.8;
+  }
 }
 
 .filter-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #fff;
-  padding: $spacing-md;
-  border-radius: $border-radius-lg;
-  margin-bottom: $spacing-lg;
+  gap: 18px;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 18px;
+  border-radius: 26px;
+  margin-bottom: 20px;
+  box-shadow: 0 20px 56px rgba(102, 68, 35, 0.1);
+  backdrop-filter: blur(18px);
 
   .filter-left {
     display: flex;
@@ -339,18 +378,64 @@ onMounted(async () => {
       width: 250px;
     }
   }
+
+  :deep(.el-radio-button__inner) {
+    border-color: rgba(121, 82, 45, 0.16);
+    background: #fffaf1;
+    color: #6f5038;
+    font-weight: 800;
+  }
+
+  :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+    border-color: #e96d3b;
+    background: #f58220;
+    color: #fffaf0;
+    box-shadow: none;
+  }
+
+  :deep(.el-input__wrapper),
+  :deep(.el-select__wrapper) {
+    border-radius: 16px;
+    box-shadow: 0 0 0 1px rgba(121, 82, 45, 0.14) inset;
+  }
 }
 
 .record-list {
-  background: #fff;
-  border-radius: $border-radius-lg;
-  padding: $spacing-md;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 26px;
+  padding: 18px;
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.12);
+  backdrop-filter: blur(18px);
+
+  :deep(.el-table) {
+    color: #3a2a1d;
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  :deep(.el-table th.el-table__cell) {
+    background: #fff1d2;
+    color: #6f5038;
+    font-weight: 900;
+  }
+
+  :deep(.el-button--primary.is-link) {
+    color: #d76626;
+    font-weight: 800;
+  }
 }
 
 .pagination {
   display: flex;
   justify-content: flex-end;
   margin-top: $spacing-lg;
+
+  :deep(.el-pagination) {
+    --el-pagination-button-bg-color: #fffaf1;
+    --el-pagination-hover-color: #d76626;
+    color: #76573f;
+  }
 }
 
 .detail-results {
@@ -358,8 +443,34 @@ onMounted(async () => {
 
   h4 {
     margin: 0 0 $spacing-md;
-    font-size: 16px;
-    color: $text-primary;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 22px;
+    font-weight: 500;
+  }
+}
+
+:deep(.el-dialog) {
+  border-radius: 28px;
+  background: #fffdf8;
+}
+
+:deep(.el-dialog__title) {
+  color: #3a2a1d;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 24px;
+}
+
+@media (max-width: 760px) {
+  .filter-bar,
+  .filter-left {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .filter-right .el-input,
+  .filter-left .scene-select {
+    width: 100% !important;
   }
 }
 </style>

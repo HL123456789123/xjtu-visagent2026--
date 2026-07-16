@@ -2,229 +2,278 @@
 训练模块 API 路由
 提供训练任务管理、数据集上传验证等接口
 """
-from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+import os
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, RequirePermission, is_super_admin
 from app.core.logger import get_logger
+from app.core.tz import now_cst
+from app.core.path_validator import validate_training_path
 from app.database.session import get_db
-from app.entity.db_models import User, DetectionScene
+from app.entity.db_models import User, Model, ModelVersion, TrainingTask
 from app.entity.schemas import ApiResponse
+from app.core.rate_limiter import limiter
 from app.services.training_service import training_service
-from app.services.data_utils import validate_dataset, split_dataset, generate_data_yaml, convert_voc_to_yolo, convert_coco_to_yolo, convert_labelme_to_yolo
+from app.services.data_utils import (
+    validate_dataset,
+    split_dataset,
+    generate_data_yaml,
+    convert_voc_to_yolo,
+    convert_coco_to_yolo,
+    convert_labelme_to_yolo,
+)
 
 logger = get_logger("training_api")
 
 router = APIRouter(prefix="/api/training", tags=["训练管理"])
 
 
-@router.post("/tasks", response_model=ApiResponse)
+def _get_task_or_403(db: Session, task_id: int, user: User):
+    """获取训练任务并校验所有权，超级管理员可管理所有任务"""
+    task = db.query(TrainingTask).filter(TrainingTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="训练任务不存在")
+    # 超级管理员直接放行
+    if is_super_admin(user, db):
+        return task
+    if task.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权操作该训练任务")
+    return task
+
+
+@router.get("/devices", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
+async def get_available_devices(current_user: User = Depends(get_current_user)):
+    """获取当前可用的训练设备列表"""
+    import torch
+
+    devices = [{"value": "cpu", "label": "CPU", "description": "使用处理器训练"}]
+
+    # CUDA GPU
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            name = torch.cuda.get_device_name(i)
+            devices.append({
+                "value": str(i),
+                "label": f"GPU {i}",
+                "description": name,
+            })
+
+    # Apple Silicon MPS
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        devices.append({
+            "value": "mps",
+            "label": "MPS",
+            "description": "Apple Silicon GPU 加速",
+        })
+
+    return ApiResponse(code=200, data=devices)
+
+
+@router.post("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
+@limiter.limit("10/minute")
 async def create_training_task(
-    scene_id: int = Form(..., description="场景ID"),
-    model_name: str = Form("yolov11n", description="基础模型：yolov11n/s/m/l/x"),
-    epochs: int = Form(100, description="训练轮数"),
-    img_size: int = Form(640, description="图像尺寸"),
-    batch_size: int = Form(16, description="批次大小"),
-    device: str = Form("cpu", description="训练设备：0/1/cpu"),
+    request: Request,
+    base_architecture: str = Form("yolo26n", description="基础架构：yolo26n/s/m/l/x"),
+    epochs: int = Form(100, ge=1, le=1000, description="训练轮数"),
+    img_size: int = Form(640, ge=320, le=2048, description="图像尺寸"),
+    batch_size: int = Form(16, ge=1, le=256, description="批次大小"),
+    device: str = Form("cpu", description="训练设备：0/1/cpu/mps"),
     optimizer: str = Form("SGD", description="优化器：SGD/Adam/AdamW"),
-    lr0: float = Form(0.01, description="初始学习率"),
+    lr0: float = Form(0.01, ge=0.0001, le=0.1, description="初始学习率"),
     dataset_path: str = Form(..., description="数据集路径"),
     data_yaml: str = Form(..., description="data.yaml 路径"),
+    dataset_id: Optional[int] = Form(None, description="关联数据集ID"),
+    set_as_default: bool = Form(False, description="训练完成后是否自动设为默认版本"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """创建训练任务"""
-    # 验证场景是否存在
-    scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
-    if not scene:
-        raise HTTPException(status_code=404, detail="场景不存在")
-    
+    """创建训练任务（训练成功后自动创建新模型）"""
+    # 校验路径安全性
+    validate_training_path(dataset_path, "数据集路径")
+    validate_training_path(data_yaml, "data.yaml 路径")
+
     config = {
-        "model_name": model_name,
+        "base_architecture": base_architecture,
         "epochs": epochs,
         "img_size": img_size,
         "batch_size": batch_size,
         "device": device,
         "optimizer": optimizer,
         "lr0": lr0,
+        "dataset_id": dataset_id,
         "dataset_path": dataset_path,
-        "data_yaml": data_yaml
+        "data_yaml": data_yaml,
+        "set_as_default": set_as_default,
     }
-    
+
     task = training_service.create_training_task(
-        db=db,
-        user_id=current_user.id,
-        scene_id=scene_id,
-        config=config
+        db=db, user_id=current_user.id, config=config
     )
-    
+
     return ApiResponse(
         code=200,
-        message="训练任务创建成功",
-        data={
-            "task_id": task.id,
-            "task_uuid": task.task_uuid,
-            "status": task.status
-        }
+        message="训练任务创建成功，训练完成后将自动创建新模型",
+        data={"task_id": task.id, "task_uuid": task.task_uuid, "status": task.status},
     )
 
 
-@router.post("/tasks/{task_id}/start", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/start", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def start_training(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """启动训练任务"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     success = training_service.start_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="启动训练失败")
-    
+
     return ApiResponse(code=200, message="训练任务已启动")
 
 
-@router.post("/tasks/{task_id}/pause", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/pause", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def pause_training(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """暂停训练任务"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     success = training_service.pause_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="暂停训练失败")
-    
+
     return ApiResponse(code=200, message="训练任务已暂停")
 
 
-@router.post("/tasks/{task_id}/cancel", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/cancel", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def cancel_training(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """取消训练任务"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     success = training_service.cancel_training(db, task_id)
     if not success:
         raise HTTPException(status_code=400, detail="取消训练失败")
-    
+
     return ApiResponse(code=200, message="训练任务已取消")
 
 
-@router.get("/tasks/{task_id}", response_model=ApiResponse)
+@router.delete("/tasks/{task_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
+async def delete_training_task(
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """删除训练任务"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
+    success = training_service.delete_training_task(db, task_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="删除训练失败，运行中的任务需先取消再删除")
+
+    return ApiResponse(code=200, message="训练任务已删除")
+
+
+@router.get("/tasks/{task_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_task(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取训练任务详情"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     status = training_service.get_training_status(db, task_id)
     if not status:
         raise HTTPException(status_code=404, detail="训练任务不存在")
-    
+
     return ApiResponse(code=200, data=status)
 
 
-@router.get("/tasks/{task_id}/status", response_model=ApiResponse)
+@router.get("/tasks/{task_id}/status", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_status(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取训练状态"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     status = training_service.get_training_status(db, task_id)
     if not status:
         raise HTTPException(status_code=404, detail="训练任务不存在")
-    
+
     return ApiResponse(code=200, data=status)
 
 
-@router.get("/tasks/{task_id}/metrics", response_model=ApiResponse)
+@router.get("/tasks/{task_id}/metrics", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_metrics(
-    task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """获取训练指标"""
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     metrics = training_service.get_training_metrics(db, task_id)
     return ApiResponse(code=200, data=metrics)
 
 
-@router.post("/tasks/{task_id}/validate", response_model=ApiResponse)
+@router.post("/tasks/{task_id}/validate", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:manage"))])
 async def validate_model(
     task_id: int,
     data_yaml: Optional[str] = Form(None, description="数据集配置文件路径（可选）"),
     img_size: int = Form(640, description="图像尺寸"),
     batch_size: int = Form(16, description="批次大小"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """模型评估
-    
+
     对训练完成的模型在验证集上进行评估，返回 mAP、precision、recall 等指标
     """
+    _get_task_or_403(db, task_id, current_user)  # 校验所有权
     result = training_service.validate_model(
-        db=db,
-        task_id=task_id,
-        data_yaml=data_yaml,
-        img_size=img_size,
-        batch_size=batch_size
+        db=db, task_id=task_id, data_yaml=data_yaml, img_size=img_size, batch_size=batch_size
     )
-    
+
     if not result:
         raise HTTPException(status_code=400, detail="模型评估失败，请检查任务状态和模型文件")
-    
-    return ApiResponse(
-        code=200,
-        message="模型评估完成",
-        data=result
-    )
+
+    return ApiResponse(code=200, message="模型评估完成", data=result)
 
 
-@router.get("/tasks", response_model=ApiResponse)
+@router.get("/tasks", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:view"))])
 async def get_training_tasks(
-    scene_id: Optional[int] = None,
+    model_id: Optional[int] = None,
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """获取训练任务列表"""
     result = training_service.get_task_list(
         db=db,
         user_id=current_user.id,
-        scene_id=scene_id,
+        model_id=model_id,
         status=status,
         page=page,
-        page_size=page_size
+        page_size=page_size,
     )
-    
+
     return ApiResponse(code=200, data=result)
 
 
-@router.post("/datasets/validate", response_model=ApiResponse)
+@router.post("/datasets/validate", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def validate_dataset_api(
     images_dir: str = Form(..., description="图像目录路径"),
     labels_dir: str = Form(..., description="标注目录路径"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """验证数据集"""
+    validate_training_path(images_dir, "图像目录路径")
+    validate_training_path(labels_dir, "标注目录路径")
     class_list = [name.strip() for name in class_names.split(",")]
     result = validate_dataset(images_dir, labels_dir, class_list)
-    
-    return ApiResponse(
-        code=200,
-        message="数据集验证完成",
-        data=result
-    )
+
+    return ApiResponse(code=200, message="数据集验证完成", data=result)
 
 
-@router.post("/datasets/split", response_model=ApiResponse)
+@router.post("/datasets/split", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def split_dataset_api(
     images_dir: str = Form(..., description="图像目录路径"),
     labels_dir: str = Form(..., description="标注目录路径"),
@@ -232,10 +281,12 @@ async def split_dataset_api(
     train_ratio: float = Form(0.8, description="训练集比例"),
     val_ratio: float = Form(0.1, description="验证集比例"),
     test_ratio: float = Form(0.1, description="测试集比例"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """划分数据集"""
+    validate_training_path(images_dir, "图像目录路径")
+    validate_training_path(labels_dir, "标注目录路径")
+    validate_training_path(output_dir, "输出目录路径")
     try:
         stats = split_dataset(
             images_dir=images_dir,
@@ -243,133 +294,135 @@ async def split_dataset_api(
             output_dir=output_dir,
             train_ratio=train_ratio,
             val_ratio=val_ratio,
-            test_ratio=test_ratio
+            test_ratio=test_ratio,
         )
-        
-        return ApiResponse(
-            code=200,
-            message="数据集划分完成",
-            data=stats
-        )
+
+        return ApiResponse(code=200, message="数据集划分完成", data=stats)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/datasets/generate-yaml", response_model=ApiResponse)
+@router.post("/datasets/generate-yaml", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def generate_data_yaml_api(
     output_path: str = Form(..., description="输出文件路径"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
     dataset_dir: str = Form(..., description="数据集根目录"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """生成 data.yaml 配置文件"""
+    validate_training_path(output_path, "输出文件路径")
+    validate_training_path(dataset_dir, "数据集根目录")
     class_list = [name.strip() for name in class_names.split(",")]
-    
+
     try:
-        generate_data_yaml(
-            output_path=output_path,
-            class_names=class_list,
-            dataset_dir=dataset_dir
-        )
-        
-        return ApiResponse(
-            code=200,
-            message="data.yaml 生成成功",
-            data={"path": output_path}
-        )
+        generate_data_yaml(output_path=output_path, class_names=class_list, dataset_dir=dataset_dir)
+
+        return ApiResponse(code=200, message="data.yaml 生成成功", data={"path": output_path})
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/models/upload", response_model=ApiResponse)
+@router.post("/models/upload", response_model=ApiResponse, dependencies=[Depends(RequirePermission("model:create"))])
+@limiter.limit("10/minute")
 async def upload_model(
-    scene_id: int = Form(..., description="场景ID"),
+    request: Request,
+    model_id: int = Form(..., description="所属模型ID"),
     model_file: UploadFile = File(..., description="模型文件(.pt)"),
     version: str = Form(..., description="版本号，如 v1.0.0"),
-    model_name: str = Form(..., description="模型名称"),
-    model_type: str = Form("yolov11n", description="模型类型：yolov11n/s/m/l/x"),
-    description: str = Form("", description="模型描述"),
-    is_default: bool = Form(True, description="是否设为默认模型"),
+    description: str = Form("", description="版本描述"),
+    is_default: bool = Form(True, description="是否设为默认版本"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """手动上传训练好的模型文件（适用于 AutoDL 等外部平台训练后导入）"""
-    import os
-    import shutil
-    from pathlib import Path
-    from datetime import datetime
-    from app.entity.db_models import ModelVersion
-    
-    # 验证场景
-    scene = db.query(DetectionScene).filter(DetectionScene.id == scene_id).first()
-    if not scene:
-        raise HTTPException(status_code=404, detail="场景不存在")
-    
+    """手动上传模型版本文件（归属于指定模型下）"""
+    # 验证模型是否存在
+    model_obj = db.query(Model).filter(Model.id == model_id).first()
+    if not model_obj:
+        raise HTTPException(status_code=404, detail="模型不存在")
+
+    # 校验模型所有权（超级管理员直接放行）
+    if not is_super_admin(current_user, db):
+        if model_obj.created_by is not None and model_obj.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="无权向该模型上传版本")
+
     # 验证文件类型
-    if not model_file.filename.endswith('.pt'):
+    if not model_file.filename.endswith(".pt"):
         raise HTTPException(status_code=400, detail="仅支持 .pt 模型文件")
-    
+
+    # 验证文件大小（最大 500MB）—— 流式写入临时文件避免内存耗尽
+    MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
+
     # 创建模型存储目录
-    models_dir = Path("data/models") / scene.name
+    models_dir = Path("data/models") / model_obj.name
     models_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 保存模型文件
-    model_filename = f"{model_name}_{version}.pt"
+
+    # 保存模型文件（流式写入，避免一次性读入内存）
+    model_filename = f"{model_obj.name}_{version}.pt"
     model_path = models_dir / model_filename
-    
+
+    file_size = 0
+    chunk_size = 1024 * 1024  # 1MB 分块
     with open(model_path, "wb") as buffer:
-        shutil.copyfileobj(model_file.file, buffer)
-    
-    file_size = model_path.stat().st_size
-    
-    # 如果设为默认模型，先取消该场景其他默认模型
+        while chunk := await model_file.read(chunk_size):
+            file_size += len(chunk)
+            if file_size > MAX_FILE_SIZE:
+                buffer.close()
+                os.remove(model_path)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"文件大小超过限制，最大允许 500MB，当前已写入: {file_size / (1024*1024):.2f}MB"
+                )
+            buffer.write(chunk)
+
+    logger.info(f"模型文件已保存: {model_path}, 大小: {file_size / (1024*1024):.2f}MB")
+
+    # 如果设为默认版本，先取消该模型其他默认版本
     if is_default:
         db.query(ModelVersion).filter(
-            ModelVersion.scene_id == scene_id,
-            ModelVersion.is_default == True
+            ModelVersion.model_id == model_id, ModelVersion.is_default.is_(True)
         ).update({"is_default": False})
-    
+
+    # 获取当前版本数量（用于日志记录）
+    _version_count = db.query(ModelVersion).filter(ModelVersion.model_id == model_id).count()
+
     # 创建模型版本记录
     model_version = ModelVersion(
-        scene_id=scene_id,
+        model_id=model_id,
         training_task_id=None,  # 手动上传，无关联训练任务
         version=version,
-        model_name=model_name,
-        model_type=model_type,
+        source="upload",
         status="active",
         model_path=str(model_path),
-        description=description or f"手动上传于 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        description=description or f"手动上传于 {now_cst().strftime('%Y-%m-%d %H:%M')}",
         file_size=file_size,
-        is_default=is_default
+        is_default=is_default,
     )
     db.add(model_version)
     db.commit()
     db.refresh(model_version)
-    
+
     return ApiResponse(
         code=200,
-        message="模型上传成功",
+        message="模型版本上传成功",
         data={
             "id": model_version.id,
-            "scene": scene.display_name,
+            "model": model_obj.name,
             "version": version,
-            "model_name": model_name,
             "model_path": str(model_path),
             "file_size": file_size,
-            "is_default": is_default
-        }
+            "is_default": is_default,
+        },
     )
 
 
 # ── 数据集格式转换 ──────────────────────────────────
 
-@router.post("/datasets/convert/voc-to-yolo", response_model=ApiResponse)
+
+@router.post("/datasets/convert/voc-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def convert_voc_to_yolo_api(
     voc_file: UploadFile = File(..., description="VOC XML 文件"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """VOC XML → YOLO TXT 格式转换"""
     import tempfile
@@ -390,27 +443,32 @@ async def convert_voc_to_yolo_api(
             raise HTTPException(status_code=400, detail="VOC 转换失败")
 
         return ApiResponse(
-            code=200,
-            message="VOC → YOLO 转换成功",
-            data={"output_path": result_path}
+            code=200, message="VOC → YOLO 转换成功", data={"output_path": result_path}
         )
     except Exception as e:
         if os.path.exists(voc_path):
             os.unlink(voc_path)
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        # 清理临时目录
+        if 'output_dir' in locals() and os.path.exists(output_dir):
+            import shutil as _shutil
+            _shutil.rmtree(output_dir, ignore_errors=True)
 
 
-@router.post("/datasets/convert/coco-to-yolo", response_model=ApiResponse)
+@router.post("/datasets/convert/coco-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def convert_coco_to_yolo_api(
     coco_file: UploadFile = File(..., description="COCO JSON 文件"),
     image_dir: str = Form(..., description="图像目录路径（用于获取图像尺寸）"),
     output_dir: str = Form(..., description="YOLO 标注输出目录"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """COCO JSON → YOLO TXT 格式转换"""
     import tempfile
     import os
+
+    validate_training_path(image_dir, "图像目录路径")
+    validate_training_path(output_dir, "输出目录路径")
 
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         tmp.write(await coco_file.read())
@@ -423,7 +481,7 @@ async def convert_coco_to_yolo_api(
         return ApiResponse(
             code=200,
             message=f"COCO → YOLO 转换成功，共 {len(result)} 个文件",
-            data={"count": len(result), "files": result}
+            data={"count": len(result), "files": result},
         )
     except Exception as e:
         if os.path.exists(coco_path):
@@ -431,12 +489,12 @@ async def convert_coco_to_yolo_api(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/datasets/convert/labelme-to-yolo", response_model=ApiResponse)
+@router.post("/datasets/convert/labelme-to-yolo", response_model=ApiResponse, dependencies=[Depends(RequirePermission("training:task:create"))])
 async def convert_labelme_to_yolo_api(
     labelme_file: UploadFile = File(..., description="LabelMe JSON 文件"),
     class_names: str = Form(..., description="类别名称，逗号分隔"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """LabelMe JSON → YOLO TXT 格式转换"""
     import tempfile
@@ -457,50 +515,62 @@ async def convert_labelme_to_yolo_api(
             raise HTTPException(status_code=400, detail="LabelMe 转换失败")
 
         return ApiResponse(
-            code=200,
-            message="LabelMe → YOLO 转换成功",
-            data={"output_path": result_path}
+            code=200, message="LabelMe → YOLO 转换成功", data={"output_path": result_path}
         )
     except Exception as e:
         if os.path.exists(labelme_path):
             os.unlink(labelme_path)
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        # 清理临时目录
+        if 'output_dir' in locals() and os.path.exists(output_dir):
+            import shutil as _shutil
+            _shutil.rmtree(output_dir, ignore_errors=True)
 
 
-@router.get("/models/{model_id}/download")
+@router.get("/models/{version_id}/download", dependencies=[Depends(RequirePermission("model:view"))])
 async def download_model(
-    model_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    version_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """下载模型文件
-    
+
     返回模型文件流，支持 .pt 文件下载
     """
-    from fastapi.responses import FileResponse
-    from app.entity.db_models import ModelVersion
-    
+
     # 查询模型版本
-    model_version = db.query(ModelVersion).filter(
-        ModelVersion.id == model_id,
-        ModelVersion.status == "active"
-    ).first()
-    
+    model_version = (
+        db.query(ModelVersion)
+        .filter(ModelVersion.id == version_id, ModelVersion.status == "active")
+        .first()
+    )
+
     if not model_version:
         raise HTTPException(status_code=404, detail="模型不存在")
-    
+
+    # 校验模型所有权：超级管理员可下载所有模型，其他用户只能下载自己创建的
+    model_obj = db.query(Model).filter(Model.id == model_version.model_id).first()
+    if not is_super_admin(current_user, db):
+        if not model_obj or model_obj.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="无权下载该模型")
+
     # 检查模型文件是否存在
     model_path = model_version.model_path
+
+    # 路径安全校验：防止路径穿越攻击（使用绝对路径比较）
+    base_dir = Path.cwd().resolve()
+    allowed_prefixes = [str(base_dir / p) for p in ("data/models", "runs")]
+    resolved_path = Path(model_path).resolve()
+    if not any(str(resolved_path).startswith(prefix) for prefix in allowed_prefixes):
+        logger.warning(f"模型下载路径不在允许范围内: {model_path}")
+        raise HTTPException(status_code=403, detail="模型文件路径不合法")
+
     if not os.path.exists(model_path):
         raise HTTPException(status_code=404, detail="模型文件不存在")
-    
+
     # 生成下载文件名
-    filename = f"{model_version.model_name}_{model_version.version}.pt"
-    
+    model_name = model_obj.name if model_obj else "model"
+    filename = f"{model_name}_{model_version.version}.pt"
+
     logger.info(f"用户 {current_user.username} 下载模型: {filename}")
-    
-    return FileResponse(
-        path=model_path,
-        filename=filename,
-        media_type="application/octet-stream"
-    )
+
+    return FileResponse(path=model_path, filename=filename, media_type="application/octet-stream")

@@ -61,7 +61,7 @@ describe('renderMarkdown', () => {
 
   it('应该渲染链接', () => {
     const result = renderMarkdown('[链接文本](https://example.com)')
-    expect(result).toContain('<a>')
+    expect(result).toContain('<a ')
     expect(result).toContain('href="https://example.com"')
     expect(result).toContain('链接文本')
   })
@@ -112,7 +112,7 @@ describe('renderMarkdown', () => {
 
   it('应该自动识别 URL', () => {
     const result = renderMarkdown('访问 https://example.com 获取更多信息')
-    expect(result).toContain('<a>')
+    expect(result).toContain('<a ')
     expect(result).toContain('href="https://example.com"')
   })
 })
