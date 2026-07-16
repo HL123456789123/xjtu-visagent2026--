@@ -3,10 +3,12 @@
   "status": "completed",
   "provider": "mock",
   "model_version": "food-yolo-v1",
+  "image_url": "/api/files/food/13",
   "images": [
     {
       "image_index": 0,
-      "image_url": "/api/files/food/13/0"
+      "image_url": "/api/files/food/13",
+      "ingredients": []
     }
   ],
   "ingredients": [],

@@ -25,6 +25,7 @@ describe('FoodRecipePage', () => {
   it('runs the success mock flow and emits the recipe contract after confirmation', async () => {
     const wrapper = mount(FoodRecipePage)
 
+    await wrapper.find('[data-testid="mock-scenario"]').setValue('success')
     await selectImages(wrapper, [makeImageFile('breakfast.jpg'), makeImageFile('vegetables.jpg')])
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('selecting')
     expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('2 张图片')
@@ -37,6 +38,9 @@ describe('FoodRecipePage', () => {
       .findAll('[data-testid="ingredient-name"]')
       .map((input) => input.element.value)
     expect(ingredientNames).toEqual(['番茄', '鸡蛋'])
+    expect(wrapper.find('[data-testid="recognition-result-gallery"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="recognition-image-card"]')).toHaveLength(2)
+    expect(wrapper.text()).toContain('置信度 93.2%')
 
     await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
     await flushPromises()

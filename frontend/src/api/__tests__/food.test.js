@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { uploadRequest } from '@/utils/request'
+import { foodRecognitionFixtures } from '@/fixtures/foodRecognition'
 import {
   FOOD_RECOGNITION_PATHS,
   confirmFoodIngredients,
@@ -7,6 +8,7 @@ import {
   createMockFoodApiClient,
   getFoodRecognition,
   normalizeConfirmedIngredients,
+  normalizeFoodRecognitionData,
   normalizeRecognitionId,
   resetFoodApiClient,
   setFoodApiClient,
@@ -33,15 +35,15 @@ describe('food api contract', () => {
 
     expect(success.code).toBe(201)
     expect(success.data.recognition_id).toBe(12)
-    expect(success.data.image_url).toBeUndefined()
-    expect(success.data.images).toEqual([
-      { image_index: 0, image_url: '/api/files/food/12/0' },
-      { image_index: 1, image_url: '/api/files/food/12/1' },
-    ])
+    expect(success.data.image_url).toBe('/api/files/food/12')
+    expect(success.data.images).toHaveLength(2)
+    expect(success.data.images[1]).toMatchObject({
+      image_index: 1,
+      image_url: '/api/files/food/12?image_index=1',
+    })
     expect(success.data.ingredients).toHaveLength(2)
     expect(success.data.ingredients[0]).toMatchObject({
       candidate_id: 'det-1',
-      image_index: 0,
       class_name: 'tomato',
       display_name: '番茄',
       confidence: 0.9321,
@@ -49,6 +51,20 @@ describe('food api contract', () => {
     expect(empty.code).toBe(200)
     expect(empty.data.recognition_id).toBe(13)
     expect(empty.data.ingredients).toHaveLength(0)
+  })
+
+  it('maps grouped backend candidates to their image indexes for rendering', () => {
+    const normalized = normalizeFoodRecognitionData(foodRecognitionFixtures.success)
+
+    expect(normalized.images[0].ingredients[0]).toMatchObject({
+      candidate_id: 'det-1',
+      image_index: 0,
+    })
+    expect(normalized.images[1].ingredients[0]).toMatchObject({
+      candidate_id: 'det-2',
+      image_index: 1,
+    })
+    expect(normalized.ingredients.map((ingredient) => ingredient.image_index)).toEqual([0, 1])
   })
 
   it('sends every selected image in the recognition upload form', async () => {
