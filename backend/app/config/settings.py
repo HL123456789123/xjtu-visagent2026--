@@ -7,11 +7,13 @@
 from typing import Literal
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """应用全局配置"""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # ── 应用基础配置 ──────────────────────────────────
     APP_NAME: str = "VisAgent"
@@ -30,19 +32,23 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """获取实际数据库连接字符串（支持 DATABASE_URL 环境变量覆盖，方便测试用 SQLite）"""
+        """获取 PostgreSQL 连接字符串，支持 DATABASE_URL 环境变量覆盖。"""
         if self.DATABASE_URL:
+            if "sqlite" in self.DATABASE_URL.lower():
+                raise ValueError("本项目仅支持 PostgreSQL，禁止使用 SQLite")
             return self.DATABASE_URL
-        """构造 PostgreSQL 连接字符串"""
         return f"postgresql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
     # ── Redis 配置 ────────────────────────────────────
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    REDIS_URL: str = ""
 
     @property
-    def REDIS_URL(self) -> str:
-        """构造 Redis 连接字符串"""
+    def redis_url(self) -> str:
+        """获取 Redis 连接字符串，支持 REDIS_URL 环境变量覆盖。"""
+        if self.REDIS_URL:
+            return self.REDIS_URL
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
     # ── MinIO 配置 ────────────────────────────────────
@@ -74,6 +80,12 @@ class Settings(BaseSettings):
     LANGCHAIN_API_KEY: str = ""
     LANGCHAIN_PROJECT: str = "visagent"
 
+    # ── 安全与资源配置 ────────────────────────────────
+    ALLOWED_DETECTION_DIRS: str = "/tmp"
+    ALLOWED_TRAINING_DIRS: str = "/tmp,/data,/home"
+    MAX_CACHED_MODELS: int = 5
+    COOKIE_SECURE: bool = False
+
     # ── CORS 配置 ────────────────────────────────────
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173,http://localhost:8080"
 
@@ -96,10 +108,6 @@ class Settings(BaseSettings):
         if not 0 <= value <= 1:
             raise ValueError("FOOD_CONF_THRESHOLD 必须位于 0 到 1 之间")
         return value
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 # 创建全局单例，其他模块直接 import 使用
