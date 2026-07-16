@@ -26,7 +26,7 @@
         <dd data-testid="summary-confirmed-count">{{ confirmedIngredients.length }} 项</dd>
       </div>
       <div>
-        <dt>image_count</dt>
+        <dt>images</dt>
         <dd data-testid="summary-image-count">{{ imageCount }} 张</dd>
       </div>
       <div>

@@ -55,6 +55,9 @@
           />
         </label>
         <div class="ingredient-editor__meta">
+          <span v-if="ingredient.image_index !== null" class="ingredient-editor__image-index">
+            图 {{ ingredient.image_index + 1 }}
+          </span>
           <span class="ingredient-editor__confidence">
             {{ formatConfidence(ingredient.confidence) }}
           </span>
@@ -134,6 +137,7 @@ function addIngredient() {
     draftId: `manual_${Date.now()}_${ingredients.value.length}`,
     candidate_id: null,
     class_name: null,
+    image_index: null,
     name: '',
     confidence: null,
     quantity: 1,
@@ -284,6 +288,7 @@ defineExpose({
   min-height: 36px;
 }
 
+.ingredient-editor__image-index,
 .ingredient-editor__confidence,
 .ingredient-editor__source {
   display: inline-flex;
@@ -292,6 +297,11 @@ defineExpose({
   border-radius: 999px;
   padding: 0 $spacing-sm;
   font-size: 12px;
+}
+
+.ingredient-editor__image-index {
+  background: #eff8ff;
+  color: #175cd3;
 }
 
 .ingredient-editor__confidence {

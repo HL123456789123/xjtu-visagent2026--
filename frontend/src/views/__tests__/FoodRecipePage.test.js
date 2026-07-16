@@ -104,7 +104,7 @@ describe('FoodRecipePage', () => {
 
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片过大')
-    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片超过 10 MB')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('单张图片不能超过 10 MB')
 
     await wrapper.find('[data-testid="mock-scenario"]').setValue('415')
     await selectImages(wrapper)

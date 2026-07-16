@@ -1,4 +1,4 @@
-# 食物识别菜谱平台：API 与模块接口冻结完整版（V1）
+# 食物识别菜谱平台：API 与模块接口冻结完整版（V1.1）
 
 > 本文档是五天开发期间的唯一接口标准。其他计划、个人任务、代码注释或群聊内容与本文冲突时，一律以本文为准。  
 > 适用分支：`develop` 及全部个人功能分支。
@@ -142,7 +142,11 @@ message_id
 格式：JPG、JPEG、PNG
 单张最大：10 MB
 每次：1 至 5 张
+整批最大：50 MB
+主上传字段：images
 ```
+
+同一次请求上传的所有图片归属于同一个 `recognition_id`。后端按照上传顺序保存图片，并逐张调用模型完成识别，最后汇总为一组候选食材。
 
 ## 8. 默认值
 
@@ -324,6 +328,8 @@ FoodModelUnavailableError
 
 Food API 转换为 HTTP 503。
 
+Provider 继续保持单图 `recognize(image_path, conf_threshold)` 接口。FoodRecognitionService 负责对 `images` 中每张图片循环调用 Provider，按上传顺序汇总结果，并为候选食材补充 `image_index`。
+
 ## 4. 类别文件
 
 ```text
@@ -387,11 +393,10 @@ Content-Type: multipart/form-data
 
 ```text
 images：必填，1 至 5 张 JPG/JPEG/PNG 图片
-image：兼容字段，可携带第一张图片
 conf_threshold：选填，默认 0.25
 ```
 
-多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 10 MB。
+多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 10 MB，整批最大 50 MB。前端不再上传旧字段 `image`。
 
 响应：
 
@@ -404,10 +409,20 @@ conf_threshold：选填，默认 0.25
     "status": "completed",
     "provider": "yolo",
     "model_version": "food-yolo-v1",
-    "image_url": "/api/files/food/12",
+    "images": [
+      {
+        "image_index": 0,
+        "image_url": "/api/files/food/12/0"
+      },
+      {
+        "image_index": 1,
+        "image_url": "/api/files/food/12/1"
+      }
+    ],
     "ingredients": [
       {
         "candidate_id": "det-1",
+        "image_index": 0,
         "class_name": "tomato",
         "display_name": "番茄",
         "confidence": 0.9321,
@@ -432,7 +447,7 @@ mock
 yolo
 ```
 
-接口采用同步实现，不要求前端轮询。`image_url` 可指向识别记录或第一张图片资源；多图场景不强制返回逐张图片 URL。
+接口采用同步实现，不要求前端轮询。`images` 按上传顺序返回，每项包含 `image_index` 和 `image_url`。候选食材通过 `image_index` 关联到具体图片。
 
 ## 2. 查询识别记录
 
@@ -451,7 +466,12 @@ GET /api/food/recognitions/{recognition_id}
     "status": "completed",
     "provider": "yolo",
     "model_version": "food-yolo-v1",
-    "image_url": "/api/files/food/12",
+    "images": [
+      {
+        "image_index": 0,
+        "image_url": "/api/files/food/12/0"
+      }
+    ],
     "ingredients": [],
     "confirmed_ingredients": [],
     "created_at": "2026-07-14T21:30:00+08:00",
@@ -861,9 +881,20 @@ data: {"code":"LLM_UNAVAILABLE","message":"智能服务暂时不可用"}
 
 ```python
 class FoodRepository:
-    def create_recognition(...): ...
+    def create_recognition(
+        self,
+        user_id: int,
+        image_object_names: list[str],
+        status: str,
+        provider: str,
+        model_version: str | None,
+    ): ...
     def get_recognition_for_user(recognition_id: int, user_id: int): ...
-    def save_raw_detections(recognition_id: int, detections: list[dict]): ...
+    def save_raw_detections(
+        self,
+        recognition_id: int,
+        detections_by_image: list[dict],
+    ): ...
     def replace_confirmed_ingredients(
         recognition_id: int,
         user_id: int,
@@ -905,15 +936,62 @@ class ChatRepository:
 ```text
 id
 user_id
-image_object_name
+image_object_names（JSON 字符串数组）
 status
 provider
 model_version
-raw_detections（JSON）
-confirmed_ingredients（JSON）
+raw_detections（JSON，按图片分组）
+confirmed_ingredients（JSON，所有图片汇总确认后的食材）
 created_at
 updated_at
 ```
+
+字段规则：
+
+```text
+image_object_names：
+- 必须是非空 JSON 字符串数组
+- 按用户上传顺序保存全部图片对象名
+
+raw_detections：
+- 按图片分别保存模型原始检测结果
+- 每一项必须包含 image_index、image_object_name 和 detections
+- image_index 从 0 开始，并与 image_object_names 的数组下标一致
+
+confirmed_ingredients：
+- 保存用户对全部图片识别结果汇总、增删改之后的最终食材
+- 不再区分食材来自哪一张图片
+```
+
+`raw_detections` 示例：
+
+```json
+[
+  {
+    "image_index": 0,
+    "image_object_name": "food/12/image-1.jpg",
+    "detections": [
+      {
+        "class_name": "tomato",
+        "confidence": 0.9321,
+        "bbox": {
+          "x1": 120.4,
+          "y1": 80.2,
+          "x2": 310.7,
+          "y2": 265.1
+        }
+      }
+    ]
+  },
+  {
+    "image_index": 1,
+    "image_object_name": "food/12/image-2.png",
+    "detections": []
+  }
+]
+```
+
+五天 MVP 不单独建立 `food_recognition_images` 子表，统一使用 `image_object_names` 和按图片分组的 `raw_detections` 完成多图存储。
 
 ## recipes
 
@@ -952,7 +1030,7 @@ ORM 和 Alembic migration 只由绕家辉修改。
 | 404 | `RECOGNITION_NOT_FOUND` | 识别记录不存在 |
 | 404 | `RECIPE_NOT_FOUND` | 菜谱不存在 |
 | 404 | `SESSION_NOT_FOUND` | 会话不存在 |
-| 413 | `IMAGE_TOO_LARGE` | 图片超过 10 MB |
+| 413 | `IMAGE_TOO_LARGE` | 单张图片超过 10 MB 或整批超过 50 MB |
 | 415 | `UNSUPPORTED_IMAGE_TYPE` | 非 JPG/JPEG/PNG |
 | 422 | `NO_CONFIRMED_INGREDIENTS` | 未确认食材 |
 | 422 | `EMPTY_INGREDIENTS` | 食材为空 |
@@ -1132,7 +1210,7 @@ best.pt 不进 Git
 
 # 十七、冻结规则
 
-本文为 V1。
+本文为 V1.1。
 
 只有以下情况允许修改：
 

@@ -1,6 +1,6 @@
 /**
- * V1 IngredientCandidate (API response):
- * { candidate_id, class_name, display_name, confidence, bbox, source }
+ * V1.1 IngredientCandidate (API response):
+ * { candidate_id, image_index, class_name, display_name, confidence, bbox, source }
  *
  * V1 ConfirmedIngredient (confirmation request):
  * { name, class_name, quantity, unit, source }
@@ -11,6 +11,7 @@ export function mapCandidatesToEditableIngredients(candidates = []) {
     draftId: candidate.draftId || candidate.candidate_id || `candidate_${index}`,
     candidate_id: candidate.candidate_id || null,
     class_name: candidate.class_name || null,
+    image_index: Number.isInteger(candidate.image_index) ? candidate.image_index : null,
     name: candidate.display_name ?? candidate.name ?? '',
     confidence: typeof candidate.confidence === 'number' ? candidate.confidence : null,
     quantity: candidate.quantity ?? 1,

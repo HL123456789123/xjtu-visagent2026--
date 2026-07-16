@@ -29,6 +29,7 @@ describe('FoodImageUploader', () => {
     expect(wrapper.find('[data-testid="food-image-input"]').attributes('multiple')).toBeDefined()
     expect(wrapper.text()).toContain('1 至 5 张')
     expect(wrapper.text()).toContain('单图不超过 10 MB')
+    expect(wrapper.text()).toContain('整批不超过 50 MB')
   })
 
   it('rejects non JPG/PNG files', async () => {
@@ -81,6 +82,22 @@ describe('FoodImageUploader', () => {
     expect(wrapper.emitted('validation-error')?.[0][0]).toContain('最多上传 5 张')
   })
 
+  it('rejects batches over the default 50 MB limit', () => {
+    const wrapper = mount(FoodImageUploader, {
+      props: { maxSizeMB: 20 },
+    })
+    const files = Array.from({ length: 5 }, (_, index) =>
+      new File([new Uint8Array(11 * 1024 * 1024)], `meal-${index + 1}.jpg`, {
+        type: 'image/jpeg',
+      })
+    )
+
+    const selected = wrapper.vm.selectFiles(files)
+
+    expect(selected).toBe(false)
+    expect(wrapper.emitted('validation-error')?.[0][0]).toContain('50 MB')
+  })
+
   it('accepts multiple dropped images as one recognition batch', async () => {
     const wrapper = mount(FoodImageUploader)
     const first = new File(['image'], 'meal-one.jpg', { type: 'image/jpeg' })
@@ -96,5 +113,18 @@ describe('FoodImageUploader', () => {
     expect(wrapper.emitted('selected')?.[0]).toEqual([[first, second]])
     expect(wrapper.emitted('preview-change')?.[0]).toEqual([['blob:meal-one.jpg', 'blob:meal-two.png']])
     expect(wrapper.findAll('.food-uploader__preview img')).toHaveLength(2)
+  })
+
+  it('removes a single selected image from the preview list', async () => {
+    const wrapper = mount(FoodImageUploader)
+    const first = new File(['image'], 'meal-one.jpg', { type: 'image/jpeg' })
+    const second = new File(['image'], 'meal-two.png', { type: 'image/png' })
+
+    wrapper.vm.selectFiles([first, second])
+    await wrapper.setProps({ modelValue: [first, second] })
+    await wrapper.findAll('[data-testid="food-image-remove"]')[0].trigger('click')
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)[0]).toEqual([second])
+    expect(wrapper.emitted('preview-change')?.at(-1)[0]).toEqual(['blob:meal-two.png'])
   })
 })

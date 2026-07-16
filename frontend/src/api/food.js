@@ -97,7 +97,7 @@ function normalizeRecognitionImages(data = {}) {
   if (data.images && typeof data.images[Symbol.iterator] === 'function') {
     return Array.from(data.images).filter(Boolean)
   }
-  return data.image ? [data.image] : []
+  return []
 }
 
 export function createFoodRecognition(data, options = {}) {
@@ -113,7 +113,6 @@ export function createFoodRecognition(data, options = {}) {
   images.forEach((image) => {
     formData.append('images', image)
   })
-  if (images[0]) formData.append('image', images[0])
   formData.append('conf_threshold', data.conf_threshold ?? 0.25)
 
   return uploadRequest.post(FOOD_RECOGNITION_PATHS.create, formData, {

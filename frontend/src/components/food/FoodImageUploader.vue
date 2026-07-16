@@ -29,13 +29,31 @@
         class="food-uploader__preview-grid"
         :class="{ 'is-single': previewUrls.length === 1 }"
       >
-        <div v-for="preview in previewUrls" :key="preview.file.name || preview.url" class="food-uploader__preview">
+        <div
+          v-for="(preview, index) in previewUrls"
+          :key="preview.file.name || preview.url"
+          class="food-uploader__preview"
+        >
           <img :src="preview.url" :alt="preview.file.name" />
+          <button
+            class="food-uploader__preview-remove"
+            type="button"
+            :disabled="disabled"
+            :aria-label="`删除第 ${index + 1} 张图片`"
+            title="删除图片"
+            data-testid="food-image-remove"
+            @click.stop="removeSelectedFile(index)"
+          >
+            ×
+          </button>
         </div>
       </div>
       <div v-else class="food-uploader__placeholder">
         <strong>选择食物图片</strong>
-        <span>支持 1 至 {{ maxFiles }} 张 JPG / JPEG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
+        <span>
+          支持 1 至 {{ maxFiles }} 张 JPG / JPEG / PNG，单图不超过 {{ maxSizeMB }} MB，整批不超过
+          {{ maxBatchSizeMB }} MB
+        </span>
       </div>
     </div>
 
@@ -51,7 +69,7 @@
         data-testid="food-image-clear"
         @click="clearSelection"
       >
-        清除
+        清空
       </button>
     </div>
 
@@ -76,6 +94,10 @@ const props = defineProps({
   maxFiles: {
     type: Number,
     default: 5,
+  },
+  maxBatchSizeMB: {
+    type: Number,
+    default: 50,
   },
   disabled: {
     type: Boolean,
@@ -103,6 +125,7 @@ const selectedName = computed(() => {
   return ''
 })
 const maxSizeBytes = computed(() => props.maxSizeMB * 1024 * 1024)
+const maxBatchSizeBytes = computed(() => props.maxBatchSizeMB * 1024 * 1024)
 
 function revokePreviews() {
   if (previewUrls.value.length) {
@@ -134,6 +157,8 @@ function validateFile(file) {
 function validateFiles(files) {
   if (!files.length) return '请选择至少一张图片。'
   if (files.length > props.maxFiles) return `每次最多上传 ${props.maxFiles} 张图片。`
+  const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0)
+  if (totalSize > maxBatchSizeBytes.value) return `整批图片大小不能超过 ${props.maxBatchSizeMB} MB。`
   const invalidFile = files.find((file) => validateFile(file))
   if (!invalidFile) return ''
   return `${invalidFile.name}：${validateFile(invalidFile)}`
@@ -199,6 +224,16 @@ function clearSelection() {
   emit('cleared')
 }
 
+function removeSelectedFile(index) {
+  if (props.disabled) return
+  const nextFiles = selectedFiles.value.filter((_, fileIndex) => fileIndex !== index)
+  if (nextFiles.length === 0) {
+    clearSelection()
+    return
+  }
+  selectFiles(nextFiles)
+}
+
 watch(
   () => props.modelValue,
   (files) => {
@@ -218,6 +253,7 @@ defineExpose({
   selectFile,
   selectFiles,
   clearSelection,
+  removeSelectedFile,
 })
 </script>
 
@@ -285,6 +321,7 @@ defineExpose({
 }
 
 .food-uploader__preview {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -295,6 +332,29 @@ defineExpose({
     height: 100%;
     object-fit: contain;
     background: #111827;
+  }
+}
+
+.food-uploader__preview-remove {
+  position: absolute;
+  top: $spacing-xs;
+  right: $spacing-xs;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgb(255 255 255 / 75%);
+  border-radius: 50%;
+  background: rgb(17 24 39 / 72%);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
   }
 }
 

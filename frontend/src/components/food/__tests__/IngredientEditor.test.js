@@ -9,6 +9,7 @@ import {
 const candidates = [
   {
     candidate_id: 'det-1',
+    image_index: 0,
     class_name: 'tomato',
     display_name: '番茄',
     confidence: 0.93,
@@ -17,6 +18,7 @@ const candidates = [
   },
   {
     candidate_id: 'det-2',
+    image_index: 1,
     class_name: 'egg',
     display_name: '鸡蛋',
     confidence: 0.88,
@@ -68,6 +70,8 @@ describe('IngredientEditor', () => {
     })
 
     expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(2)
+    expect(wrapper.text()).toContain('图 1')
+    expect(wrapper.text()).toContain('图 2')
     expect(wrapper.text()).toContain('93.0%')
     expect(wrapper.text()).toContain('模型识别')
   })

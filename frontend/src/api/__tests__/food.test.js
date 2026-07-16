@@ -33,9 +33,15 @@ describe('food api contract', () => {
 
     expect(success.code).toBe(201)
     expect(success.data.recognition_id).toBe(12)
+    expect(success.data.image_url).toBeUndefined()
+    expect(success.data.images).toEqual([
+      { image_index: 0, image_url: '/api/files/food/12/0' },
+      { image_index: 1, image_url: '/api/files/food/12/1' },
+    ])
     expect(success.data.ingredients).toHaveLength(2)
     expect(success.data.ingredients[0]).toMatchObject({
       candidate_id: 'det-1',
+      image_index: 0,
       class_name: 'tomato',
       display_name: '番茄',
       confidence: 0.9321,
@@ -63,8 +69,7 @@ describe('food api contract', () => {
 
     expect(path).toBe(FOOD_RECOGNITION_PATHS.create)
     expect(formData.getAll('images')).toEqual([first, second])
-    expect(formData.get('image')).toBe(first)
-    expect(formData.has('image_count')).toBe(false)
+    expect(formData.has('image')).toBe(false)
     expect(formData.get('conf_threshold')).toBe('0.4')
     expect(config).toMatchObject({
       headers: { 'Content-Type': 'multipart/form-data' },
