@@ -1,18 +1,18 @@
 """
-食物识别端到端手动测试脚本
-============================
+食物识别端到端手动测试脚本（多图版）
+====================================
 模拟前端调用真实后端 API（Docker 环境），完整走一遍：
-  登录 → 上传图片 → 查看识别结果 → 下载原图 → 确认食材 → 查看数据库
+  登录 → 上传多张图片 → 查看识别结果 → 下载原图 → 确认食材 → 查看数据库
 
 前提条件：
   1. Docker 已启动：docker-compose up -d
   2. 后端健康：curl http://localhost:8888/api/health
-  3. 准备一张 JPG 或 PNG 图片
+  3. 准备一张或多张 JPG / PNG 图片
 
 用法：
   cd backend
-  python tests/test_food_real_api.py 你的图片路径.jpg
-  python tests/test_food_real_api.py 你的图片路径.jpg --username testuser --password 123456
+  python tests/test_food_real_api.py 图片1.jpg 图片2.png
+  python tests/test_food_real_api.py *.jpg --username testuser --password 123456
 """
 
 import argparse
@@ -93,24 +93,45 @@ def ensure_user(client: httpx.Client, username: str, password: str, email: str) 
     return resp.json()
 
 
-def upload_and_recognize(client: httpx.Client, image_path: str, conf: float) -> dict:
-    """上传图片并识别"""
-    path = Path(image_path)
-    if not path.is_file():
-        print(f"  ❌ 图片不存在: {image_path}")
-        sys.exit(1)
+def upload_and_recognize(client: httpx.Client, image_paths: list[str], conf: float) -> dict:
+    """上传多张图片并识别"""
+    validated: list[Path] = []
+    for p in image_paths:
+        path = Path(p)
+        if not path.is_file():
+            print(f"  ❌ 图片不存在: {p}")
+            sys.exit(1)
+        validated.append(path)
 
-    file_size_kb = path.stat().st_size / 1024
-    print(f"\n  图片路径: {path.resolve()}")
-    print(f"  图片大小: {file_size_kb:.1f} KB")
+    total_kb = sum(p.stat().st_size for p in validated) / 1024
+    print(f"\n  共 {len(validated)} 张图片（总计 {total_kb:.1f} KB）:")
+    for i, p in enumerate(validated):
+        size_kb = p.stat().st_size / 1024
+        print(f"    [{i}] {p.resolve()}  ({size_kb:.1f} KB)")
     print(f"  置信度阈值: {conf}")
 
-    with open(path, "rb") as f:
-        resp = client.post(
-            f"{BASE_URL}/api/food/recognitions",
-            files={"image": (path.name, f, f"image/{path.suffix.lstrip('.') or 'jpeg'}")},
-            data={"conf_threshold": str(conf)},
-        )
+    # 构造多图上传的 files 列表。
+    # 注意：
+    # 1. FastAPI 0.139+ 要求 multipart 中必须包含 "image" 字段（即使声明了 default=None），
+    #    因此将第一张图同时作为 "image" 发送以满足验证。
+    # 2. 路由处理逻辑为 images or ([image] if image else [])，
+    #    当 images 存在时优先使用 images，image 字段被忽略，不会导致重复处理。
+    # 3. conf_threshold 放入 files 列表（filename=None 表示普通表单字段），
+    #    避免 httpx 同时使用 data + files 时 multipart 编码兼容问题。
+    mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+    files: list[tuple] = [("conf_threshold", (None, str(conf)))]
+    for i, path in enumerate(validated):
+        content_type = mime_map.get(path.suffix.lower(), "image/jpeg")
+        file_bytes = path.read_bytes()
+        # 第一张图同时作为 "image"（满足 FastAPI 验证）和 "images"（实际处理）
+        if i == 0:
+            files.append(("image", (path.name, file_bytes, content_type)))
+        files.append(("images", (path.name, file_bytes, content_type)))
+
+    resp = client.post(
+        f"{BASE_URL}/api/food/recognitions",
+        files=files,
+    )
 
     if resp.status_code != 201:
         print(f"  ❌ 识别失败: {resp.status_code}")
@@ -132,17 +153,17 @@ def get_recognition(client: httpx.Client, recognition_id: int) -> dict:
     return resp.json()
 
 
-def download_image(client: httpx.Client, recognition_id: int, save_dir: str) -> str:
-    """下载识别的原图"""
+def download_image(client: httpx.Client, recognition_id: int, save_dir: str, image_index: int = 0) -> str:
+    """下载识别的原图（默认下载第一张，即 index=0）"""
     resp = client.get(f"{BASE_URL}/api/files/food/{recognition_id}")
     if resp.status_code != 200:
         print(f"  ❌ 下载图片失败: {resp.status_code}")
         return ""
 
-    save_path = Path(save_dir) / f"recognition_{recognition_id}.jpg"
+    save_path = Path(save_dir) / f"recognition_{recognition_id}_img{image_index}.jpg"
     save_path.parent.mkdir(parents=True, exist_ok=True)
     save_path.write_bytes(resp.content)
-    print(f"  ✅ 原图已保存到: {save_path.resolve()}")
+    print(f"  ✅ 图片 [{image_index}] 已保存到: {save_path.resolve()}")
     return str(save_path)
 
 
@@ -227,8 +248,8 @@ def print_db_hints():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="食物识别端到端测试（真实 Docker 环境）")
-    parser.add_argument("image", help="图片文件路径（JPG/PNG）")
+    parser = argparse.ArgumentParser(description="食物识别端到端测试（真实 Docker 环境，支持多图）")
+    parser.add_argument("images", nargs="+", help="图片文件路径（JPG/PNG），可传多个")
     parser.add_argument("--username", default=DEFAULT_USERNAME, help=f"用户名（默认: {DEFAULT_USERNAME}）")
     parser.add_argument("--password", default=DEFAULT_PASSWORD, help=f"密码（默认: {DEFAULT_PASSWORD}）")
     parser.add_argument("--email", default=DEFAULT_EMAIL, help=f"邮箱（默认: {DEFAULT_EMAIL}）")
@@ -236,13 +257,15 @@ def main():
     parser.add_argument("--save-dir", default="./test_output", help="结果保存目录（默认: ./test_output）")
     args = parser.parse_args()
 
+    image_names = ", ".join(Path(p).name for p in args.images)
     print(f"""
 ╔══════════════════════════════════════════════════════════╗
-║          🍳 食物识别端到端测试（真实环境）                ║
+║          🍳 食物识别端到端测试（真实环境·多图）           ║
 ╠══════════════════════════════════════════════════════════╣
 ║  后端地址: {BASE_URL:<43s} ║
 ║  用户:     {args.username:<43s} ║
-║  图片:     {Path(args.image).name:<43s} ║
+║  图片数:   {len(args.images):<43d} ║
+║  图片:     {image_names[:43]:<43s} ║
 ╚══════════════════════════════════════════════════════════╝""")
 
     # 创建 HTTP 客户端（自动携带 cookie，禁用系统代理避免冲突）
@@ -263,16 +286,17 @@ def main():
         print(f"  用户 ID: {user_id}")
         print(f"  用户名: {user_data.get('user', {}).get('username')}")
 
-        # ── 步骤 2: 上传图片并识别 ───────────────────
-        print_step(2, "上传图片 → AI 识别")
+        # ── 步骤 2: 上传多张图片并识别 ───────────────
+        print_step(2, "上传多张图片 → AI 识别")
         start_time = time.time()
-        result = upload_and_recognize(client, args.image, args.conf)
+        result = upload_and_recognize(client, args.images, args.conf)
         elapsed = time.time() - start_time
         recognition_id = result["data"]["recognition_id"]
 
         print_json(result["data"], "识别结果")
         print(f"\n  ⏱️  耗时: {elapsed:.2f} 秒")
         print(f"  📋 识别 ID: {recognition_id}")
+        print(f"  📸 上传图片数: {len(args.images)}")
         print(f"  🔍 识别到 {len(result['data']['ingredients'])} 种食材:")
         for item in result["data"]["ingredients"]:
             print(f"     - {item['display_name']} ({item['class_name']}) "
@@ -286,11 +310,11 @@ def main():
         confirmed = detail["data"]["confirmed_ingredients"]
         print(f"  已确认食材数量: {len(confirmed)}（预期: 0，还没确认）")
 
-        # ── 步骤 4: 下载原图 ─────────────────────────
-        print_step(4, "从 MinIO 下载原图")
-        saved_path = download_image(client, recognition_id, args.save_dir)
+        # ── 步骤 4: 下载原图（第一张） ───────────────
+        print_step(4, "从 MinIO 下载原图（第一张）")
+        saved_path = download_image(client, recognition_id, args.save_dir, image_index=0)
         if saved_path:
-            original_size = Path(args.image).stat().st_size
+            original_size = Path(args.images[0]).stat().st_size
             downloaded_size = Path(saved_path).stat().st_size
             print(f"  原图大小: {original_size} bytes")
             print(f"  下载大小: {downloaded_size} bytes")
@@ -318,6 +342,8 @@ def main():
 
   用户 ID:       {user_id}
   识别 ID:       {recognition_id}
+  上传图片数:    {len(args.images)}
+  图片列表:      {[Path(p).name for p in args.images]}
   识别食材:      {[i['display_name'] for i in result['data']['ingredients']]}
   确认食材:      {[i['name'] for i in confirmed2]}
   图片存储路径:  {result['data']['image_url']}
