@@ -9,6 +9,12 @@
 import { defineStore } from 'pinia'
 import { loginApi, getUserInfoApi, logoutApi } from '@/api/auth'
 import { hasRole, isAdmin, isSuperAdmin, hasPermission } from '@/utils/permission'
+import {
+  ACCESS_MODES,
+  clearStoredAccessMode,
+  getStoredAccessMode,
+  setStoredAccessMode,
+} from '@/utils/accessMode'
 
 const USER_KEY = 'visagent_user'
 
@@ -35,6 +41,8 @@ export const useUserStore = defineStore('user', {
     return {
       // 当前用户信息（敏感字段如 roles/permissions 仅在内存中）
       user: savedUser,
+      // 当前入口模式：用户端 / 管理端
+      accessMode: getStoredAccessMode(),
     }
   },
 
@@ -53,6 +61,10 @@ export const useUserStore = defineStore('user', {
     isAdmin: (state) => isAdmin(state.user),
     /** 是否为超级管理员（通过角色判断） */
     isSuperAdmin: (state) => isSuperAdmin(state.user),
+    /** 是否可以进入管理端 */
+    canUseAdminMode: (state) => isAdmin(state.user),
+    /** 当前是否处于管理端模式 */
+    isAdminMode: (state) => state.accessMode === ACCESS_MODES.ADMIN && isAdmin(state.user),
     /**
      * 返回一个函数，用于判断用户是否拥有指定角色
      * 用法：const userStore = useUserStore()
@@ -67,6 +79,15 @@ export const useUserStore = defineStore('user', {
   },
 
   actions: {
+    /**
+     * 设置当前入口模式
+     * @param {'user'|'admin'} mode
+     */
+    setAccessMode(mode) {
+      this.accessMode = setStoredAccessMode(mode)
+      return this.accessMode
+    },
+
     /**
      * 登录
      * @param {Object} credentials - { username, password }
@@ -114,6 +135,8 @@ export const useUserStore = defineStore('user', {
       this.user = null
       localStorage.removeItem(USER_KEY)
       localStorage.removeItem('ws_token')
+      this.accessMode = ACCESS_MODES.USER
+      clearStoredAccessMode()
     },
   },
 })

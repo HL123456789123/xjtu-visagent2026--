@@ -49,6 +49,7 @@
       </button>
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="user-info">
+          <span class="mode-badge">{{ userStore.isAdminMode ? '管理端' : '用户端' }}</span>
           <el-avatar :size="32" :src="userStore.avatar || undefined">
             {{ userStore.username?.charAt(0)?.toUpperCase() }}
           </el-avatar>
@@ -58,6 +59,9 @@
 
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="entry">
+              <el-icon><Switch /></el-icon>切换入口
+            </el-dropdown-item>
             <el-dropdown-item command="profile">
               <el-icon><User /></el-icon>个人信息
             </el-dropdown-item>
@@ -78,11 +82,12 @@ import {
   ArrowDown,
   ChatDotRound,
   Clock,
+  Cpu,
   DataAnalysis,
-  FolderOpened,
   Goods,
   Key,
   Setting,
+  Switch,
   SwitchButton,
   User,
   UserFilled,
@@ -99,9 +104,8 @@ const menuItems = [
   { path: '/food-recipes', title: '食物识别', icon: Goods },
   { path: '/chat', title: '智能对话', icon: ChatDotRound },
   { path: '/history', title: '历史记录', icon: Clock },
-  { path: '/dashboard', title: '仪表盘', icon: DataAnalysis, permission: 'system:dashboard' },
-  { path: '/models', title: '模型管理', icon: Goods, permission: 'model:view' },
-  { path: '/datasets', title: '数据集管理', icon: FolderOpened, permission: 'dataset:view' },
+  { path: '/training', title: '模型训练', icon: Cpu, permission: 'training:task:view', managerOnly: true },
+  { path: '/dashboard', title: '数据看板', icon: DataAnalysis, permission: 'system:dashboard', managerOnly: true },
 ]
 
 const adminMenuItems = [
@@ -115,17 +119,21 @@ const activeMenu = computed(() => {
 })
 
 function canSeeMenuItem(item) {
+  if (item.managerOnly && !userStore.isAdminMode) return false
   return !item.permission || userStore.hasPermission(item.permission)
 }
 
 const visibleMenuItems = computed(() => menuItems.filter(canSeeMenuItem))
-const visibleAdminMenuItems = computed(() => adminMenuItems.filter(canSeeMenuItem))
+const visibleAdminMenuItems = computed(() => userStore.isAdminMode ? adminMenuItems.filter(canSeeMenuItem) : [])
 const showAdminMenu = computed(() => visibleAdminMenuItems.value.length > 0)
 
 async function handleCommand(command) {
   switch (command) {
     case 'profile':
       router.push('/profile')
+      break
+    case 'entry':
+      router.push('/entry')
       break
     case 'logout':
       try {
@@ -135,7 +143,7 @@ async function handleCommand(command) {
           type: 'warning',
         })
         await userStore.logout()
-        router.push('/login')
+        router.push('/entry')
       } catch {
         // 用户取消确认框或 logout 出错，不做处理
       }
@@ -275,6 +283,18 @@ async function handleCommand(command) {
   font-weight: 700;
 }
 
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border-radius: 8px;
+  background: #fff1d2;
+  color: #d76626;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 @media (max-width: 1080px) {
   .header-nav__item {
     padding: 0 9px;
@@ -301,6 +321,7 @@ async function handleCommand(command) {
 
 @media (max-width: 560px) {
   .brand-title,
+  .mode-badge,
   .username,
   .start-detect {
     display: none;

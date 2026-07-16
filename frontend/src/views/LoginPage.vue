@@ -1,20 +1,38 @@
 <template>
   <div class="login-page">
     <section class="login-visual">
-      <router-link class="login-brand" to="/login">
+      <router-link class="login-brand" to="/entry">
         <span>🍳</span>
         <strong>FridgeChef</strong>
       </router-link>
-      <h1>登录后，开启你的专属美食之旅</h1>
-      <p>识别食材、确认清单、生成家常食谱，把每天吃什么变得轻松一点。</p>
+      <h1>{{ visualTitle }}</h1>
+      <p>{{ visualCopy }}</p>
       <img src="/login-hero.jpg" alt="新鲜蔬果食材" />
     </section>
 
     <section class="login-card">
       <div class="login-header">
         <span class="login-kicker">Welcome back</span>
-        <h2>欢迎回来</h2>
-        <p>登录 FridgeChef，继续你的日常美食计划。</p>
+        <h2>{{ loginTitle }}</h2>
+        <p>{{ loginCopy }}</p>
+      </div>
+
+      <div class="mode-switch" role="tablist" aria-label="选择登录入口">
+        <button
+          v-for="item in modeOptions"
+          :key="item.value"
+          type="button"
+          class="mode-switch__item"
+          :class="{ active: selectedMode === item.value }"
+          :aria-selected="selectedMode === item.value"
+          role="tab"
+          @click="selectMode(item.value)"
+        >
+          <el-icon>
+            <component :is="item.icon" />
+          </el-icon>
+          <span>{{ item.label }}</span>
+        </button>
       </div>
 
       <el-form
@@ -57,7 +75,7 @@
             :loading="loading"
             @click="handleLogin"
           >
-            登录并进入开始页
+            {{ loginButtonText }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -71,11 +89,12 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { computed, ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { DataAnalysis, Lock, User } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { ACCESS_MODES, isManagerPath, normalizeAccessMode } from '@/utils/accessMode'
 
 const router = useRouter()
 const route = useRoute()
@@ -83,6 +102,30 @@ const userStore = useUserStore()
 
 const formRef = ref(null)
 const loading = ref(false)
+
+const modeOptions = [
+  { value: ACCESS_MODES.USER, label: '用户端', icon: User },
+  { value: ACCESS_MODES.ADMIN, label: '管理端', icon: DataAnalysis },
+]
+
+const selectedMode = computed(() => normalizeAccessMode(route.query.mode || userStore.accessMode))
+const isAdminLogin = computed(() => selectedMode.value === ACCESS_MODES.ADMIN)
+
+const visualTitle = computed(() =>
+  isAdminLogin.value ? '登录管理端，掌握模型训练与数据变化' : '登录后，开启你的专属美食之旅'
+)
+const visualCopy = computed(() =>
+  isAdminLogin.value
+    ? '管理者可在日常食物工作流之外，进入模型训练和数据看板。'
+    : '识别食材、确认清单、生成家常食谱，把每天吃什么变得轻松一点。'
+)
+const loginTitle = computed(() => (isAdminLogin.value ? '管理者登录' : '欢迎回来'))
+const loginCopy = computed(() =>
+  isAdminLogin.value
+    ? '请使用管理员账号进入管理端。'
+    : '登录 FridgeChef，继续你的日常美食计划。'
+)
+const loginButtonText = computed(() => (isAdminLogin.value ? '登录并进入管理端' : '登录并进入开始页'))
 
 /** 登录表单 */
 const loginForm = reactive({
@@ -102,6 +145,29 @@ const loginRules = {
   ],
 }
 
+function getRedirectQuery() {
+  const redirect = route.query.redirect
+  return Array.isArray(redirect) ? redirect[0] : redirect
+}
+
+function getRedirectTarget(mode) {
+  const redirect = getRedirectQuery()
+  if (mode === ACCESS_MODES.ADMIN) return redirect && isManagerPath(redirect) ? redirect : '/dashboard'
+  return redirect && !isManagerPath(redirect) ? redirect : '/start'
+}
+
+function selectMode(mode) {
+  userStore.setAccessMode(mode)
+  router.replace({
+    path: route.path,
+    query: {
+      ...route.query,
+      mode,
+      redirect: getRedirectTarget(mode),
+    },
+  })
+}
+
 /** 处理登录 */
 async function handleLogin() {
   const valid = await formRef.value.validate().catch(() => false)
@@ -109,14 +175,21 @@ async function handleLogin() {
 
   loading.value = true
   try {
+    const mode = selectedMode.value
+    userStore.setAccessMode(mode)
     await userStore.login({
       username: loginForm.username,
       password: loginForm.password,
     })
-    ElMessage.success('登录成功')
-    // 登录后跳转（如果有 redirect 参数则跳转到目标页）
-    const redirect = route.query.redirect || '/start'
-    router.push(redirect)
+
+    if (mode === ACCESS_MODES.ADMIN && !userStore.canUseAdminMode) {
+      await userStore.logout()
+      ElMessage.error('该账号不是管理者账号，请使用管理员账号登录。')
+      return
+    }
+
+    ElMessage.success(mode === ACCESS_MODES.ADMIN ? '管理者登录成功' : '登录成功')
+    router.push(getRedirectTarget(mode))
   } catch {
     // 错误已在 Axios 拦截器中处理
   } finally {
@@ -212,7 +285,7 @@ async function handleLogin() {
 
 .login-header {
   text-align: left;
-  margin-bottom: 32px;
+  margin-bottom: 22px;
 
   h2 {
     margin: 6px 0 0;
@@ -227,6 +300,37 @@ async function handleLogin() {
     font-size: 13px;
     color: #856449;
     line-height: 1.7;
+  }
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.mode-switch__item {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(121, 82, 45, 0.14);
+  border-radius: 8px;
+  background: #fffaf0;
+  color: #76573f;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+  &.active,
+  &:hover {
+    border-color: rgba(233, 109, 59, 0.5);
+    background: #fff1d2;
+    color: #d76626;
   }
 }
 
