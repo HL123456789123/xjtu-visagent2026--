@@ -28,6 +28,9 @@ ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 # 安装 Python 依赖
 RUN uv sync --no-dev --no-install-project
 
+# 运行阶段直接使用构建时已同步的虚拟环境，避免容器启动时再次构建项目。
+ENV PATH="/app/.venv/bin:${PATH}"
+
 # 复制运行时必需的后端文件。
 #
 # - app：FastAPI 应用及业务代码
@@ -52,4 +55,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8888/api/health || exit 1
 
 # 启动命令：先执行唯一 Alembic 链，再启动应用，避免依赖 create_all 绕过迁移。
-CMD ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn main:app --host 0.0.0.0 --port 8888"]
+# exec 让 Uvicorn 成为主进程并正确接收 Docker 的停止信号。
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8888"]
