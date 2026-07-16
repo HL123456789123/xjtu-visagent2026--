@@ -92,6 +92,28 @@ bun run dev
 
 前端默认运行在 `http://localhost:3000`，自动代理 `/api` 请求到后端。
 
+### Docker 代理网络下构建
+
+前端镜像默认通过 `https://registry.npmmirror.com` 安装依赖，并在下载包校验失败时清理缓存后重试。通常直接执行即可：
+
+```bash
+docker compose build frontend
+```
+
+如果当前网络更适合 npm 官方源，可以临时覆盖 Registry；代理不稳定时还可以继续降低并发数：
+
+```bash
+BUN_REGISTRY=https://registry.npmjs.org BUN_NETWORK_CONCURRENCY=8 docker compose build frontend
+```
+
+PowerShell 对应写法：
+
+```powershell
+$env:BUN_REGISTRY = "https://registry.npmjs.org"
+$env:BUN_NETWORK_CONCURRENCY = "8"
+docker compose build frontend
+```
+
 ## 开发指南
 
 ### 后端开发
