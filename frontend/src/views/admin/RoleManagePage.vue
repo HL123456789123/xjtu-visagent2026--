@@ -93,6 +93,7 @@
     <el-dialog v-model="showPermissionDialog" title="分配权限" width="600px">
       <div class="permission-assign-info">
         <p>为角色 <strong>{{ currentRole?.display_name }}</strong> 分配权限：</p>
+        <span>已选择 {{ selectedPermissionCount }} / {{ totalPermissionCount }} 项权限</span>
       </div>
       <div v-loading="loadingPermissions" class="permission-groups">
         <div v-for="group in permissionGroups" :key="group.module" class="permission-group">
@@ -103,6 +104,7 @@
               @change="(val) => toggleModuleAll(group.module, val)"
             >
               <strong>{{ getModuleName(group.module) }}</strong>
+              <span class="group-count">{{ getModuleSelectedCount(group.module) }} / {{ group.permissions.length }}</span>
             </el-checkbox>
           </div>
           <div class="group-items">
@@ -134,6 +136,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import {
   getRoleListApi,
+  getRoleDetailApi,
   createRoleApi,
   updateRoleApi,
   deleteRoleApi,
@@ -173,6 +176,12 @@ const permissionGroups = ref([])
 const selectedPermissionCodes = ref([])
 const loadingPermissions = ref(false)
 const submitting = ref(false)
+
+const totalPermissionCount = computed(() =>
+  permissionGroups.value.reduce((sum, group) => sum + group.permissions.length, 0)
+)
+
+const selectedPermissionCount = computed(() => selectedPermissionCodes.value.length)
 
 // 模块显示名映射
 const moduleNames = {
@@ -293,12 +302,23 @@ async function submitRoleForm() {
 }
 
 // 打开权限分配弹窗
-function openPermissionDialog(role) {
+async function openPermissionDialog(role) {
   currentRole.value = role
   selectedPermissionCodes.value = [...(role.permissions || [])]
   showPermissionDialog.value = true
-  if (permissionGroups.value.length === 0) {
-    loadPermissions()
+  loadingPermissions.value = true
+  try {
+    const [detailRes] = await Promise.all([
+      getRoleDetailApi(role.id),
+      loadPermissions(),
+    ])
+    currentRole.value = detailRes.data || role
+    selectedPermissionCodes.value = [...(currentRole.value.permissions || [])]
+  } catch (error) {
+    console.error('加载角色权限详情失败:', error)
+    ElMessage.error('加载角色权限详情失败')
+  } finally {
+    loadingPermissions.value = false
   }
 }
 
@@ -317,6 +337,12 @@ function isModuleIndeterminate(module) {
     selectedPermissionCodes.value.includes(p.code)
   ).length
   return selectedCount > 0 && selectedCount < group.permissions.length
+}
+
+function getModuleSelectedCount(module) {
+  const group = permissionGroups.value.find((g) => g.module === module)
+  if (!group) return 0
+  return group.permissions.filter((p) => selectedPermissionCodes.value.includes(p.code)).length
 }
 
 // 切换模块全选
@@ -408,8 +434,23 @@ onMounted(() => {
 }
 
 .permission-assign-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
   color: #606266;
+}
+
+.permission-assign-info p {
+  margin: 0;
+}
+
+.permission-assign-info span {
+  color: #409eff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .permission-groups {
@@ -432,6 +473,13 @@ onMounted(() => {
   margin-bottom: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid #ebeef5;
+}
+
+.group-count {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .group-items {
