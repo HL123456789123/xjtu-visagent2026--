@@ -20,6 +20,7 @@ from app.entity.food_schemas import (
     FoodRecognitionDetailData,
     IngredientCandidate,
     ModelDetection,
+    RecognitionImage,
 )
 from app.repositories.food_repository import FoodRepository
 from app.services.food_recognition_provider import (
@@ -63,6 +64,11 @@ class EmptyIngredientsError(FoodServiceError):
 class EmptyImagesError(FoodServiceError):
     def __init__(self):
         super().__init__(400, "至少上传一张图片", error_code="BAD_REQUEST")
+
+
+class InvalidImageIndexError(FoodServiceError):
+    def __init__(self):
+        super().__init__(400, "图片序号不存在", error_code="BAD_REQUEST")
 
 
 class FoodModelUnavailableServiceError(FoodServiceError):
@@ -137,14 +143,18 @@ class FoodRecognitionService:
         if not images:
             raise EmptyImagesError()
 
-        validated_images = [await self._read_and_validate_image(image) for image in images]
-        temp_images = [
-            (self._create_temp_file(content, extension), extension)
-            for content, extension in validated_images
-        ]
-        object_names = [self._build_object_name(user_id, extension) for _, extension in temp_images]
+        temp_images: list[tuple[str, str]] = []
         uploaded_object_names: list[str] = []
+        task: FoodRecognitionTask | None = None
         try:
+            validated_images = [await self._read_and_validate_image(image) for image in images]
+            temp_images = [
+                (self._create_temp_file(content, extension), extension)
+                for content, extension in validated_images
+            ]
+            object_names = [
+                self._build_object_name(user_id, extension) for _, extension in temp_images
+            ]
             for object_name, (temp_path, _) in zip(object_names, temp_images, strict=True):
                 await self._upload_original(object_name, temp_path)
                 uploaded_object_names.append(object_name)
@@ -167,6 +177,11 @@ class FoodRecognitionService:
                 if task is None:
                     raise RuntimeError("识别记录不存在")
             except Exception as exc:
+                if task is not None:
+                    try:
+                        self.repository.delete_recognition(task.id)
+                    except Exception:
+                        pass
                 raise FoodPersistenceError() from exc
             return self._to_create_data(task)
         except FoodServiceError:
@@ -211,18 +226,23 @@ class FoodRecognitionService:
             confirmed_at=to_china_time(task.updated_at),
         )
 
-    async def get_image(self, *, user_id: int, recognition_id: int) -> tuple[bytes, str]:
-        """按用户隔离读取原图，使 V1 ``image_url`` 可实际访问。"""
+    async def get_image(
+        self, *, user_id: int, recognition_id: int, image_index: int = 0
+    ) -> tuple[bytes, str]:
+        """按用户隔离并按下标读取原图，使多图均可访问。"""
         task = self.repository.get_recognition(recognition_id)
         self._assert_owned(task, user_id)
-        first_image_object_name = task.image_object_names[0]
+        object_names = task.image_object_names or []
+        if image_index >= len(object_names):
+            raise InvalidImageIndexError()
+        image_object_name = object_names[image_index]
         try:
             content = await asyncio.to_thread(
-                self._get_object_storage().get_file, first_image_object_name
+                self._get_object_storage().get_file, image_object_name
             )
         except Exception as exc:
             raise FoodStorageUnavailableError() from exc
-        suffix = Path(first_image_object_name).suffix.lower()
+        suffix = Path(image_object_name).suffix.lower()
         media_type = "image/png" if suffix == ".png" else "image/jpeg"
         return content, media_type
 
@@ -237,12 +257,23 @@ class FoodRecognitionService:
     def _convert_detections(
         self, detections_by_image: list[list[ModelDetection]]
     ) -> list[IngredientCandidate]:
-        candidates: list[IngredientCandidate] = []
+        return [
+            candidate
+            for candidates in self._convert_detection_groups(detections_by_image)
+            for candidate in candidates
+        ]
+
+    def _convert_detection_groups(
+        self, detections_by_image: list[list[ModelDetection]]
+    ) -> list[list[IngredientCandidate]]:
+        candidate_groups: list[list[IngredientCandidate]] = []
+        candidate_index = 1
         for detections in detections_by_image:
+            candidates: list[IngredientCandidate] = []
             for detection in detections:
                 candidates.append(
                     IngredientCandidate(
-                        candidate_id=f"det-{len(candidates) + 1}",
+                        candidate_id=f"det-{candidate_index}",
                         class_name=detection.class_name,
                         display_name=self.provider.get_display_name(detection.class_name),
                         confidence=detection.confidence,
@@ -250,7 +281,9 @@ class FoodRecognitionService:
                         source="model",
                     )
                 )
-        return candidates
+                candidate_index += 1
+            candidate_groups.append(candidates)
+        return candidate_groups
 
     @staticmethod
     def _group_raw_detections(
@@ -330,17 +363,27 @@ class FoodRecognitionService:
             raise FoodRecognitionAccessDeniedError()
 
     @staticmethod
-    def _image_url(task: FoodRecognitionTask) -> str:
-        return f"/api/files/food/{task.id}"
+    def _image_url(task: FoodRecognitionTask, image_index: int = 0) -> str:
+        base_url = f"/api/files/food/{task.id}"
+        return base_url if image_index == 0 else f"{base_url}?image_index={image_index}"
 
     def _to_create_data(self, task: FoodRecognitionTask) -> FoodRecognitionCreateData:
+        candidate_groups = self._candidate_groups_from_raw_detections(task.raw_detections or [])
         return FoodRecognitionCreateData(
             recognition_id=task.id,
             status="completed",
             provider=task.provider,
             model_version=task.model_version,
             image_url=self._image_url(task),
-            ingredients=self._candidates_from_raw_detections(task.raw_detections or []),
+            images=[
+                RecognitionImage(
+                    image_index=image_index,
+                    image_url=self._image_url(task, image_index),
+                    ingredients=candidates,
+                )
+                for image_index, candidates in enumerate(candidate_groups)
+            ],
+            ingredients=[candidate for candidates in candidate_groups for candidate in candidates],
             created_at=to_china_time(task.created_at),
         )
 
@@ -348,14 +391,24 @@ class FoodRecognitionService:
         self, raw_detections: list[dict[str, object]]
     ) -> list[IngredientCandidate]:
         """汇总按图保存的原始检测结果；兼容升级前已有的候选项记录。"""
+        return [
+            candidate
+            for candidates in self._candidate_groups_from_raw_detections(raw_detections)
+            for candidate in candidates
+        ]
+
+    def _candidate_groups_from_raw_detections(
+        self, raw_detections: list[dict[str, object]]
+    ) -> list[list[IngredientCandidate]]:
+        """将按图片分组的原始检测结果转换为同样分组的 API 候选项。"""
         if raw_detections and "detections" not in raw_detections[0]:
-            return [IngredientCandidate.model_validate(item) for item in raw_detections]
+            return [[IngredientCandidate.model_validate(item) for item in raw_detections]]
 
         detections_by_image = [
             [ModelDetection.model_validate(item) for item in group.get("detections", [])]
             for group in raw_detections
         ]
-        return self._convert_detections(detections_by_image)
+        return self._convert_detection_groups(detections_by_image)
 
     def _to_detail_data(self, task: FoodRecognitionTask) -> FoodRecognitionDetailData:
         return FoodRecognitionDetailData(

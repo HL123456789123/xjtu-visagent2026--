@@ -66,6 +66,18 @@ class FoodRepository:
         self._commit_and_refresh(task)
         return task
 
+    def delete_recognition(self, recognition_id: int) -> None:
+        """删除未完成持久化的识别任务，用于服务层的失败补偿。"""
+        task = self.get_recognition(recognition_id)
+        if task is None:
+            return
+        try:
+            self.db.delete(task)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
     def replace_confirmed_ingredients(
         self,
         recognition_id: int,

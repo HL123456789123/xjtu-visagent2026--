@@ -75,6 +75,14 @@ class IngredientCandidate(FoodSchemaBase):
         return value.strip().lower().replace(" ", "_")
 
 
+class RecognitionImage(FoodSchemaBase):
+    """多图识别中单张原图及其对应候选食材。"""
+
+    image_index: int = Field(..., ge=0)
+    image_url: str = Field(..., min_length=1)
+    ingredients: list[IngredientCandidate]
+
+
 class ConfirmedIngredient(FoodSchemaBase):
     """用户确认后的最终食材快照。"""
 
@@ -111,6 +119,7 @@ class FoodRecognitionCreateData(FoodSchemaBase):
     provider: Literal["mock", "yolo"]
     model_version: str
     image_url: str
+    images: list[RecognitionImage] = Field(..., min_length=1)
     ingredients: list[IngredientCandidate]
     created_at: datetime
 

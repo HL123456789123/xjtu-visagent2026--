@@ -1,6 +1,6 @@
 """V1 冻结的同步 Food API。"""
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -106,12 +106,14 @@ async def confirm_food_ingredients(
 @file_router.get("/food/{recognition_id}", responses=FOOD_RECOGNITION_ERROR_RESPONSES)
 async def get_food_image(
     recognition_id: int,
+    image_index: int = Query(0, ge=0, description="图片下标，默认读取第一张图片"),
     current_user: User = Depends(get_current_user),
     service: FoodRecognitionService = Depends(get_food_recognition_service),
 ):
-    """供 V1 ``image_url`` 使用的受认证保护原图读取接口。"""
+    """按图片下标读取受认证保护的原图，默认保留首图兼容行为。"""
     content, media_type = await service.get_image(
         user_id=current_user.id,
         recognition_id=recognition_id,
+        image_index=image_index,
     )
     return Response(content=content, media_type=media_type)
