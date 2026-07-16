@@ -20,19 +20,19 @@ class FoodRepository:
         self,
         *,
         user_id: int,
-        image_object_name: str,
+        image_object_names: list[str],
+        status: str,
         provider: str,
         model_version: str,
-        raw_detections: list[dict[str, Any]],
         created_at: datetime,
     ) -> FoodRecognitionTask:
         task = FoodRecognitionTask(
             user_id=user_id,
-            image_object_name=image_object_name,
-            status="completed",
+            image_object_names=image_object_names,
+            status=status,
             provider=provider,
             model_version=model_version,
-            raw_detections=raw_detections,
+            raw_detections=[],
             confirmed_ingredients=[],
             created_at=created_at,
             updated_at=created_at,
@@ -57,12 +57,12 @@ class FoodRepository:
         )
 
     def save_raw_detections(
-        self, recognition_id: int, detections: list[dict[str, Any]]
+        self, recognition_id: int, detections_by_image: list[dict[str, Any]]
     ) -> FoodRecognitionTask | None:
         task = self.get_recognition(recognition_id)
         if task is None:
             return None
-        task.raw_detections = detections
+        task.raw_detections = detections_by_image
         self._commit_and_refresh(task)
         return task
 

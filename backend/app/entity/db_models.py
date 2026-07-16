@@ -394,11 +394,15 @@ class FoodRecognitionTask(Base):
     user_id = Column(
         Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
     )
-    image_object_name = Column(String(500), nullable=False, comment="MinIO 对象名")
+    image_object_names = Column(
+        JSON, nullable=False, default=list, comment="按上传顺序保存的 MinIO 对象名"
+    )
     status = Column(String(20), nullable=False, default="completed", index=True, comment="识别状态")
     provider = Column(String(20), nullable=False, comment="mock 或 yolo")
     model_version = Column(String(100), nullable=False, comment="模型版本")
-    raw_detections = Column(JSON, nullable=False, default=list, comment="IngredientCandidate 列表")
+    raw_detections = Column(
+        JSON, nullable=False, default=list, comment="按图片分组的 ModelDetection 列表"
+    )
     confirmed_ingredients = Column(
         JSON, nullable=False, default=list, comment="ConfirmedIngredient 列表"
     )

@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api/food", tags=["食物识别"])
 file_router = APIRouter(prefix="/api/files", tags=["文件"])
 
 FOOD_RECOGNITION_ERROR_RESPONSES = {
+    400: {"description": "BAD_REQUEST"},
     401: {"description": "UNAUTHORIZED"},
     403: {"description": "FORBIDDEN"},
     404: {"description": "RECOGNITION_NOT_FOUND"},
@@ -38,15 +39,23 @@ def get_food_recognition_service(db: Session = Depends(get_db)) -> FoodRecogniti
     responses=FOOD_RECOGNITION_ERROR_RESPONSES,
 )
 async def create_food_recognition(
-    image: UploadFile = File(..., description="单张 JPG、JPEG 或 PNG 图片"),
+    images: list[UploadFile] | None = File(
+        default=None,
+        description="1 至多张 JPG、JPEG 或 PNG 图片；同名字段按上传顺序处理",
+    ),
+    image: UploadFile | None = File(
+        default=None,
+        description="兼容字段，仅在未提供 images 时作为第一张图片使用",
+    ),
     conf_threshold: float = Form(0.25, ge=0, le=1, description="模型置信度阈值"),
     current_user: User = Depends(get_current_user),
     service: FoodRecognitionService = Depends(get_food_recognition_service),
 ):
-    """上传一张图，同步识别并返回 V1 候选食材。"""
+    """上传一至多张图，同步识别并返回汇总后的 V1 候选食材。"""
+    upload_images = images or ([image] if image is not None else [])
     recognition = await service.create_recognition(
         user_id=current_user.id,
-        image=image,
+        images=upload_images,
         conf_threshold=conf_threshold,
     )
     return ApiResponse(code=201, message="识别完成", data=recognition.model_dump(mode="json"))
