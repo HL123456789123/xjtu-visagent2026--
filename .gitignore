@@ -44,6 +44,9 @@ Thumbs.db
 .pytest_cache/
 cookies.txt
 
+# Local Docker build diagnostics
+/.docker-*.log
+
 backend/data
 backend/logs
 backend/uv.lock

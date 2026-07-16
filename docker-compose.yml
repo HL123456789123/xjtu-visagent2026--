@@ -98,6 +98,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # 代理网络下可通过同名环境变量切换 Registry 并降低请求并发。
+        BUN_REGISTRY: ${BUN_REGISTRY:-https://registry.npmmirror.com}
+        BUN_NETWORK_CONCURRENCY: ${BUN_NETWORK_CONCURRENCY:-16}
     container_name: visagent-frontend
     restart: unless-stopped
     ports:
