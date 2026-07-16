@@ -176,6 +176,44 @@ class TestV1Fixtures:
 
 class TestFoodRecognitionService:
     @pytest.mark.asyncio
+    async def test_creates_one_record_for_multiple_images_and_groups_raw_detections(self, db):
+        user = create_user(db, "multiple")
+        provider = RecordingProvider()
+        service, storage = make_service(db, provider=provider)
+
+        response = await service.create_recognition(
+            user_id=user.id,
+            images=[
+                make_upload("first.jpg", "image/jpeg", JPEG_IMAGE),
+                make_upload("second.png", "image/png", PNG_IMAGE),
+            ],
+            conf_threshold=0.25,
+        )
+
+        task = db.get(FoodRecognitionTask, response.recognition_id)
+        assert task is not None
+        assert len(storage.uploads) == len(provider.paths) == 2
+        assert task.image_object_names == [object_name for object_name, _ in storage.uploads]
+        assert [item["image_index"] for item in task.raw_detections] == [0, 1]
+        assert [
+            item["image_object_name"] for item in task.raw_detections
+        ] == task.image_object_names
+        assert all(len(item["detections"]) == 2 for item in task.raw_detections)
+        assert [item.candidate_id for item in response.ingredients] == [
+            "det-1",
+            "det-2",
+            "det-3",
+            "det-4",
+        ]
+
+        image_content, media_type = await service.get_image(
+            user_id=user.id,
+            recognition_id=response.recognition_id,
+        )
+        assert image_content == JPEG_IMAGE
+        assert media_type == "image/jpeg"
+
+    @pytest.mark.asyncio
     async def test_creates_persistent_v1_record_and_removes_temp_file(self, db):
         user = create_user(db, "create")
         provider = RecordingProvider()
@@ -183,7 +221,7 @@ class TestFoodRecognitionService:
 
         response = await service.create_recognition(
             user_id=user.id,
-            image=make_upload(),
+            images=[make_upload()],
             conf_threshold=0.25,
         )
 
@@ -197,7 +235,10 @@ class TestFoodRecognitionService:
         task = db.get(FoodRecognitionTask, response.recognition_id)
         assert task is not None
         assert task.confirmed_ingredients == []
-        assert task.raw_detections[0]["candidate_id"] == "det-1"
+        assert task.image_object_names == [storage.uploads[0][0]]
+        assert task.raw_detections[0]["image_index"] == 0
+        assert task.raw_detections[0]["image_object_name"] == storage.uploads[0][0]
+        assert task.raw_detections[0]["detections"][0]["class_name"] == "tomato"
         assert storage.uploads
         assert not Path(storage.uploads[0][1]).exists()
         assert all(Path(path).is_absolute() for path in provider.paths)
@@ -209,7 +250,7 @@ class TestFoodRecognitionService:
 
         response = await service.create_recognition(
             user_id=user.id,
-            image=make_upload(),
+            images=[make_upload()],
             conf_threshold=0.25,
         )
 
@@ -225,13 +266,13 @@ class TestFoodRecognitionService:
         with pytest.raises(ImageTooLargeError):
             await service.create_recognition(
                 user_id=user.id,
-                image=make_upload(content=oversized),
+                images=[make_upload(content=oversized)],
                 conf_threshold=0.25,
             )
         with pytest.raises(UnsupportedImageTypeError):
             await service.create_recognition(
                 user_id=user.id,
-                image=make_upload("meal.gif", "image/gif", b"GIF89a"),
+                images=[make_upload("meal.gif", "image/gif", b"GIF89a")],
                 conf_threshold=0.25,
             )
 
@@ -242,7 +283,7 @@ class TestFoodRecognitionService:
         service, _ = make_service(db)
         created = await service.create_recognition(
             user_id=owner.id,
-            image=make_upload(),
+            images=[make_upload()],
             conf_threshold=0.25,
         )
 
@@ -281,7 +322,7 @@ class TestRepositories:
         food_service, _ = make_service(db)
         recognition = await food_service.create_recognition(
             user_id=user.id,
-            image=make_upload(),
+            images=[make_upload()],
             conf_threshold=0.25,
         )
         recipe_repository = RecipeRepository(db)
@@ -317,19 +358,33 @@ class TestFoodMigration:
             engine = create_engine(database_url)
             inspector = inspect(engine)
             assert {"food_recognition_tasks", "recipes"}.issubset(inspector.get_table_names())
+            assert "image_object_names" in {
+                column["name"] for column in inspector.get_columns("food_recognition_tasks")
+            }
             assert "recipe_id" in {
                 column["name"] for column in inspector.get_columns("chat_sessions")
             }
             engine.dispose()
 
-            command.downgrade(config, "-1")
+            command.downgrade(config, "b4d91f0c2a7e")
+            engine = create_engine(database_url)
+            inspector = inspect(engine)
+            assert "image_object_name" in {
+                column["name"] for column in inspector.get_columns("food_recognition_tasks")
+            }
+            assert "image_object_names" not in {
+                column["name"] for column in inspector.get_columns("food_recognition_tasks")
+            }
+            assert "recipe_id" in {
+                column["name"] for column in inspector.get_columns("chat_sessions")
+            }
+            engine.dispose()
+
+            command.downgrade(config, "base")
             engine = create_engine(database_url)
             inspector = inspect(engine)
             assert "food_recognition_tasks" not in inspector.get_table_names()
             assert "recipes" not in inspector.get_table_names()
-            assert "recipe_id" not in {
-                column["name"] for column in inspector.get_columns("chat_sessions")
-            }
             engine.dispose()
         finally:
             settings.DATABASE_URL = previous_database_url
@@ -391,6 +446,27 @@ class TestFoodApi:
             assert forbidden.status_code == 403
             assert forbidden.json() == {"code": 403, "message": "无权访问该识别记录", "data": None}
 
+    def test_api_uses_images_as_the_primary_multi_file_field(self, db):
+        user = create_user(db, "apimultiple")
+        service, storage = make_service(db)
+
+        with make_api_client(service, user.id) as client:
+            created = client.post(
+                "/api/food/recognitions",
+                files=[
+                    ("images", ("first.jpg", JPEG_IMAGE, "image/jpeg")),
+                    ("images", ("second.png", PNG_IMAGE, "image/png")),
+                ],
+            )
+
+        assert created.status_code == 201
+        recognition_id = created.json()["data"]["recognition_id"]
+        task = db.get(FoodRecognitionTask, recognition_id)
+        assert task is not None
+        assert task.image_object_names == [object_name for object_name, _ in storage.uploads]
+        assert len(task.raw_detections) == 2
+        assert len(created.json()["data"]["ingredients"]) == 4
+
     def test_api_maps_image_and_model_errors_to_v1_status_codes(self, db):
         user = create_user(db, "apierrors")
         unavailable_service, _ = make_service(db, provider=UnavailableProvider())
@@ -451,6 +527,6 @@ class TestProviders:
         with pytest.raises(FoodModelUnavailableServiceError):
             await service.create_recognition(
                 user_id=user.id,
-                image=make_upload(),
+                images=[make_upload()],
                 conf_threshold=0.25,
             )
