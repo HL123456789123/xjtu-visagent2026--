@@ -4,7 +4,9 @@
       <div>
         <span class="ingredient-editor__kicker">Step 02</span>
         <h2>确认今天的食材</h2>
-        <p>{{ ingredients.length }} 项待确认，可以直接修改名称或补充遗漏食材。</p>
+        <p>
+          共 {{ ingredients.length }} 种食材，合计数量 {{ totalQuantity }}；可以调整数量或手动补充遗漏食材。
+        </p>
       </div>
       <button
         class="ingredient-editor__add"
@@ -38,8 +40,8 @@
           <input
             v-model.number="ingredient.quantity"
             type="number"
-            min="0.01"
-            step="0.01"
+            min="1"
+            step="1"
             :disabled="disabled"
             data-testid="ingredient-quantity"
             @input="syncIngredient"
@@ -55,17 +57,6 @@
             @input="syncIngredient"
           />
         </label>
-        <div class="ingredient-editor__meta">
-          <span v-if="ingredient.image_index !== null" class="ingredient-editor__image-index">
-            图 {{ ingredient.image_index + 1 }}
-          </span>
-          <span class="ingredient-editor__confidence">
-            {{ formatConfidence(ingredient.confidence) }}
-          </span>
-          <span class="ingredient-editor__source">
-            {{ formatSource(ingredient.source) }}
-          </span>
-        </div>
         <button
           class="ingredient-editor__delete"
           type="button"
@@ -101,7 +92,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   buildConfirmedIngredients,
   mapCandidatesToEditableIngredients,
@@ -123,6 +114,9 @@ const emit = defineEmits(['update:modelValue', 'confirm', 'validation-error'])
 
 const ingredients = ref(mapCandidatesToEditableIngredients(props.modelValue))
 const validationErrors = ref([])
+const totalQuantity = computed(() =>
+  ingredients.value.reduce((total, ingredient) => total + (Number(ingredient.quantity) || 0), 0)
+)
 
 function emitUpdate() {
   emit('update:modelValue', ingredients.value.map((ingredient) => ({ ...ingredient })))
@@ -138,13 +132,10 @@ function addIngredient() {
     draftId: `manual_${Date.now()}_${ingredients.value.length}`,
     candidate_id: null,
     class_name: null,
-    image_index: null,
     name: '',
-    confidence: null,
     quantity: 1,
     unit: '个',
     source: 'manual',
-    bbox: null,
   })
   validationErrors.value = []
   emitUpdate()
@@ -154,15 +145,6 @@ function removeIngredient(index) {
   ingredients.value.splice(index, 1)
   validationErrors.value = []
   emitUpdate()
-}
-
-function formatConfidence(value) {
-  if (typeof value !== 'number') return '手动'
-  return `${(value * 100).toFixed(1)}%`
-}
-
-function formatSource(source) {
-  return source === 'manual' ? '手动新增' : '模型识别'
 }
 
 function validate() {
@@ -276,7 +258,7 @@ defineExpose({
 
 .ingredient-editor__row {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) 90px 90px 150px 64px;
+  grid-template-columns: minmax(140px, 1fr) 90px 90px 64px;
   align-items: end;
   gap: $spacing-md;
   padding: 14px;
@@ -309,39 +291,6 @@ defineExpose({
       outline: none;
     }
   }
-}
-
-.ingredient-editor__meta {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  min-height: 36px;
-}
-
-.ingredient-editor__image-index,
-.ingredient-editor__confidence,
-.ingredient-editor__source {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  border-radius: 999px;
-  padding: 0 $spacing-sm;
-  font-size: 12px;
-}
-
-.ingredient-editor__image-index {
-  background: #eff8ff;
-  color: #175cd3;
-}
-
-.ingredient-editor__confidence {
-  background: #eff8d6;
-  color: #62772b;
-}
-
-.ingredient-editor__source {
-  background: #fff1d2;
-  color: #965b22;
 }
 
 .ingredient-editor__delete {
@@ -383,8 +332,5 @@ defineExpose({
     align-items: stretch;
   }
 
-  .ingredient-editor__meta {
-    min-height: 24px;
-  }
 }
 </style>

@@ -27,10 +27,6 @@
         <dd data-testid="summary-confirmed-count">{{ confirmedIngredients.length }} 项</dd>
       </div>
       <div>
-        <dt>images</dt>
-        <dd data-testid="summary-image-count">{{ imageCount }} 张</dd>
-      </div>
-      <div>
         <dt>provider</dt>
         <dd>{{ provider || '-' }}</dd>
       </div>
@@ -65,14 +61,6 @@ const props = defineProps({
   modelVersion: {
     type: String,
     default: '',
-  },
-  imageCount: {
-    type: Number,
-    default: 0,
-  },
-  sourceImageNames: {
-    type: Array,
-    default: () => [],
   },
 })
 

@@ -1,67 +1,47 @@
 <template>
-  <section v-if="images.length" class="recognition-result-gallery" data-testid="recognition-result-gallery">
-    <header class="recognition-result-gallery__header">
+  <section v-if="results.length" class="recognition-result-list" data-testid="recognition-result-list">
+    <header class="recognition-result-list__header">
       <div>
-        <span class="recognition-result-gallery__kicker">识别结果</span>
-        <h2>每张图片的食材和置信度</h2>
-        <p>识别结果与原图一一对应；置信度越高，模型判断越可靠。</p>
+        <span class="recognition-result-list__kicker">识别结果</span>
+        <h2>识别到的食材</h2>
+        <p>置信度反映模型判断的可靠程度；点击链接图标可在新页面查看对应图片。</p>
       </div>
-      <span class="recognition-result-gallery__count">{{ images.length }} 张图片</span>
+      <span class="recognition-result-list__count">{{ results.length }} 条结果</span>
     </header>
 
-    <div class="recognition-result-gallery__grid">
-      <article
-        v-for="image in images"
-        :key="`${image.image_index}-${image.image_url}`"
-        class="recognition-result-gallery__card"
-        data-testid="recognition-image-card"
-      >
-        <div class="recognition-result-gallery__image-wrap">
-          <img
-            v-if="image.image_url && !failedImages.has(image.image_index)"
-            :src="image.image_url"
-            :alt="`第 ${image.image_index + 1} 张识别图片`"
-            @error="markImageFailed(image.image_index)"
-          />
-          <div v-else class="recognition-result-gallery__image-fallback">原图暂时无法加载</div>
-          <span class="recognition-result-gallery__image-index">图 {{ image.image_index + 1 }}</span>
-        </div>
-
-        <div class="recognition-result-gallery__content">
-          <header>
-            <strong>识别到 {{ image.ingredients.length }} 项食材</strong>
-            <span>{{ image.ingredients.length ? '模型候选项' : '未检测到食材' }}</span>
-          </header>
-          <ul v-if="image.ingredients.length" class="recognition-result-gallery__ingredients">
-            <li v-for="ingredient in image.ingredients" :key="ingredient.candidate_id">
-              <span>{{ ingredient.display_name || ingredient.class_name || '未命名食材' }}</span>
-              <strong data-testid="recognition-image-confidence">
-                置信度 {{ formatConfidence(ingredient.confidence) }}
-              </strong>
-            </li>
-          </ul>
-          <p v-else class="recognition-result-gallery__empty">可以在下方手动补充食材。</p>
-        </div>
-      </article>
-    </div>
+    <ul class="recognition-result-list__items">
+      <li v-for="result in results" :key="result.candidate_id">
+        <span class="recognition-result-list__name">
+          {{ result.display_name || result.class_name || '未命名食材' }}
+        </span>
+        <strong>置信度 {{ formatConfidence(result.confidence) }}</strong>
+        <a
+          v-if="result.image_url"
+          class="recognition-result-list__image-link"
+          :href="result.image_url"
+          target="_blank"
+          rel="noopener"
+          title="查看识别图片"
+          aria-label="查看识别图片"
+          data-testid="recognition-image-link"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M14 3h7v7m0-7-10 10" />
+            <path d="M11 5H6a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-5" />
+          </svg>
+        </a>
+      </li>
+    </ul>
   </section>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-
 defineProps({
-  images: {
+  results: {
     type: Array,
     default: () => [],
   },
 })
-
-const failedImages = ref(new Set())
-
-function markImageFailed(imageIndex) {
-  failedImages.value = new Set([...failedImages.value, imageIndex])
-}
 
 function formatConfidence(value) {
   return typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '—'
@@ -69,7 +49,7 @@ function formatConfidence(value) {
 </script>
 
 <style lang="scss" scoped>
-.recognition-result-gallery {
+.recognition-result-list {
   display: grid;
   gap: 16px;
   margin-bottom: 24px;
@@ -77,7 +57,7 @@ function formatConfidence(value) {
   border-bottom: 1px solid rgba(121, 82, 45, 0.12);
 }
 
-.recognition-result-gallery__header {
+.recognition-result-list__header {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -99,131 +79,104 @@ function formatConfidence(value) {
   }
 }
 
-.recognition-result-gallery__kicker {
+.recognition-result-list__kicker {
   color: #b56a26;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.18em;
 }
 
-.recognition-result-gallery__count,
-.recognition-result-gallery__image-index {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.recognition-result-gallery__count {
+.recognition-result-list__count {
   padding: 8px 12px;
+  border-radius: 999px;
   background: #eff8d6;
   color: #62772b;
+  font-size: 12px;
+  font-weight: 800;
   white-space: nowrap;
 }
 
-.recognition-result-gallery__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 16px;
-}
-
-.recognition-result-gallery__card {
-  overflow: hidden;
-  border: 1px solid rgba(121, 82, 45, 0.12);
-  border-radius: 20px;
-  background: #fffdf8;
-  box-shadow: 0 10px 24px rgba(102, 68, 35, 0.07);
-}
-
-.recognition-result-gallery__image-wrap {
-  position: relative;
-  height: 160px;
-  overflow: hidden;
-  background: #f4eadc;
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-}
-
-.recognition-result-gallery__image-fallback {
-  display: grid;
-  height: 100%;
-  place-items: center;
-  color: #8a6a50;
-  font-size: 13px;
-}
-
-.recognition-result-gallery__image-index {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  padding: 6px 10px;
-  background: rgb(255 253 248 / 88%);
-  color: #6f4528;
-  box-shadow: 0 4px 12px rgb(58 42 29 / 14%);
-}
-
-.recognition-result-gallery__content {
-  padding: 14px;
-
-  header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-
-    strong {
-      color: #3a2a1d;
-      font-size: 14px;
-    }
-
-    span {
-      color: #9a7659;
-      font-size: 12px;
-    }
-  }
-}
-
-.recognition-result-gallery__ingredients {
+.recognition-result-list__items {
   display: grid;
   gap: 8px;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 
   li {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto 34px;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: 10px;
-    background: #fff5df;
-    color: #65442d;
-    font-size: 13px;
+    gap: 12px;
+    min-height: 48px;
+    padding: 0 12px;
+    border: 1px solid rgba(121, 82, 45, 0.1);
+    border-radius: 14px;
+    background: #fffaf1;
   }
 
   strong {
     color: #62772b;
-    font-size: 12px;
+    font-size: 13px;
     white-space: nowrap;
   }
 }
 
-.recognition-result-gallery__empty {
-  margin: 12px 0 0;
-  color: #8a6a50;
-  font-size: 13px;
+.recognition-result-list__name {
+  min-width: 0;
+  overflow: hidden;
+  color: #3a2a1d;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recognition-result-list__image-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: #9b5f2d;
+
+  &:hover,
+  &:focus-visible {
+    background: #fff0cf;
+    color: #e96d3b;
+    outline: none;
+  }
+
+  svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentcolor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.9;
+  }
 }
 
 @media (max-width: 640px) {
-  .recognition-result-gallery__header {
+  .recognition-result-list__header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .recognition-result-list__items li {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    padding: 10px 12px;
+
+    strong {
+      grid-column: 1;
+    }
+
+    .recognition-result-list__image-link {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
   }
 }
 </style>

@@ -128,7 +128,7 @@
         </div>
 
         <template v-else>
-          <RecognitionResultGallery :images="recognizedImages" />
+          <RecognitionResultGallery :results="recognitionResults" />
 
           <div v-if="recognizedIngredients.length === 0" class="food-recipe-page__empty" data-testid="empty-state">
             未识别到食材，可手动新增后确认。
@@ -147,8 +147,6 @@
             :status="workflowState"
             :provider="recognitionMeta.provider"
             :model-version="recognitionMeta.modelVersion"
-            :image-count="recognizedImageCount"
-            :source-image-names="selectedImageNames"
             @generate-recipe="emitRecipeRequest"
           />
         </template>
@@ -211,9 +209,8 @@ const confThreshold = ref(0.25)
 // 默认直连 Vite 代理后的真实后端；Mock 仅用于本地开发和自动化回归。
 const mockScenario = ref('off')
 const recognizedIngredients = ref([])
-const recognizedImages = ref([])
+const recognitionResults = ref([])
 const confirmedIngredients = ref([])
-const recognizedImageCount = ref(0)
 const recognitionId = ref('')
 const validationMessage = ref('')
 const errorState = ref({
@@ -269,7 +266,6 @@ const visibleStateKey = computed(() => {
 
 const isBusy = computed(() => workflowState.value === 'uploading' || workflowState.value === 'confirming')
 const busyText = computed(() => (workflowState.value === 'confirming' ? '正在确认食材...' : '正在识别食材...'))
-const selectedImageNames = computed(() => selectedFiles.value.map((file) => file.name))
 const selectedImageText = computed(() => {
   const count = selectedFiles.value.length
   if (count <= 1) return '图片'
@@ -283,9 +279,8 @@ function handleFileSelected() {
 
 function resetRecognition() {
   recognizedIngredients.value = []
-  recognizedImages.value = []
+  recognitionResults.value = []
   confirmedIngredients.value = []
-  recognizedImageCount.value = 0
   recognitionId.value = ''
   validationMessage.value = ''
   errorState.value = { status: null, title: '', message: '' }
@@ -342,10 +337,19 @@ function applyRecognitionResult(response) {
     modelVersion: payload.model_version,
   }
   recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
-  recognizedImages.value = payload.images
+  recognitionResults.value = buildRecognitionResults(payload)
   confirmedIngredients.value = []
-  recognizedImageCount.value = payload.images?.length || selectedFiles.value.length
   workflowState.value = 'recognized'
+}
+
+function buildRecognitionResults(payload) {
+  const imageUrls = new Map(
+    (payload.images || []).map((image) => [image.image_index, image.image_url])
+  )
+  return (payload.ingredients || []).map((ingredient) => ({
+    ...ingredient,
+    image_url: imageUrls.get(ingredient.image_index) || payload.image_url,
+  }))
 }
 
 async function startRecognition() {

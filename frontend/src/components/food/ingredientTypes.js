@@ -11,7 +11,6 @@
  *
  * @typedef {Object} IngredientCandidate
  * @property {string} candidate_id
- * @property {number} image_index
  * @property {string} class_name
  * @property {string} display_name
  * @property {number} confidence

@@ -24,19 +24,16 @@
       @dragleave.prevent="dragging = false"
       @drop.prevent="handleDrop"
     >
-      <div
-        v-if="previewUrls.length"
-        class="food-uploader__preview-grid"
-        :class="{ 'is-single': previewUrls.length === 1 }"
-      >
+      <div v-if="selectedFileEntries.length" class="food-uploader__selected-list">
         <div
-          v-for="(preview, index) in previewUrls"
-          :key="preview.file.name || preview.url"
-          class="food-uploader__preview"
+          v-for="(file, index) in selectedFileEntries"
+          :key="`${file.name}-${file.size}-${index}`"
+          class="food-uploader__selected-item"
         >
-          <img :src="preview.url" :alt="preview.file.name" />
+          <span>图片 {{ index + 1 }}</span>
+          <strong>{{ file.name }}</strong>
           <button
-            class="food-uploader__preview-remove"
+            class="food-uploader__selected-remove"
             type="button"
             :disabled="disabled"
             :aria-label="`删除第 ${index + 1} 张图片`"
@@ -82,7 +79,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -110,13 +107,12 @@ const props = defineProps({
 const emit = defineEmits([
   'update:modelValue',
   'selected',
-  'preview-change',
   'validation-error',
   'cleared',
 ])
 
 const fileInputRef = ref(null)
-const previewUrls = ref([])
+const selectedFileEntries = ref([])
 const validationMessage = ref('')
 const dragging = ref(false)
 
@@ -129,12 +125,8 @@ const selectedName = computed(() => {
 const maxSizeBytes = computed(() => props.maxSizeMB * 1024 * 1024)
 const maxBatchSizeBytes = computed(() => props.maxBatchSizeMB * 1024 * 1024)
 
-function revokePreviews() {
-  if (previewUrls.value.length) {
-    previewUrls.value.forEach((preview) => URL.revokeObjectURL(preview.url))
-    previewUrls.value = []
-    emit('preview-change', [])
-  }
+function clearDisplayedFiles() {
+  selectedFileEntries.value = []
 }
 
 function setValidationError(message) {
@@ -166,36 +158,20 @@ function validateFiles(files) {
   return `${invalidFile.name}：${validateFile(invalidFile)}`
 }
 
-function createPreviewUrl(file) {
-  try {
-    return URL.createObjectURL(file)
-  } catch {
-    return ''
-  }
-}
-
 function selectFiles(files) {
   const nextFiles = Array.from(files || [])
   const error = validateFiles(nextFiles)
   if (error) {
     emit('update:modelValue', [])
-    revokePreviews()
+    clearDisplayedFiles()
     setValidationError(error)
     return false
   }
 
   validationMessage.value = ''
-  revokePreviews()
-  previewUrls.value = nextFiles.map((file) => ({
-    file,
-    url: createPreviewUrl(file),
-  }))
+  selectedFileEntries.value = nextFiles
   emit('update:modelValue', nextFiles)
   emit('selected', nextFiles)
-  emit(
-    'preview-change',
-    previewUrls.value.map((preview) => preview.url)
-  )
   return true
 }
 
@@ -221,7 +197,7 @@ function openFileDialog() {
 
 function clearSelection() {
   emit('update:modelValue', [])
-  revokePreviews()
+  clearDisplayedFiles()
   validationMessage.value = ''
   emit('cleared')
 }
@@ -240,14 +216,12 @@ watch(
   () => props.modelValue,
   (files) => {
     if (!Array.isArray(files) || files.length === 0) {
-      revokePreviews()
+      clearDisplayedFiles()
+      return
     }
+    selectedFileEntries.value = files
   }
 )
-
-onBeforeUnmount(() => {
-  revokePreviews()
-})
 
 defineExpose({
   validateFile,
@@ -277,7 +251,7 @@ defineExpose({
 .food-uploader__dropzone {
   display: grid;
   place-items: center;
-  min-height: 280px;
+  min-height: 190px;
   overflow: hidden;
   border: 1.5px dashed rgba(135, 89, 50, 0.28);
   border-radius: 26px;
@@ -343,41 +317,42 @@ defineExpose({
   font-weight: 300;
 }
 
-.food-uploader__preview-grid {
+.food-uploader__selected-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   width: 100%;
-  height: 280px;
-  padding: 10px;
+  padding: 16px;
   box-sizing: border-box;
-  overflow: hidden;
+}
 
-  &.is-single {
-    grid-template-columns: 1fr;
+.food-uploader__selected-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.9);
+  box-shadow: 0 6px 16px rgba(82, 48, 24, 0.08);
+
+  span {
+    color: #9b5f2d;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #3a2a1d;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
-.food-uploader__preview {
-  position: relative;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border-radius: 20px;
-  box-shadow: 0 12px 28px rgba(82, 48, 24, 0.16);
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    background: #2e2116;
-  }
-}
-
-.food-uploader__preview-remove {
-  position: absolute;
-  top: $spacing-xs;
-  right: $spacing-xs;
+.food-uploader__selected-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
