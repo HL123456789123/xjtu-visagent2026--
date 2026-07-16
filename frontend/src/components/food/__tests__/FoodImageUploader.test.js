@@ -27,7 +27,8 @@ describe('FoodImageUploader', () => {
     const wrapper = mount(FoodImageUploader)
 
     expect(wrapper.find('[data-testid="food-image-input"]').attributes('multiple')).toBeDefined()
-    expect(wrapper.text()).toContain('1 至多张')
+    expect(wrapper.text()).toContain('1 至 5 张')
+    expect(wrapper.text()).toContain('单图不超过 10 MB')
   })
 
   it('rejects non JPG/PNG files', async () => {
@@ -54,6 +55,30 @@ describe('FoodImageUploader', () => {
 
     expect(selected).toBe(false)
     expect(wrapper.emitted('validation-error')?.[0][0]).toContain('1 MB')
+  })
+
+  it('rejects images over the default 10 MB limit', () => {
+    const wrapper = mount(FoodImageUploader)
+    const file = new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'large.png', {
+      type: 'image/png',
+    })
+
+    const selected = wrapper.vm.selectFile(file)
+
+    expect(selected).toBe(false)
+    expect(wrapper.emitted('validation-error')?.[0][0]).toContain('10 MB')
+  })
+
+  it('rejects more than five images in one batch', () => {
+    const wrapper = mount(FoodImageUploader)
+    const files = Array.from({ length: 6 }, (_, index) =>
+      new File(['image'], `meal-${index + 1}.jpg`, { type: 'image/jpeg' })
+    )
+
+    const selected = wrapper.vm.selectFiles(files)
+
+    expect(selected).toBe(false)
+    expect(wrapper.emitted('validation-error')?.[0][0]).toContain('最多上传 5 张')
   })
 
   it('accepts multiple dropped images as one recognition batch', async () => {

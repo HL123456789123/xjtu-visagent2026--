@@ -3,7 +3,7 @@
     <section class="food-recipe-page__toolbar">
       <div>
         <h1>食物识别生成菜谱</h1>
-        <p>上传一张或多张图片、确认食材，再把确认快照交给菜谱模块。</p>
+        <p>上传 1 至 5 张图片、确认食材，再把确认快照交给菜谱模块。</p>
       </div>
       <div class="food-recipe-page__status" data-testid="workflow-state">
         {{ workflowState }}
@@ -63,7 +63,7 @@
 
       <section class="food-recipe-page__right">
         <div v-if="workflowState === 'idle'" class="food-recipe-page__empty" data-testid="idle-state">
-          请选择至少一张食物图片。
+          请选择 1 至 5 张食物图片。
         </div>
 
         <div v-else-if="workflowState === 'selecting'" class="food-recipe-page__empty" data-testid="selecting-state">
@@ -150,7 +150,7 @@ const visibleStates = [
   { key: 'loading', title: 'Loading', description: '上传和识别处理中。' },
   { key: 'empty', title: '空识别', description: '识别成功但无候选食材。' },
   { key: '401', title: '401', description: '登录失效或未登录。' },
-  { key: '413', title: '413', description: '图片超过 100 MB。' },
+  { key: '413', title: '413', description: '图片超过 10 MB。' },
   { key: '415', title: '415', description: '图片格式不支持。' },
   { key: '422', title: '422', description: '图片或参数校验失败。' },
   { key: '503', title: '503', description: '模型服务暂不可用。' },
@@ -244,7 +244,7 @@ function applyRecognitionResult(response) {
 
 async function startRecognition() {
   if (selectedFiles.value.length === 0) {
-    setValidationError('请先选择至少一张 JPG/PNG 图片。')
+    setValidationError('请先选择 1 至 5 张 JPG/PNG 图片。')
     return
   }
 

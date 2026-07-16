@@ -11,7 +11,7 @@
 
 ```text
 登录
-→ 上传 1 至多张 JPG/PNG 图片
+→ 上传 1 至 5 张 JPG/PNG 图片
 → YOLO 检测图片中的多种原材料
 → 返回候选食材
 → 用户增删改并确认食材
@@ -140,8 +140,8 @@ message_id
 
 ```text
 格式：JPG、JPEG、PNG
-最大：100 MB
-每次：1 至多张
+单张最大：10 MB
+每次：1 至 5 张
 ```
 
 ## 8. 默认值
@@ -386,12 +386,12 @@ Content-Type: multipart/form-data
 表单：
 
 ```text
-images：必填，1 至多张 JPG/JPEG/PNG 图片
+images：必填，1 至 5 张 JPG/JPEG/PNG 图片
 image：兼容字段，可携带第一张图片
 conf_threshold：选填，默认 0.25
 ```
 
-多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 100 MB。
+多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 10 MB。
 
 响应：
 
@@ -952,7 +952,7 @@ ORM 和 Alembic migration 只由绕家辉修改。
 | 404 | `RECOGNITION_NOT_FOUND` | 识别记录不存在 |
 | 404 | `RECIPE_NOT_FOUND` | 菜谱不存在 |
 | 404 | `SESSION_NOT_FOUND` | 会话不存在 |
-| 413 | `IMAGE_TOO_LARGE` | 图片超过 100 MB |
+| 413 | `IMAGE_TOO_LARGE` | 图片超过 10 MB |
 | 415 | `UNSUPPORTED_IMAGE_TYPE` | 非 JPG/JPEG/PNG |
 | 422 | `NO_CONFIRMED_INGREDIENTS` | 未确认食材 |
 | 422 | `EMPTY_INGREDIENTS` | 食材为空 |
@@ -1114,7 +1114,7 @@ best.pt 不进 Git
 
 ```text
 1. 登录。
-2. 上传 1 至多张 JPG/PNG。
+2. 上传 1 至 5 张 JPG/PNG。
 3. 返回多种候选食材。
 4. 用户删除误识别项并增加缺失项。
 5. 提交最终食材。
@@ -1160,4 +1160,3 @@ best.pt 不进 Git
 长期兼容两套接口
 只在群里口头通知变化
 ```
-

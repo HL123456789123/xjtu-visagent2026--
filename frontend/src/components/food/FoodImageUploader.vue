@@ -35,7 +35,7 @@
       </div>
       <div v-else class="food-uploader__placeholder">
         <strong>选择食物图片</strong>
-        <span>支持 1 至多张 JPG / JPEG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
+        <span>支持 1 至 {{ maxFiles }} 张 JPG / JPEG / PNG，单图不超过 {{ maxSizeMB }} MB</span>
       </div>
     </div>
 
@@ -71,7 +71,11 @@ const props = defineProps({
   },
   maxSizeMB: {
     type: Number,
-    default: 100,
+    default: 10,
+  },
+  maxFiles: {
+    type: Number,
+    default: 5,
   },
   disabled: {
     type: Boolean,
@@ -129,6 +133,7 @@ function validateFile(file) {
 
 function validateFiles(files) {
   if (!files.length) return '请选择至少一张图片。'
+  if (files.length > props.maxFiles) return `每次最多上传 ${props.maxFiles} 张图片。`
   const invalidFile = files.find((file) => validateFile(file))
   if (!invalidFile) return ''
   return `${invalidFile.name}：${validateFile(invalidFile)}`

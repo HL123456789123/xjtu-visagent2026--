@@ -61,7 +61,7 @@ request.interceptors.response.use(
           ElMessage.error(msg || '请求的资源不存在')
           break
         case 413:
-          ElMessage.error(msg || detail || '图片超过 100 MB')
+          ElMessage.error(msg || detail || '图片超过 10 MB')
           break
         case 415:
           ElMessage.error(msg || detail || '仅支持 JPG、JPEG 或 PNG 图片')
@@ -118,7 +118,7 @@ uploadRequest.interceptors.response.use(
           ElMessage.error(msg || '没有权限访问该资源')
           break
         case 413:
-          ElMessage.error(msg || detail || '图片超过 100 MB')
+          ElMessage.error(msg || detail || '图片超过 10 MB')
           break
         case 415:
           ElMessage.error(msg || detail || '仅支持 JPG、JPEG 或 PNG 图片')
