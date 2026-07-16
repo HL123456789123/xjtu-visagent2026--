@@ -25,9 +25,9 @@ describe('FoodRecipePage', () => {
   it('runs the success mock flow and emits the recipe contract after confirmation', async () => {
     const wrapper = mount(FoodRecipePage)
 
-    await selectImages(wrapper, [makeImageFile('breakfast.jpg'), makeImageFile('vegetables.jpg')])
+    await selectImages(wrapper, [makeImageFile('breakfast.jpg')])
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('selecting')
-    expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('2 张图片')
+    expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('图片')
 
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
@@ -36,20 +36,19 @@ describe('FoodRecipePage', () => {
     const ingredientNames = wrapper
       .findAll('[data-testid="ingredient-name"]')
       .map((input) => input.element.value)
-    expect(ingredientNames).toEqual(['番茄', '鸡蛋'])
+    expect(ingredientNames).toEqual(['番茄'])
 
     await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
     expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('12')
-    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
-    expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
+    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('1 项')
+    expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('1 张')
     expect(wrapper.emitted('confirmed')?.[0][0]).toEqual({
       recognition_id: 12,
       confirmed_ingredients: [
         { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
-        { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
       ],
     })
 
@@ -58,7 +57,6 @@ describe('FoodRecipePage', () => {
       recognition_id: 12,
       confirmed_ingredients: [
         { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
-        { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
       ],
     })
   })
@@ -104,7 +102,7 @@ describe('FoodRecipePage', () => {
 
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片过大')
-    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('单张图片不能超过 10 MB')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('不能超过 10 MB')
 
     await wrapper.find('[data-testid="mock-scenario"]').setValue('415')
     await selectImages(wrapper)

@@ -4,7 +4,7 @@
       <div class="food-recipe-page__hero-copy">
         <span class="food-recipe-page__eyebrow">Daily kitchen assistant</span>
         <h1>拍下今天的餐桌，让它变成一份好做的家常食谱</h1>
-        <p>上传 1 至 5 张食物图片，确认识别出的食材，再一键生成适合日常烹饪的菜谱。</p>
+        <p>上传一张食物图片，确认识别出的食材，再一键生成适合日常烹饪的菜谱。</p>
         <div class="food-recipe-page__hero-actions">
           <a href="#upload-panel">开始上传</a>
           <span>3 步完成：上传 · 确认 · 生成</span>
@@ -63,6 +63,7 @@
 
           <FoodImageUploader
             v-model="selectedFiles"
+            :max-files="1"
             :disabled="isBusy"
             @selected="handleFileSelected"
             @cleared="resetRecognition"
@@ -104,7 +105,7 @@
       <section class="food-recipe-page__right">
         <div v-if="workflowState === 'idle'" class="food-recipe-page__empty" data-testid="idle-state">
           <strong>今天想用什么食材做饭？</strong>
-          <span>先选择 1 至 5 张食物图片，系统会帮你整理候选食材。</span>
+          <span>先选择一张食物图片，系统会帮你整理候选食材。</span>
         </div>
 
         <div v-else-if="workflowState === 'selecting'" class="food-recipe-page__empty" data-testid="selecting-state">
@@ -234,7 +235,7 @@ const workflowSteps = [
     key: 'upload',
     no: '01',
     title: '上传图片',
-    description: '支持单张或多张 JPG / PNG。',
+    description: '支持一张 JPG / PNG。',
     activeStates: ['idle', 'selecting', 'uploading'],
   },
   {
@@ -341,7 +342,7 @@ function applyRecognitionResult(response) {
 
 async function startRecognition() {
   if (selectedFiles.value.length === 0) {
-    setValidationError('请先选择 1 至 5 张 JPG/PNG 图片。')
+    setValidationError('请先选择 1 张 JPG/PNG 图片。')
     return
   }
 

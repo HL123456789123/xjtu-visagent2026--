@@ -1,35 +1,16 @@
 {
   "recognition_id": 12,
   "status": "completed",
-  "provider": "mock",
+  "provider": "yolo",
   "model_version": "food-yolo-v1",
-  "images": [
-    {
-      "image_index": 0,
-      "image_url": "/api/files/food/12/0"
-    },
-    {
-      "image_index": 1,
-      "image_url": "/api/files/food/12/1"
-    }
-  ],
+  "image_url": "/api/files/food/12",
   "ingredients": [
     {
       "candidate_id": "det-1",
-      "image_index": 0,
       "class_name": "tomato",
       "display_name": "番茄",
       "confidence": 0.9321,
       "bbox": { "x1": 120.4, "y1": 80.2, "x2": 310.7, "y2": 265.1 },
-      "source": "model"
-    },
-    {
-      "candidate_id": "det-2",
-      "image_index": 1,
-      "class_name": "egg",
-      "display_name": "鸡蛋",
-      "confidence": 0.88,
-      "bbox": { "x1": 350.0, "y1": 100.0, "x2": 470.0, "y2": 230.0 },
       "source": "model"
     }
   ],
