@@ -50,7 +50,8 @@
               <span>Step 01</span>
               <h2>上传食物照片</h2>
             </div>
-            <select v-model="mockScenario" aria-label="Mock response scenario" data-testid="mock-scenario">
+            <select v-model="mockScenario" aria-label="识别服务" data-testid="mock-scenario">
+              <option value="off">真实后端</option>
               <option value="success">Mock 成功</option>
               <option value="empty">Mock 空识别</option>
               <option value="401">Mock 401</option>
@@ -127,6 +128,8 @@
         </div>
 
         <template v-else>
+          <RecognitionResultGallery :images="recognizedImages" />
+
           <div v-if="recognizedIngredients.length === 0" class="food-recipe-page__empty" data-testid="empty-state">
             未识别到食材，可手动新增后确认。
           </div>
@@ -160,10 +163,12 @@ import {
   createFoodRecognition,
   confirmFoodIngredients,
   normalizeRecognitionId,
+  normalizeFoodRecognitionData,
   unwrapFoodApiData,
 } from '@/api/food'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
 import IngredientEditor from '@/components/food/IngredientEditor.vue'
+import RecognitionResultGallery from '@/components/food/RecognitionResultGallery.vue'
 import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
 import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
 
@@ -203,8 +208,10 @@ onBeforeUnmount(() => {
 const workflowState = ref('idle')
 const selectedFiles = ref([])
 const confThreshold = ref(0.25)
-const mockScenario = ref('success')
+// 默认直连 Vite 代理后的真实后端；Mock 仅用于本地开发和自动化回归。
+const mockScenario = ref('off')
 const recognizedIngredients = ref([])
+const recognizedImages = ref([])
 const confirmedIngredients = ref([])
 const recognizedImageCount = ref(0)
 const recognitionId = ref('')
@@ -276,6 +283,7 @@ function handleFileSelected() {
 
 function resetRecognition() {
   recognizedIngredients.value = []
+  recognizedImages.value = []
   confirmedIngredients.value = []
   recognizedImageCount.value = 0
   recognitionId.value = ''
@@ -321,7 +329,7 @@ function handleApiError(error) {
 }
 
 function applyRecognitionResult(response) {
-  const payload = unwrapFoodApiData(response)
+  const payload = normalizeFoodRecognitionData(unwrapFoodApiData(response))
   const nextRecognitionId = normalizeRecognitionId(payload.recognition_id)
   if (!nextRecognitionId) {
     handleApiError(new Error('识别结果缺少整数 recognition_id。'))
@@ -334,6 +342,7 @@ function applyRecognitionResult(response) {
     modelVersion: payload.model_version,
   }
   recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
+  recognizedImages.value = payload.images
   confirmedIngredients.value = []
   recognizedImageCount.value = payload.images?.length || selectedFiles.value.length
   workflowState.value = 'recognized'
