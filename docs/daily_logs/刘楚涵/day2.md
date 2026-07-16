@@ -6,7 +6,7 @@
 
 ## 1. 今天实际完成
 
-- 保留并复核多图上传：上传组件支持多张 JPG/JPEG/PNG，单图 10 MB 校验，支持拖拽。
+- 保留并复核多图上传：上传组件支持多张 JPG/JPEG/PNG，单图 100 MB 校验，支持拖拽。
 - 修正 Food 创建识别请求：继续提交多图 `images`，并保留首图 `image` 兼容字段；移除公开表单字段 `image_count`。
 - 修正确认食材请求：`PUT /food/recognitions/{recognition_id}/ingredients` 现在走 `confirmFoodIngredients()`，不再在页面内用临时 mock client 绕过。
 - 确认 payload 统一清洗为 `{ name, class_name, quantity, unit, source }`，不会发送 `candidate_id`、`confidence`、`bbox` 等编辑态字段。

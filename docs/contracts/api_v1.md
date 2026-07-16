@@ -140,8 +140,8 @@ message_id
 
 ```text
 格式：JPG、JPEG、PNG
-最大：10 MB
-每次：1 张
+最大：100 MB
+每次：1 至多张
 ```
 
 ## 8. 默认值
@@ -391,7 +391,7 @@ image：兼容字段，可携带第一张图片
 conf_threshold：选填，默认 0.25
 ```
 
-多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 10 MB。
+多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 100 MB。
 
 响应：
 
@@ -952,7 +952,7 @@ ORM 和 Alembic migration 只由绕家辉修改。
 | 404 | `RECOGNITION_NOT_FOUND` | 识别记录不存在 |
 | 404 | `RECIPE_NOT_FOUND` | 菜谱不存在 |
 | 404 | `SESSION_NOT_FOUND` | 会话不存在 |
-| 413 | `IMAGE_TOO_LARGE` | 图片超过 10 MB |
+| 413 | `IMAGE_TOO_LARGE` | 图片超过 100 MB |
 | 415 | `UNSUPPORTED_IMAGE_TYPE` | 非 JPG/JPEG/PNG |
 | 422 | `NO_CONFIRMED_INGREDIENTS` | 未确认食材 |
 | 422 | `EMPTY_INGREDIENTS` | 食材为空 |
@@ -1160,5 +1160,4 @@ best.pt 不进 Git
 长期兼容两套接口
 只在群里口头通知变化
 ```
-
 

@@ -71,7 +71,7 @@ const props = defineProps({
   },
   maxSizeMB: {
     type: Number,
-    default: 10,
+    default: 100,
   },
   disabled: {
     type: Boolean,
