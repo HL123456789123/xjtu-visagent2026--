@@ -43,6 +43,15 @@ export function assignUserRolesApi(userId, data) {
 }
 
 /**
+ * 设置用户身份
+ * @param {number} userId
+ * @param {Object} data - { role: 'admin' | 'user' }
+ */
+export function updateUserRoleApi(userId, data) {
+  return request.put(`/admin/users/${userId}/role`, data)
+}
+
+/**
  * 启用/禁用用户
  * @param {number} userId
  * @param {Object} data - { is_active: boolean }

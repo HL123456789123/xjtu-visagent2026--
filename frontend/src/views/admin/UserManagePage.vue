@@ -38,15 +38,11 @@
       <el-table-column label="角色" min-width="150">
         <template #default="{ row }">
           <el-tag
-            v-for="role in row.roles"
-            :key="role"
             size="small"
-            :type="getRoleTagType(role)"
-            style="margin-right: 4px"
+            :type="getRoleTagType(getUserRole(row))"
           >
-            {{ getRoleDisplayName(role) }}
+            {{ getRoleDisplayName(getUserRole(row)) }}
           </el-tag>
-          <span v-if="!row.roles?.length" class="text-muted">无角色</span>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="80">
@@ -69,7 +65,14 @@
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button size="small" text @click="openEditDialog(row)">编辑</el-button>
-          <el-button size="small" text @click="openRoleDialog(row)">分配角色</el-button>
+          <el-button
+            size="small"
+            text
+            :disabled="row.id === userStore.user?.id"
+            @click="openRoleDialog(row)"
+          >
+            更改身份
+          </el-button>
           <el-button
             size="small"
             text
@@ -115,25 +118,18 @@
       </template>
     </el-dialog>
 
-    <!-- 分配角色弹窗 -->
-    <el-dialog v-model="showRoleDialog" title="分配角色" width="500px">
+    <!-- 更改身份弹窗 -->
+    <el-dialog v-model="showRoleDialog" title="更改身份" width="500px">
       <div class="role-assign-info">
-        <p>为用户 <strong>{{ currentUser?.username }}</strong> 分配角色：</p>
+        <p>设置用户 <strong>{{ currentUser?.username }}</strong> 的身份：</p>
       </div>
-      <el-checkbox-group v-model="selectedRoleIds">
-        <el-checkbox
-          v-for="role in allRoles"
-          :key="role.id"
-          :value="role.id"
-          style="display: block; margin-bottom: 8px"
-        >
-          <span>{{ role.display_name }}</span>
-          <span class="role-desc">（{{ role.description || role.name }}）</span>
-        </el-checkbox>
-      </el-checkbox-group>
+      <el-radio-group v-model="selectedRole" class="role-options">
+        <el-radio value="user">普通用户</el-radio>
+        <el-radio value="admin">管理员</el-radio>
+      </el-radio-group>
       <template #footer>
         <el-button @click="showRoleDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitRoleAssign" :loading="submitting">保存</el-button>
+        <el-button type="primary" @click="submitRoleUpdate" :loading="submitting">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -142,15 +138,17 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh } from '@element-plus/icons-vue'
+import { Search } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
 import {
   getUserListApi,
   updateUserApi,
-  assignUserRolesApi,
+  updateUserRoleApi,
   toggleUserStatusApi,
   deleteUserApi,
-  getRoleListApi,
 } from '@/api/admin'
+
+const userStore = useUserStore()
 
 // 列表数据
 const users = ref([])
@@ -170,20 +168,23 @@ const editForm = ref({
   phone: '',
 })
 
-// 角色分配弹窗
+// 身份设置弹窗
 const showRoleDialog = ref(false)
 const currentUser = ref(null)
-const allRoles = ref([])
-const selectedRoleIds = ref([])
+const selectedRole = ref('user')
 const submitting = ref(false)
 
 // 角色显示名映射
 const roleDisplayNames = {
-  super_admin: '超级管理员',
   admin: '管理员',
-  operator: '操作员',
   user: '普通用户',
-  viewer: '访客',
+}
+
+// 兼容旧数据中的历史角色，对外统一收敛为管理员/普通用户两种身份。
+function getUserRole(user) {
+  return user.roles?.some((role) => role === 'admin' || role === 'super_admin')
+    ? 'admin'
+    : 'user'
 }
 
 // 获取角色显示名
@@ -194,11 +195,8 @@ function getRoleDisplayName(roleName) {
 // 获取角色标签类型
 function getRoleTagType(roleName) {
   const typeMap = {
-    super_admin: 'danger',
     admin: 'warning',
-    operator: 'info',
     user: 'info',
-    viewer: 'info',
   }
   return typeMap[roleName] || 'info'
 }
@@ -241,16 +239,6 @@ async function loadUsers() {
   }
 }
 
-// 加载角色列表
-async function loadRoles() {
-  try {
-    const res = await getRoleListApi()
-    allRoles.value = res.data || []
-  } catch (error) {
-    console.error('加载角色列表失败:', error)
-  }
-}
-
 // 打开编辑弹窗
 function openEditDialog(user) {
   editForm.value = {
@@ -281,29 +269,30 @@ async function submitEdit() {
   }
 }
 
-// 打开角色分配弹窗
+// 打开身份设置弹窗
 function openRoleDialog(user) {
+  if (user.id === userStore.user?.id) {
+    ElMessage.warning('不能修改自身身份')
+    return
+  }
   currentUser.value = user
-  // 根据当前用户角色名匹配角色ID
-  const userRoleNames = user.roles || []
-  const matchedRoles = allRoles.value.filter((r) => userRoleNames.includes(r.name))
-  selectedRoleIds.value = matchedRoles.map((r) => r.id)
+  selectedRole.value = getUserRole(user)
   showRoleDialog.value = true
 }
 
-// 提交角色分配
-async function submitRoleAssign() {
+// 提交身份更新
+async function submitRoleUpdate() {
   submitting.value = true
   try {
-    await assignUserRolesApi(currentUser.value.id, {
-      role_ids: selectedRoleIds.value,
+    await updateUserRoleApi(currentUser.value.id, {
+      role: selectedRole.value,
     })
-    ElMessage.success('角色分配成功')
+    ElMessage.success('用户身份更新成功')
     showRoleDialog.value = false
     loadUsers()
   } catch (error) {
-    console.error('分配角色失败:', error)
-    ElMessage.error(error.response?.data?.detail || '分配角色失败')
+    console.error('更新用户身份失败:', error)
+    ElMessage.error(error.response?.data?.message || '更新用户身份失败')
   } finally {
     submitting.value = false
   }
@@ -355,7 +344,6 @@ async function deleteUser(user) {
 // 初始化
 onMounted(() => {
   loadUsers()
-  loadRoles()
 })
 </script>
 
@@ -401,8 +389,10 @@ onMounted(() => {
   color: #606266;
 }
 
-.role-desc {
-  color: #909399;
-  font-size: 12px;
+.role-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
 </style>
