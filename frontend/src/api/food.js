@@ -8,7 +8,6 @@ export const FOOD_RECOGNITION_PATHS = Object.freeze({
   create: '/food/recognitions',
   get: (recognitionId) => `/food/recognitions/${recognitionId}`,
   confirm: (recognitionId) => `/food/recognitions/${recognitionId}/ingredients`,
-  image: (recognitionId) => `/files/food/${recognitionId}`,
 })
 
 let injectedClient = null
@@ -54,29 +53,6 @@ export function normalizeConfirmedIngredients(ingredients = []) {
   }))
 }
 
-export function getFoodImageUrl(recognitionId) {
-  const normalizedRecognitionId = normalizeRecognitionId(recognitionId)
-  return normalizedRecognitionId ? `/api${FOOD_RECOGNITION_PATHS.image(normalizedRecognitionId)}` : ''
-}
-
-export function normalizeFoodRecognitionData(data) {
-  if (!data || typeof data !== 'object') return data
-
-  const normalized = { ...data }
-  if (!normalized.image_url && normalized.recognition_id) {
-    normalized.image_url = getFoodImageUrl(normalized.recognition_id)
-  }
-  if (!Array.isArray(normalized.images) && normalized.image_url) {
-    normalized.images = [
-      {
-        image_index: 0,
-        image_url: normalized.image_url,
-      },
-    ]
-  }
-  return normalized
-}
-
 function mockResponse(data, message = 'mock', code = 200) {
   return Promise.resolve({
     code,
@@ -114,15 +90,14 @@ export function createMockFoodApiClient(scenario = 'success') {
 }
 
 export function unwrapFoodApiData(response) {
-  return normalizeFoodRecognitionData(response?.data ?? response)
+  return response?.data ?? response
 }
 
-export function normalizeRecognitionImage(data = {}) {
-  if (data.image) return data.image
+function normalizeRecognitionImages(data = {}) {
   if (data.images && typeof data.images[Symbol.iterator] === 'function') {
-    return Array.from(data.images).filter(Boolean)[0] || null
+    return Array.from(data.images).filter(Boolean)
   }
-  return null
+  return []
 }
 
 export function createFoodRecognition(data, options = {}) {
@@ -133,9 +108,11 @@ export function createFoodRecognition(data, options = {}) {
   const client = options.client || injectedClient
   if (client?.create) return client.create(data, options)
 
+  const images = normalizeRecognitionImages(data)
   const formData = new FormData()
-  const image = normalizeRecognitionImage(data)
-  if (image) formData.append('image', image)
+  images.forEach((image) => {
+    formData.append('images', image)
+  })
   formData.append('conf_threshold', data.conf_threshold ?? 0.25)
 
   return uploadRequest.post(FOOD_RECOGNITION_PATHS.create, formData, {
@@ -182,16 +159,4 @@ export function confirmFoodIngredients(recognitionId, ingredients, options = {})
   return request.put(FOOD_RECOGNITION_PATHS.confirm(normalizedRecognitionId), {
     ingredients: confirmedIngredients,
   })
-}
-
-export function recognizeFoodApi(data, options = {}) {
-  return createFoodRecognition(data, options)
-}
-
-export function getRecognitionApi(recognitionId, options = {}) {
-  return getFoodRecognition(recognitionId, options)
-}
-
-export function confirmIngredientsApi(recognitionId, ingredients, options = {}) {
-  return confirmFoodIngredients(recognitionId, ingredients, options)
 }

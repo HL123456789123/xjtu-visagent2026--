@@ -5,7 +5,7 @@
       class="food-uploader__input"
       type="file"
       accept="image/jpeg,image/png"
-      :multiple="maxFiles > 1"
+      multiple
       :disabled="disabled"
       data-testid="food-image-input"
       @change="handleNativeFile"
@@ -52,7 +52,8 @@
         <span class="food-uploader__icon">+</span>
         <strong>把餐桌照片放到这里</strong>
         <span>
-          {{ uploadHint }}
+          支持 1 至 {{ maxFiles }} 张 JPG / JPEG / PNG，单图不超过 {{ maxSizeMB }} MB，整批不超过
+          {{ maxBatchSizeMB }} MB
         </span>
         <small>点击选择，或直接拖拽图片上传</small>
       </div>
@@ -127,12 +128,6 @@ const selectedName = computed(() => {
 })
 const maxSizeBytes = computed(() => props.maxSizeMB * 1024 * 1024)
 const maxBatchSizeBytes = computed(() => props.maxBatchSizeMB * 1024 * 1024)
-const uploadHint = computed(() => {
-  if (props.maxFiles === 1) {
-    return `支持 1 张 JPG / JPEG / PNG，图片不超过 ${props.maxSizeMB} MB`
-  }
-  return `支持 1 至 ${props.maxFiles} 张 JPG / JPEG / PNG，单图不超过 ${props.maxSizeMB} MB，整批不超过 ${props.maxBatchSizeMB} MB`
-})
 
 function revokePreviews() {
   if (previewUrls.value.length) {

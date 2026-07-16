@@ -2,21 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { uploadRequest } from '@/utils/request'
 import {
   FOOD_RECOGNITION_PATHS,
-  confirmIngredientsApi,
   confirmFoodIngredients,
   createFoodRecognition,
   createMockFoodApiClient,
-  getFoodImageUrl,
   getFoodRecognition,
-  getRecognitionApi,
   normalizeConfirmedIngredients,
-  normalizeFoodRecognitionData,
-  normalizeRecognitionImage,
   normalizeRecognitionId,
-  recognizeFoodApi,
   resetFoodApiClient,
   setFoodApiClient,
-  unwrapFoodApiData,
 } from '../food'
 
 describe('food api contract', () => {
@@ -29,7 +22,6 @@ describe('food api contract', () => {
     expect(FOOD_RECOGNITION_PATHS.create).toBe('/food/recognitions')
     expect(FOOD_RECOGNITION_PATHS.get(12)).toBe('/food/recognitions/12')
     expect(FOOD_RECOGNITION_PATHS.confirm(12)).toBe('/food/recognitions/12/ingredients')
-    expect(FOOD_RECOGNITION_PATHS.image(12)).toBe('/files/food/12')
   })
 
   it('returns cloned success and empty fixtures through mock scenarios', async () => {
@@ -41,11 +33,15 @@ describe('food api contract', () => {
 
     expect(success.code).toBe(201)
     expect(success.data.recognition_id).toBe(12)
-    expect(success.data.image_url).toBe('/api/files/food/12')
-    expect(success.data.images).toBeUndefined()
-    expect(success.data.ingredients).toHaveLength(1)
+    expect(success.data.image_url).toBeUndefined()
+    expect(success.data.images).toEqual([
+      { image_index: 0, image_url: '/api/files/food/12/0' },
+      { image_index: 1, image_url: '/api/files/food/12/1' },
+    ])
+    expect(success.data.ingredients).toHaveLength(2)
     expect(success.data.ingredients[0]).toMatchObject({
       candidate_id: 'det-1',
+      image_index: 0,
       class_name: 'tomato',
       display_name: '番茄',
       confidence: 0.9321,
@@ -55,8 +51,8 @@ describe('food api contract', () => {
     expect(empty.data.ingredients).toHaveLength(0)
   })
 
-  it('sends the first selected image with the backend V1 form field name', async () => {
-    const postSpy = vi.spyOn(uploadRequest, 'post').mockResolvedValue({ data: { recognition_id: 12 } })
+  it('sends every selected image in the recognition upload form', async () => {
+    const postSpy = vi.spyOn(uploadRequest, 'post').mockResolvedValue({ data: { recognition_id: 'rec_multi' } })
     const first = new File(['image-1'], 'meal-one.jpg', { type: 'image/jpeg' })
     const second = new File(['image-2'], 'meal-two.png', { type: 'image/png' })
 
@@ -72,25 +68,11 @@ describe('food api contract', () => {
     const [path, formData, config] = postSpy.mock.calls[0]
 
     expect(path).toBe(FOOD_RECOGNITION_PATHS.create)
-    expect(formData.get('image')).toBe(first)
-    expect(formData.has('images')).toBe(false)
+    expect(formData.getAll('images')).toEqual([first, second])
+    expect(formData.has('image')).toBe(false)
     expect(formData.get('conf_threshold')).toBe('0.4')
     expect(config).toMatchObject({
       headers: { 'Content-Type': 'multipart/form-data' },
-    })
-  })
-
-  it('normalizes backend image urls for page-level display helpers', () => {
-    expect(normalizeRecognitionImage({ image: 'one' })).toBe('one')
-    expect(normalizeRecognitionImage({ images: ['first', 'second'] })).toBe('first')
-    expect(getFoodImageUrl(12)).toBe('/api/files/food/12')
-    expect(normalizeFoodRecognitionData({ recognition_id: 12 })).toMatchObject({
-      image_url: '/api/files/food/12',
-      images: [{ image_index: 0, image_url: '/api/files/food/12' }],
-    })
-    expect(unwrapFoodApiData({ data: { recognition_id: 13, image_url: '/api/files/food/13' } })).toMatchObject({
-      recognition_id: 13,
-      images: [{ image_index: 0, image_url: '/api/files/food/13' }],
     })
   })
 
@@ -176,7 +158,7 @@ describe('food api contract', () => {
     })
 
     expect(created.code).toBe(201)
-    expect(created.data.provider).toBe('yolo')
+    expect(created.data.provider).toBe('mock')
     expect(confirmed.data).toEqual({
       recognition_id: 12,
       confirmed_ingredients: [confirmedIngredient],
@@ -197,22 +179,5 @@ describe('food api contract', () => {
         data: { code: 'UNSUPPORTED_IMAGE_TYPE' },
       },
     })
-  })
-
-  it('keeps the reference file function names as compatibility aliases', async () => {
-    const client = {
-      create: vi.fn().mockResolvedValue({ data: { recognition_id: 12 } }),
-      get: vi.fn().mockResolvedValue({ data: { recognition_id: 12 } }),
-      confirm: vi.fn().mockResolvedValue({ data: { recognition_id: 12 } }),
-    }
-    setFoodApiClient(client)
-
-    await recognizeFoodApi({ image: new File(['image'], 'meal.jpg') })
-    await getRecognitionApi(12)
-    await confirmIngredientsApi(12, [{ name: '番茄', quantity: 1, unit: '个' }])
-
-    expect(client.create).toHaveBeenCalledOnce()
-    expect(client.get).toHaveBeenCalledOnce()
-    expect(client.confirm).toHaveBeenCalledOnce()
   })
 })

@@ -32,16 +32,6 @@ describe('FoodImageUploader', () => {
     expect(wrapper.text()).toContain('整批不超过 50 MB')
   })
 
-  it('switches copy and native input behavior in single-image mode', () => {
-    const wrapper = mount(FoodImageUploader, {
-      props: { maxFiles: 1 },
-    })
-
-    expect(wrapper.find('[data-testid="food-image-input"]').attributes('multiple')).toBeUndefined()
-    expect(wrapper.text()).toContain('支持 1 张')
-    expect(wrapper.text()).not.toContain('整批')
-  })
-
   it('rejects non JPG/PNG files', async () => {
     const wrapper = mount(FoodImageUploader)
     const file = new File(['text'], 'notes.txt', { type: 'text/plain' })
