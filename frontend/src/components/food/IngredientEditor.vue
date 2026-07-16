@@ -33,6 +33,28 @@
             @input="syncIngredient(index)"
           />
         </label>
+        <label>
+          <span>数量</span>
+          <input
+            v-model.number="ingredient.quantity"
+            type="number"
+            min="0.01"
+            step="0.01"
+            :disabled="disabled"
+            data-testid="ingredient-quantity"
+            @input="syncIngredient"
+          />
+        </label>
+        <label>
+          <span>单位</span>
+          <input
+            v-model="ingredient.unit"
+            type="text"
+            :disabled="disabled"
+            data-testid="ingredient-unit"
+            @input="syncIngredient"
+          />
+        </label>
         <div class="ingredient-editor__meta">
           <span class="ingredient-editor__confidence">
             {{ formatConfidence(ingredient.confidence) }}
@@ -80,7 +102,6 @@ import { ref, watch } from 'vue'
 import {
   buildConfirmedIngredients,
   mapCandidatesToEditableIngredients,
-  normalizeIngredientKey,
   validateConfirmedIngredients,
 } from './ingredientEditorModel'
 
@@ -104,16 +125,7 @@ function emitUpdate() {
   emit('update:modelValue', ingredients.value.map((ingredient) => ({ ...ingredient })))
 }
 
-function refreshKeys() {
-  ingredients.value = ingredients.value.map((ingredient) => ({
-    ...ingredient,
-    key: ingredient.key || normalizeIngredientKey(ingredient.name),
-  }))
-}
-
-function syncIngredient(index) {
-  const ingredient = ingredients.value[index]
-  ingredient.key = normalizeIngredientKey(ingredient.name)
+function syncIngredient() {
   validationErrors.value = []
   emitUpdate()
 }
@@ -121,9 +133,12 @@ function syncIngredient(index) {
 function addIngredient() {
   ingredients.value.push({
     draftId: `manual_${Date.now()}_${ingredients.value.length}`,
-    key: '',
+    candidate_id: null,
+    class_name: null,
     name: '',
     confidence: null,
+    quantity: 1,
+    unit: '个',
     source: 'manual',
     bbox: null,
   })
@@ -147,7 +162,6 @@ function formatSource(source) {
 }
 
 function validate() {
-  refreshKeys()
   const result = validateConfirmedIngredients(ingredients.value)
   validationErrors.value = result.errors
   if (!result.valid) {
@@ -258,7 +272,7 @@ defineExpose({
 
 .ingredient-editor__row {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) 160px 72px;
+  grid-template-columns: minmax(140px, 1fr) 90px 90px 150px 64px;
   align-items: end;
   gap: $spacing-md;
   padding: 14px;

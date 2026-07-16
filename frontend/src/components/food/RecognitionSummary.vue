@@ -47,7 +47,7 @@ import { computed } from 'vue'
 
 const props = defineProps({
   recognitionId: {
-    type: String,
+    type: [String, Number],
     default: '',
   },
   confirmedIngredients: {
@@ -93,8 +93,6 @@ function emitRecipeRequest() {
   emit('generate-recipe', {
     recognition_id: props.recognitionId,
     confirmed_ingredients: props.confirmedIngredients,
-    image_count: props.imageCount,
-    source_images: props.sourceImageNames,
   })
 }
 </script>

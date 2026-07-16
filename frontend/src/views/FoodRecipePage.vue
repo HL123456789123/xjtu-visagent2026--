@@ -34,6 +34,8 @@
               <option value="success">Mock 成功</option>
               <option value="empty">Mock 空识别</option>
               <option value="401">Mock 401</option>
+              <option value="413">Mock 413</option>
+              <option value="415">Mock 415</option>
               <option value="422">Mock 422</option>
               <option value="503">Mock 503</option>
             </select>
@@ -41,7 +43,7 @@
 
           <FoodImageUploader
             v-model="selectedFiles"
-            :disabled="workflowState === 'uploading'"
+            :disabled="isBusy"
             @selected="handleFileSelected"
             @cleared="resetRecognition"
             @validation-error="setValidationError"
@@ -56,7 +58,7 @@
             class="food-recipe-page__primary"
             type="button"
             data-testid="start-recognition"
-            :disabled="selectedFiles.length === 0 || workflowState === 'uploading'"
+            :disabled="selectedFiles.length === 0 || isBusy"
             @click="startRecognition"
           >
             {{ workflowState === 'uploading' ? '正在识别...' : '开始识别食材' }}
@@ -90,10 +92,13 @@
           <span>点击左侧按钮开始识别，稍后可以逐项确认或补充食材。</span>
         </div>
 
-        <div v-else-if="workflowState === 'uploading'" class="food-recipe-page__loading" data-testid="loading-state">
+        <div
+          v-else-if="workflowState === 'uploading' || workflowState === 'confirming'"
+          class="food-recipe-page__loading"
+          data-testid="loading-state"
+        >
           <span class="food-recipe-page__spinner"></span>
-          <strong>正在看图识别食材...</strong>
-          <span>像翻冰箱一样快速整理今天可以做什么。</span>
+          {{ busyText }}
         </div>
 
         <div v-else-if="workflowState === 'error'" class="food-recipe-page__error" data-testid="error-state">
@@ -108,7 +113,7 @@
 
           <IngredientEditor
             v-model="recognizedIngredients"
-            :disabled="workflowState === 'confirmed'"
+            :disabled="workflowState === 'confirmed' || workflowState === 'confirming'"
             @confirm="handleConfirm"
             @validation-error="handleIngredientValidation"
           />
@@ -134,6 +139,7 @@ import { computed, ref } from 'vue'
 import {
   createFoodRecognition,
   confirmFoodIngredients,
+  normalizeRecognitionId,
   unwrapFoodApiData,
 } from '@/api/food'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
@@ -166,6 +172,8 @@ const visibleStates = [
   { key: 'loading', title: 'Loading', description: '上传和识别处理中。' },
   { key: 'empty', title: '空识别', description: '识别成功但无候选食材。' },
   { key: '401', title: '401', description: '登录失效或未登录。' },
+  { key: '413', title: '413', description: '图片超过 10 MB。' },
+  { key: '415', title: '415', description: '图片格式不支持。' },
   { key: '422', title: '422', description: '图片或参数校验失败。' },
   { key: '503', title: '503', description: '模型服务暂不可用。' },
 ]
@@ -195,12 +203,14 @@ const workflowSteps = [
 ]
 
 const visibleStateKey = computed(() => {
-  if (workflowState.value === 'uploading') return 'loading'
+  if (workflowState.value === 'uploading' || workflowState.value === 'confirming') return 'loading'
   if (workflowState.value === 'recognized' && recognizedIngredients.value.length === 0) return 'empty'
   if (workflowState.value === 'error') return String(errorState.value.status || '503')
   return ''
 })
 
+const isBusy = computed(() => workflowState.value === 'uploading' || workflowState.value === 'confirming')
+const busyText = computed(() => (workflowState.value === 'confirming' ? '正在确认食材...' : '正在识别食材...'))
 const selectedImageNames = computed(() => selectedFiles.value.map((file) => file.name))
 const selectedImageText = computed(() => {
   const count = selectedFiles.value.length
@@ -236,6 +246,8 @@ function setValidationError(message) {
 
 function getErrorTitle(status) {
   if (status === 401) return '需要重新登录'
+  if (status === 413) return '图片过大'
+  if (status === 415) return '图片格式不支持'
   if (status === 422) return '请求校验失败'
   if (status === 503) return '识别服务不可用'
   return '识别失败'
@@ -259,7 +271,13 @@ function handleApiError(error) {
 
 function applyRecognitionResult(response) {
   const payload = unwrapFoodApiData(response)
-  recognitionId.value = payload.recognition_id
+  const nextRecognitionId = normalizeRecognitionId(payload.recognition_id)
+  if (!nextRecognitionId) {
+    handleApiError(new Error('识别结果缺少整数 recognition_id。'))
+    return
+  }
+
+  recognitionId.value = nextRecognitionId
   recognitionMeta.value = {
     provider: payload.provider,
     modelVersion: payload.model_version,
@@ -296,29 +314,28 @@ async function startRecognition() {
 async function handleConfirm(ingredients) {
   if (!recognitionId.value) return
 
-  confirmedIngredients.value = ingredients
-  workflowState.value = 'confirmed'
+  workflowState.value = 'confirming'
+  errorState.value = { status: null, title: '', message: '' }
 
-  await confirmFoodIngredients(recognitionId.value, ingredients, {
-    client: {
-      confirm: ({ recognitionId: id, ingredients: confirmed }) =>
-        Promise.resolve({
-          code: 200,
-          data: {
-            recognition_id: id,
-            confirmed_ingredients: confirmed,
-            status: 'confirmed',
-          },
-        }),
-    },
-  })
+  try {
+    const response = await confirmFoodIngredients(recognitionId.value, ingredients, {
+      mockScenario: mockScenario.value,
+    })
+    const payload = unwrapFoodApiData(response)
+    const confirmedRecognitionId = normalizeRecognitionId(payload.recognition_id) || recognitionId.value
+    const confirmed = payload.confirmed_ingredients || ingredients
 
-  emit('confirmed', {
-    recognition_id: recognitionId.value,
-    confirmed_ingredients: ingredients,
-    image_count: recognizedImageCount.value,
-    source_images: selectedImageNames.value,
-  })
+    recognitionId.value = confirmedRecognitionId
+    confirmedIngredients.value = confirmed
+    workflowState.value = 'confirmed'
+
+    emit('confirmed', {
+      recognition_id: confirmedRecognitionId,
+      confirmed_ingredients: confirmed,
+    })
+  } catch (error) {
+    handleApiError(error)
+  }
 }
 
 function handleIngredientValidation(errors) {
@@ -327,9 +344,8 @@ function handleIngredientValidation(errors) {
 
 function emitRecipeRequest(payload) {
   emit('recipe-requested', {
-    ...payload,
-    image_count: payload.image_count || recognizedImageCount.value,
-    source_images: payload.source_images || selectedImageNames.value,
+    recognition_id: normalizeRecognitionId(payload.recognition_id),
+    confirmed_ingredients: payload.confirmed_ingredients,
   })
 }
 </script>
