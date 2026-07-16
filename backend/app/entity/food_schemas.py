@@ -84,13 +84,20 @@ class RecognitionImage(FoodSchemaBase):
 
 
 class ConfirmedIngredient(FoodSchemaBase):
-    """用户确认后的最终食材快照。"""
+    """用户确认后的最终食材快照，包含模型识别和手动添加项。"""
 
     name: str = Field(..., min_length=1, max_length=100)
     class_name: str | None = Field(default=None, max_length=100)
     quantity: int = Field(..., ge=1, le=100000)
     unit: str = Field(..., min_length=1, max_length=50)
     source: Literal["model", "manual"]
+
+    @field_validator("name", "unit", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        return value.strip()
 
     @field_validator("class_name", mode="before")
     @classmethod
@@ -102,7 +109,7 @@ class ConfirmedIngredient(FoodSchemaBase):
 
 
 class ConfirmIngredientsRequest(FoodSchemaBase):
-    """V1 确认食材请求，数组将完整覆盖旧快照。"""
+    """确认食材请求；服务层会规范并聚合后完整覆盖旧快照。"""
 
     ingredients: list[ConfirmedIngredient]
 

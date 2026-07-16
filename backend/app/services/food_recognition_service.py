@@ -207,11 +207,12 @@ class FoodRecognitionService:
         if not ingredients:
             raise EmptyIngredientsError()
         self._assert_owned(self.repository.get_recognition(recognition_id), user_id)
+        aggregated_ingredients = self._aggregate_confirmed_ingredients(ingredients)
         confirmed_at = china_now()
         task = self.repository.replace_confirmed_ingredients(
             recognition_id,
             user_id,
-            [item.model_dump(mode="json") for item in ingredients],
+            [item.model_dump(mode="json") for item in aggregated_ingredients],
             confirmed_at,
         )
         if task is None:
@@ -225,6 +226,22 @@ class FoodRecognitionService:
             ],
             confirmed_at=to_china_time(task.updated_at),
         )
+
+    @staticmethod
+    def _aggregate_confirmed_ingredients(
+        ingredients: list[ConfirmedIngredient],
+    ) -> list[ConfirmedIngredient]:
+        """按食材、单位及来源合并数量，生成用于数据库持久化的确认快照。"""
+        aggregated: dict[tuple[str, str, str], ConfirmedIngredient] = {}
+        for item in ingredients:
+            class_or_name = item.class_name or item.name.casefold()
+            key = (class_or_name, item.unit.casefold(), item.source)
+            existing = aggregated.get(key)
+            if existing is None:
+                aggregated[key] = item.model_copy(deep=True)
+            else:
+                existing.quantity += item.quantity
+        return list(aggregated.values())
 
     async def get_image(
         self, *, user_id: int, recognition_id: int, image_index: int = 0
