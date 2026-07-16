@@ -11,6 +11,7 @@ from app.api.health import router as health_router
 from app.api.training import router as training_router
 from app.api.detection import router as detection_router
 from app.api.chat import router as chat_router
+from app.api.recipes import router as recipes_router
 from app.api.dashboard import router as dashboard_router
 from app.api.camera import router as camera_router
 from app.api.knowledge import router as knowledge_router
@@ -157,16 +158,14 @@ async def _shutdown_cleanup():
 
     # 2. 关闭 LLM httpx 客户端
     try:
-        from app.services.agent_graph import _llm_cache
+        from app.services.llm_gateway import _llm_cache
 
-        if _llm_cache is not None and hasattr(_llm_cache, "async_client"):
-            client = _llm_cache.async_client
-            if client and hasattr(client, "aclose"):
-                try:
-                    await client.aclose()
-                    logger.info("LLM httpx 客户端已关闭")
-                except Exception as e:
-                    logger.warning(f"LLM 客户端关闭失败: {e}")
+        if _llm_cache is not None and _llm_cache.client is not None:
+            try:
+                await _llm_cache.client.close()
+                logger.info("LLM 客户端已关闭")
+            except Exception as e:
+                logger.warning(f"LLM 客户端关闭失败: {e}")
     except Exception as e:
         logger.error(f"LLM 客户端关闭失败: {e}")
 
@@ -222,6 +221,7 @@ app.include_router(health_router)
 app.include_router(training_router)
 app.include_router(detection_router)
 app.include_router(chat_router)
+app.include_router(recipes_router)
 app.include_router(dashboard_router)
 app.include_router(camera_router)
 app.include_router(knowledge_router)

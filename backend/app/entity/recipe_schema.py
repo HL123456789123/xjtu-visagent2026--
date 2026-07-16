@@ -1,60 +1,74 @@
+"""V1 菜谱与对话接口的数据结构。"""
+
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-# 食材（V1 第三节第4点）
 class Ingredient(BaseModel):
-    name: str
-    amount: float
-    unit: str
-    note: Optional[str] = None
+    name: str = Field(min_length=1)
+    amount: float = Field(ge=0)
+    unit: str = Field(min_length=1)
+    note: str | None = None
 
 
-# 步骤（V1 第七节第3点）
 class RecipeStep(BaseModel):
-    step_no: int
-    description: str
-    duration_minutes: Optional[int] = None
+    step_no: int = Field(ge=1)
+    description: str = Field(min_length=1)
+    duration_minutes: int | None = Field(default=None, ge=0)
 
 
-# 营养（V1 第七节第3点）
 class NutritionInfo(BaseModel):
-    basis: str = "per_serving"
-    calories_kcal: float
-    protein_g: float
-    fat_g: float
-    carbohydrates_g: float
+    basis: Literal["per_serving"] = "per_serving"
+    calories_kcal: float = Field(ge=0)
+    protein_g: float = Field(ge=0)
+    fat_g: float = Field(ge=0)
+    carbohydrates_g: float = Field(ge=0)
 
 
-# 用户偏好（V1 第三节第5点）
 class RecipePreferences(BaseModel):
     servings: int = Field(default=2, ge=1, le=10)
-    taste: str = Field(default="家常", max_length=20)
-    max_time_minutes: Optional[int] = Field(None, ge=5, le=180)
-    avoid_ingredients: List[str] = []
+    taste: str = Field(default="家常", min_length=1, max_length=20)
+    max_time_minutes: int | None = Field(default=None, ge=5, le=180)
+    avoid_ingredients: list[str] = Field(default_factory=list)
 
 
-# LLM 生成输出（V1 第七节第3点）
 class RecipeGenerateResult(BaseModel):
-    title: str
-    summary: str
-    servings: int
-    cooking_time_minutes: int
-    difficulty: str
-    ingredients: List[Ingredient]
-    steps: List[RecipeStep]
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    servings: int = Field(ge=1, le=10)
+    cooking_time_minutes: int = Field(ge=1)
+    difficulty: str = Field(min_length=1)
+    ingredients: list[Ingredient] = Field(min_length=1)
+    steps: list[RecipeStep] = Field(min_length=1)
     nutrition: NutritionInfo
 
 
-# 生成器信息（V1 第七节第1点）
+class ChatLLMResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["answer", "update_recipe"]
+    answer: str = Field(min_length=1)
+    recipe: RecipeGenerateResult | None = None
+
+    @model_validator(mode="after")
+    def validate_action_payload(self):
+        if self.action == "update_recipe" and self.recipe is None:
+            raise ValueError("update_recipe 必须返回完整菜谱")
+        if self.action == "answer" and self.recipe is not None:
+            raise ValueError("answer 不应返回菜谱")
+        return self
+
+
 class GeneratorInfo(BaseModel):
     provider: str
     model: str
     is_mock: bool
 
 
-# API 响应（V1 第六节第1点）
 class RecipeResponse(BaseModel):
     recipe_id: int
     recognition_id: int
@@ -64,8 +78,8 @@ class RecipeResponse(BaseModel):
     servings: int
     cooking_time_minutes: int
     difficulty: str
-    ingredients: List[Ingredient]
-    steps: List[RecipeStep]
+    ingredients: list[Ingredient]
+    steps: list[RecipeStep]
     nutrition: NutritionInfo
     nutrition_disclaimer: str
     generator: GeneratorInfo
@@ -73,7 +87,16 @@ class RecipeResponse(BaseModel):
     updated_at: datetime
 
 
-# 创建请求（V1 第六节第1点）
 class RecipeCreateRequest(BaseModel):
-    recognition_id: int
+    recognition_id: int = Field(gt=0)
     preferences: RecipePreferences = Field(default_factory=RecipePreferences)
+
+
+class CreateChatSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    recipe_id: int = Field(gt=0)
+
+
+class SendChatMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content: str = Field(min_length=1, max_length=4000)

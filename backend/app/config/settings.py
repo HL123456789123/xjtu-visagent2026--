@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o"
+    LLM_MODE: str = "fake"
+    LLM_TIMEOUT_SECONDS: int = 60
+
+    # 嵌入模型配置（知识库模块使用 OpenAI-compatible embeddings 接口）
+    EMBEDDING_MODEL_NAME: str = "Qwen/Qwen3-Embedding-0.6B"
+    EMBEDDING_BASE_URL: str = ""
+    EMBEDDING_API_KEY: str = ""
 
     # ── LangChain 配置 ────────────────────────────────
     LANGCHAIN_TRACING_V2: bool = False
@@ -127,6 +134,21 @@ class Settings(BaseSettings):
         """验证 OpenAI API URL 格式"""
         if v and not v.startswith(('http://', 'https://')):
             raise ValueError('OpenAI API URL 必须以 http:// 或 https:// 开头')
+        return v
+
+    @field_validator('LLM_MODE')
+    @classmethod
+    def validate_llm_mode(cls, v: str) -> str:
+        mode = v.lower().strip()
+        if mode not in {'fake', 'real'}:
+            raise ValueError("LLM_MODE 只能是 fake 或 real")
+        return mode
+
+    @field_validator('LLM_TIMEOUT_SECONDS')
+    @classmethod
+    def validate_llm_timeout(cls, v: int) -> int:
+        if not 1 <= v <= 300:
+            raise ValueError("LLM_TIMEOUT_SECONDS 必须在 1-300 秒之间")
         return v
 
     @field_validator('MAX_CACHED_MODELS')
