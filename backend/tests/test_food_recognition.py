@@ -360,6 +360,9 @@ class TestFoodRecognitionService:
                     name="番茄", class_name="tomato", quantity=2, unit="个", source="model"
                 ),
                 ConfirmedIngredient(
+                    name="番茄", class_name="tomato", quantity=3, unit="个", source="model"
+                ),
+                ConfirmedIngredient(
                     name="鸡蛋", class_name="egg", quantity=3, unit="个", source="manual"
                 ),
             ],
@@ -375,6 +378,14 @@ class TestFoodRecognitionService:
         )
 
         assert len(first.confirmed_ingredients) == 2
+        assert first.confirmed_ingredients[0].name == "番茄"
+        assert first.confirmed_ingredients[0].quantity == 5
+        persisted = db.get(FoodRecognitionTask, created.recognition_id)
+        assert persisted is not None
+        assert persisted.confirmed_ingredients == [
+            {"name": "番茄", "class_name": "tomato", "quantity": 5, "unit": "个", "source": "model"},
+            {"name": "鸡蛋", "class_name": "egg", "quantity": 3, "unit": "个", "source": "manual"},
+        ]
         assert [item.name for item in second.confirmed_ingredients] == ["鸡蛋"]
         with pytest.raises(FoodRecognitionAccessDeniedError):
             service.get_recognition(user_id=other.id, recognition_id=created.recognition_id)

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import IngredientEditor from '../IngredientEditor.vue'
 import {
   buildConfirmedIngredients,
+  mapCandidatesToEditableIngredients,
   validateConfirmedIngredients,
 } from '../ingredientEditorModel'
 
@@ -58,22 +59,31 @@ describe('ingredientEditorModel', () => {
 
     expect(result.valid).toBe(false)
     expect(result.errors.join('\n')).toContain('不能为空')
-    expect(result.errors.join('\n')).toContain('数量必须大于 0')
+    expect(result.errors.join('\n')).toContain('数量必须为正整数')
     expect(result.errors.join('\n')).toContain('来源无效')
   })
 })
 
 describe('IngredientEditor', () => {
-  it('renders confidence and source from recognition candidates', () => {
+  it('aggregates identical model candidates into one counted ingredient', () => {
+    const ingredients = mapCandidatesToEditableIngredients([
+      candidates[0],
+      { ...candidates[0], candidate_id: 'det-3', image_index: 1 },
+    ])
+
+    expect(ingredients).toHaveLength(1)
+    expect(ingredients[0]).toMatchObject({ name: '番茄', quantity: 2, source: 'model' })
+  })
+
+  it('renders counted ingredient rows without image-origin metadata', () => {
     const wrapper = mount(IngredientEditor, {
       props: { modelValue: candidates },
     })
 
     expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(2)
-    expect(wrapper.text()).toContain('图 1')
-    expect(wrapper.text()).toContain('图 2')
-    expect(wrapper.text()).toContain('93.0%')
-    expect(wrapper.text()).toContain('模型识别')
+    expect(wrapper.text()).toContain('合计数量 2')
+    expect(wrapper.text()).not.toContain('图 1')
+    expect(wrapper.text()).not.toContain('模型识别')
   })
 
   it('supports deleting and manually adding ingredients', async () => {

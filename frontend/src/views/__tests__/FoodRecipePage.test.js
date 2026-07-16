@@ -38,8 +38,8 @@ describe('FoodRecipePage', () => {
       .findAll('[data-testid="ingredient-name"]')
       .map((input) => input.element.value)
     expect(ingredientNames).toEqual(['番茄', '鸡蛋'])
-    expect(wrapper.find('[data-testid="recognition-result-gallery"]').exists()).toBe(true)
-    expect(wrapper.findAll('[data-testid="recognition-image-card"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="recognition-result-list"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="recognition-image-link"]')).toHaveLength(2)
     expect(wrapper.text()).toContain('置信度 93.2%')
 
     await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
@@ -48,7 +48,6 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
     expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('12')
     expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
-    expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
     expect(wrapper.emitted('confirmed')?.[0][0]).toEqual({
       recognition_id: 12,
       confirmed_ingredients: [

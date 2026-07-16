@@ -5,13 +5,9 @@ import FoodImageUploader from '../FoodImageUploader.vue'
 describe('FoodImageUploader', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn((file) => `blob:${file.name}`),
-      revokeObjectURL: vi.fn(),
-    })
   })
 
-  it('accepts one JPG image and emits preview metadata', () => {
+  it('accepts one JPG image and emits selection metadata', () => {
     const wrapper = mount(FoodImageUploader)
     const file = new File(['image'], 'meal.jpg', { type: 'image/jpeg' })
 
@@ -20,7 +16,6 @@ describe('FoodImageUploader', () => {
     expect(selected).toBe(true)
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([[file]])
     expect(wrapper.emitted('selected')?.[0]).toEqual([[file]])
-    expect(wrapper.emitted('preview-change')?.[0]).toEqual([['blob:meal.jpg']])
   })
 
   it('marks the native file input as multi-image capable', () => {
@@ -111,11 +106,10 @@ describe('FoodImageUploader', () => {
 
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([[first, second]])
     expect(wrapper.emitted('selected')?.[0]).toEqual([[first, second]])
-    expect(wrapper.emitted('preview-change')?.[0]).toEqual([['blob:meal-one.jpg', 'blob:meal-two.png']])
-    expect(wrapper.findAll('.food-uploader__preview img')).toHaveLength(2)
+    expect(wrapper.findAll('.food-uploader__selected-item')).toHaveLength(2)
   })
 
-  it('removes a single selected image from the preview list', async () => {
+  it('removes a single selected image from the selected-file list', async () => {
     const wrapper = mount(FoodImageUploader)
     const first = new File(['image'], 'meal-one.jpg', { type: 'image/jpeg' })
     const second = new File(['image'], 'meal-two.png', { type: 'image/png' })
@@ -125,6 +119,6 @@ describe('FoodImageUploader', () => {
     await wrapper.findAll('[data-testid="food-image-remove"]')[0].trigger('click')
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)[0]).toEqual([second])
-    expect(wrapper.emitted('preview-change')?.at(-1)[0]).toEqual(['blob:meal-two.png'])
+    expect(wrapper.find('.food-uploader__selected-item').text()).toContain('meal-two.png')
   })
 })
