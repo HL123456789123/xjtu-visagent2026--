@@ -13,12 +13,30 @@
       </div>
 
       <div class="start-hero__visual" aria-label="家常美食轮播图片">
-        <img class="start-hero__slide" src="/food-carousel-1.jpg" alt="早餐拼盘" />
-        <img class="start-hero__slide" src="/food-carousel-2.jpg" alt="芒果豆类沙拉" />
-        <img class="start-hero__slide" src="/food-carousel-3.jpg" alt="家常套餐" />
+        <img
+          v-for="(slide, index) in carouselImages"
+          :key="slide.src"
+          class="start-hero__slide"
+          :class="{ active: currentSlide === index }"
+          :src="slide.src"
+          :alt="slide.alt"
+        />
         <div class="start-hero__note">
           <strong>今日推荐</strong>
-          <span>早餐灵感 · 清爽沙拉 · 家常套餐</span>
+          <span>{{ carouselImages[currentSlide].label }}</span>
+        </div>
+        <div class="start-hero__dots" role="tablist" aria-label="切换美食图片">
+          <button
+            v-for="(slide, index) in carouselImages"
+            :key="slide.src + '-dot'"
+            type="button"
+            class="start-hero__dot"
+            :class="{ active: currentSlide === index }"
+            :aria-label="`切换到第 ${index + 1} 张图片`"
+            :aria-selected="currentSlide === index"
+            role="tab"
+            @click="goToSlide(index)"
+          ></button>
         </div>
       </div>
     </section>
@@ -44,13 +62,44 @@
 </template>
 
 <script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const currentSlide = ref(0)
+let autoTimer = null
+
+const carouselImages = [
+  { src: '/food-carousel-1.jpg', alt: '家常热炒', label: '家常热炒 · 香气十足' },
+  { src: '/food-carousel-2.jpg', alt: '清爽沙拉', label: '清爽沙拉 · 轻食时光' },
+  { src: '/food-carousel-3.jpg', alt: '丰盛餐桌', label: '丰盛餐桌 · 每日灵感' },
+]
+
+function goToSlide(index) {
+  currentSlide.value = index
+  restartAutoPlay()
+}
+
+function nextSlide() {
+  currentSlide.value = (currentSlide.value + 1) % carouselImages.length
+}
+
+function restartAutoPlay() {
+  if (autoTimer) clearInterval(autoTimer)
+  autoTimer = setInterval(nextSlide, 4200)
+}
 
 function goToFoodRecipes() {
   router.push('/food-recipes')
 }
+
+onMounted(() => {
+  restartAutoPlay()
+})
+
+onBeforeUnmount(() => {
+  if (autoTimer) clearInterval(autoTimer)
+})
 </script>
 
 <style lang="scss" scoped>
@@ -139,6 +188,7 @@ function goToFoodRecipes() {
       linear-gradient(90deg, rgba(255, 248, 234, 0.08), rgba(255, 248, 234, 0.42)),
       radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.4), transparent 28%);
     z-index: 1;
+    pointer-events: none;
   }
 
   .start-hero__slide {
@@ -150,18 +200,12 @@ function goToFoodRecipes() {
     object-fit: cover;
     display: block;
     opacity: 0;
-    animation: start-hero-carousel 12s infinite;
+    transform: scale(1.02);
+    transition: opacity 0.9s ease, transform 4.5s ease-out;
 
-    &:nth-of-type(1) {
-      animation-delay: 0s;
-    }
-
-    &:nth-of-type(2) {
-      animation-delay: 4s;
-    }
-
-    &:nth-of-type(3) {
-      animation-delay: 8s;
+    &.active {
+      opacity: 1;
+      transform: scale(1);
     }
   }
 }
@@ -169,7 +213,7 @@ function goToFoodRecipes() {
 .start-hero__note {
   position: absolute;
   left: 28px;
-  bottom: 28px;
+  bottom: 56px;
   z-index: 2;
   display: grid;
   gap: 4px;
@@ -190,6 +234,43 @@ function goToFoodRecipes() {
     color: #76573f;
     font-size: 13px;
     line-height: 1.55;
+  }
+}
+
+.start-hero__dots {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 253, 247, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+.start-hero__dot {
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(121, 82, 45, 0.36);
+  cursor: pointer;
+  transition: width 0.25s ease, height 0.25s ease, background-color 0.25s ease, transform 0.25s ease;
+
+  &:hover {
+    background: rgba(233, 109, 59, 0.7);
+  }
+
+  &.active {
+    width: 18px;
+    height: 18px;
+    background: #e96d3b;
+    box-shadow: 0 6px 18px rgba(233, 109, 59, 0.38);
   }
 }
 
@@ -259,22 +340,15 @@ function goToFoodRecipes() {
     }
   }
 
+  .start-hero__note {
+    left: 18px;
+    right: 18px;
+    bottom: 52px;
+    max-width: none;
+  }
+
   .start-cards {
     padding: 0 18px 36px;
-  }
-}
-
-@keyframes start-hero-carousel {
-  0%,
-  30% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  38%,
-  100% {
-    opacity: 0;
-    transform: scale(1.02);
   }
 }
 </style>

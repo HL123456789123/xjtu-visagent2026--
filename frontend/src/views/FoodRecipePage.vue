@@ -11,15 +11,33 @@
         </div>
       </div>
       <div class="food-recipe-page__hero-image">
-        <img class="food-recipe-page__slide" src="/food-carousel-1.jpg" alt="早餐拼盘" />
-        <img class="food-recipe-page__slide" src="/food-carousel-2.jpg" alt="芒果豆类沙拉" />
-        <img class="food-recipe-page__slide" src="/food-carousel-3.jpg" alt="家常套餐" />
+        <img
+          v-for="(slide, index) in carouselImages"
+          :key="slide.src"
+          class="food-recipe-page__slide"
+          :class="{ active: currentSlide === index }"
+          :src="slide.src"
+          :alt="slide.alt"
+        />
         <div class="food-recipe-page__image-note">
           <strong>营养美味，轻松上桌</strong>
-          <span>识别食材后生成家常菜谱</span>
+          <span>{{ carouselImages[currentSlide].label }}</span>
         </div>
         <div class="food-recipe-page__status" data-testid="workflow-state">
           {{ workflowState }}
+        </div>
+        <div class="food-recipe-page__dots" role="tablist" aria-label="切换美食图片">
+          <button
+            v-for="(slide, index) in carouselImages"
+            :key="slide.src + '-dot'"
+            type="button"
+            class="food-recipe-page__dot"
+            :class="{ active: currentSlide === index }"
+            :aria-label="`切换到第 ${index + 1} 张图片`"
+            :aria-selected="currentSlide === index"
+            role="tab"
+            @click="goToSlide(index)"
+          ></button>
         </div>
       </div>
     </section>
@@ -137,7 +155,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   createFoodRecognition,
   confirmFoodIngredients,
@@ -150,6 +168,37 @@ import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
 import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
 
 const emit = defineEmits(['confirmed', 'recipe-requested'])
+
+const currentSlide = ref(0)
+let autoTimer = null
+
+const carouselImages = [
+  { src: '/food-carousel-1.jpg', alt: '家常热炒', label: '家常热炒 · 香气十足' },
+  { src: '/food-carousel-2.jpg', alt: '清爽沙拉', label: '清爽沙拉 · 轻食时光' },
+  { src: '/food-carousel-3.jpg', alt: '丰盛餐桌', label: '丰盛餐桌 · 每日灵感' },
+]
+
+function goToSlide(index) {
+  currentSlide.value = index
+  restartAutoPlay()
+}
+
+function nextSlide() {
+  currentSlide.value = (currentSlide.value + 1) % carouselImages.length
+}
+
+function restartAutoPlay() {
+  if (autoTimer) clearInterval(autoTimer)
+  autoTimer = setInterval(nextSlide, 4200)
+}
+
+onMounted(() => {
+  restartAutoPlay()
+})
+
+onBeforeUnmount(() => {
+  if (autoTimer) clearInterval(autoTimer)
+})
 
 const workflowState = ref('idle')
 const selectedFiles = ref([])
@@ -489,18 +538,12 @@ function emitRecipeRequest(payload) {
   display: block;
   object-fit: cover;
   opacity: 0;
-  animation: food-recipe-carousel 12s infinite;
+  transform: scale(1.02);
+  transition: opacity 0.9s ease, transform 4.5s ease-out;
 
-  &:nth-of-type(1) {
-    animation-delay: 0s;
-  }
-
-  &:nth-of-type(2) {
-    animation-delay: 4s;
-  }
-
-  &:nth-of-type(3) {
-    animation-delay: 8s;
+  &.active {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -547,6 +590,43 @@ function emitRecipeRequest(payload) {
   font-weight: 800;
   letter-spacing: 0.06em;
   box-shadow: 0 16px 36px rgba(46, 33, 22, 0.22);
+}
+
+.food-recipe-page__dots {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 253, 247, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.food-recipe-page__dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(121, 82, 45, 0.36);
+  cursor: pointer;
+  transition: width 0.25s ease, height 0.25s ease, background-color 0.25s ease;
+
+  &:hover {
+    background: rgba(233, 109, 59, 0.7);
+  }
+
+  &.active {
+    width: 16px;
+    height: 16px;
+    background: #e96d3b;
+    box-shadow: 0 6px 16px rgba(233, 109, 59, 0.38);
+  }
 }
 
 .food-recipe-page__body {
@@ -824,20 +904,6 @@ function emitRecipeRequest(payload) {
   .food-recipe-page__hero-actions {
     align-items: stretch;
     flex-direction: column;
-  }
-}
-
-@keyframes food-recipe-carousel {
-  0%,
-  30% {
-    opacity: 1;
-    transform: scale(1);
-  }
-
-  38%,
-  100% {
-    opacity: 0;
-    transform: scale(1.02);
   }
 }
 </style>
