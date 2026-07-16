@@ -49,10 +49,10 @@ class UserService:
         db.add(new_user)
         db.flush()
 
-        # 自动分配 viewer 角色（只读权限，需管理员手动提升角色）
-        viewer_role = db.query(Role).filter(Role.name == "viewer").first()
-        if viewer_role:
-            db.add(UserRole(user_id=new_user.id, role_id=viewer_role.id))
+        # 公开注册只能成为普通用户，管理员身份必须由管理员后续授予。
+        user_role = db.query(Role).filter(Role.name == "user").first()
+        if user_role:
+            db.add(UserRole(user_id=new_user.id, role_id=user_role.id))
 
         db.commit()
         db.refresh(new_user)
@@ -242,7 +242,12 @@ class UserService:
         return user
 
     @staticmethod
-    def assign_user_roles(db: Session, user_id: int, role_ids: list[int]) -> User:
+    def assign_user_roles(
+        db: Session,
+        user_id: int,
+        role_ids: list[int],
+        current_user_id: int,
+    ) -> User:
         """
         分配用户角色（替换式）
 
@@ -250,6 +255,7 @@ class UserService:
             db: 数据库会话
             user_id: 用户 ID
             role_ids: 角色 ID 列表
+            current_user_id: 当前操作用户 ID
 
         Returns:
             更新后的用户对象
@@ -257,9 +263,15 @@ class UserService:
         Raises:
             HTTPException: 用户不存在或角色不存在
         """
+        if user_id == current_user_id:
+            raise HTTPException(status_code=400, detail="不能修改自身身份")
+
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+
+        if len(role_ids) != 1:
+            raise HTTPException(status_code=400, detail="用户必须且只能选择一种身份")
 
         # 校验角色是否存在
         roles = db.query(Role).filter(Role.id.in_(role_ids)).all()
@@ -267,6 +279,8 @@ class UserService:
             found_ids = {r.id for r in roles}
             missing_ids = [rid for rid in role_ids if rid not in found_ids]
             raise HTTPException(status_code=400, detail=f"角色不存在: {missing_ids}")
+        if roles[0].name not in {"admin", "user"}:
+            raise HTTPException(status_code=400, detail="用户身份只能是管理员或普通用户")
 
         # 删除旧角色关联
         db.query(UserRole).filter(UserRole.user_id == user_id).delete()
@@ -275,6 +289,34 @@ class UserService:
         for role_id in role_ids:
             db.add(UserRole(user_id=user_id, role_id=role_id))
 
+        db.commit()
+        db.refresh(user)
+        return user
+
+    @staticmethod
+    def set_user_role(
+        db: Session,
+        user_id: int,
+        role_name: str,
+        current_user_id: int,
+    ) -> User:
+        """将用户身份设置为管理员或普通用户。"""
+        if role_name not in {"admin", "user"}:
+            raise HTTPException(status_code=400, detail="用户身份只能是管理员或普通用户")
+        if user_id == current_user_id:
+            raise HTTPException(status_code=400, detail="不能修改自身身份")
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        role = db.query(Role).filter(Role.name == role_name).first()
+        if not role:
+            raise HTTPException(status_code=500, detail=f"系统角色未初始化: {role_name}")
+
+        # 身份为二选一：清除旧关联后只保留 admin 或 user 中的一个。
+        db.query(UserRole).filter(UserRole.user_id == user_id).delete()
+        db.add(UserRole(user_id=user_id, role_id=role.id))
         db.commit()
         db.refresh(user)
         return user

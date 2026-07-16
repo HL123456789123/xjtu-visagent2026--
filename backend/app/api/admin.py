@@ -14,6 +14,7 @@ from app.entity.schemas import (
     ApiResponse,
     UserAdminUpdate,
     UserRoleAssign,
+    UserRoleUpdate,
     UserStatusUpdate,
     RoleCreate,
     RoleUpdate,
@@ -114,8 +115,31 @@ async def assign_user_roles(
         db=db,
         user_id=user_id,
         role_ids=data.role_ids,
+        current_user_id=current_user.id,
     )
     return ApiResponse(code=200, message="用户角色分配成功")
+
+
+@router.put(
+    "/users/{user_id}/role",
+    response_model=ApiResponse,
+    dependencies=[Depends(RequirePermission("user:manage"))],
+)
+async def update_user_role(
+    user_id: int,
+    data: UserRoleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """将用户身份设置为管理员或普通用户。"""
+    user_service.set_user_role(
+        db=db,
+        user_id=user_id,
+        role_name=data.role,
+        current_user_id=current_user.id,
+    )
+    role_text = "管理员" if data.role == "admin" else "普通用户"
+    return ApiResponse(code=200, message=f"用户身份已设置为{role_text}")
 
 
 @router.put("/users/{user_id}/status", response_model=ApiResponse, dependencies=[Depends(RequirePermission("user:manage"))])

@@ -22,14 +22,14 @@ TEST_DATABASE_URL = f"postgresql://{TEST_DB_USER}:{TEST_DB_PASSWORD}@{TEST_DB_HO
 # ── 在导入应用模块之前，设置测试环境变量 ──
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
-from app.database.session import Base
-from main import app
+from app.database.session import Base  # noqa: E402
+from main import app  # noqa: E402
 
 # ── 测试环境禁用速率限制 ────────────────────────────
-from app.core.rate_limiter import limiter
-import pytest as _pytest
+from app.core.rate_limiter import limiter  # noqa: E402
 
-@_pytest.fixture(autouse=True)
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter():
     """每个测试前重置限流器存储，避免触发限流"""
     try:
@@ -42,37 +42,46 @@ def _reset_rate_limiter():
 @pytest.fixture(scope="function")
 def seed_rbac(db):
     """创建默认角色和权限，供测试使用"""
-    from app.entity.db_models import Role, Permission, UserRole, RolePermission
+    from app.entity.db_models import Role, Permission, RolePermission
     from app.database.seed import (
         DEFAULT_ROLES, DEFAULT_PERMISSIONS, ROLE_PERMISSIONS_MAP,
     )
 
-    # 创建权限
+    # 幂等创建权限，兼容 TestClient 生命周期已经执行过应用种子初始化的情况。
     perm_map = {}
     for p in DEFAULT_PERMISSIONS:
-        perm = Permission(code=p["code"], name=p["name"], module=p["module"])
-        db.add(perm)
+        perm = db.query(Permission).filter(Permission.code == p["code"]).first()
+        if not perm:
+            perm = Permission(code=p["code"], name=p["name"], module=p["module"])
+            db.add(perm)
         perm_map[p["code"]] = perm
     db.flush()
 
     # 创建角色并分配权限
     role_map = {}
     for r in DEFAULT_ROLES:
-        role = Role(
-            name=r["name"],
-            display_name=r["display_name"],
-            description=r["description"],
-            is_system=r["is_system"],
-        )
-        db.add(role)
+        role = db.query(Role).filter(Role.name == r["name"]).first()
+        if not role:
+            role = Role(
+                name=r["name"],
+                display_name=r["display_name"],
+                description=r["description"],
+                is_system=r["is_system"],
+            )
+            db.add(role)
         db.flush()
         role_map[r["name"]] = role
 
         # 分配权限
         for perm_code in ROLE_PERMISSIONS_MAP.get(r["name"], []):
             if perm_code in perm_map:
-                rp = RolePermission(role_id=role.id, permission_id=perm_map[perm_code].id)
-                db.add(rp)
+                exists = db.query(RolePermission).filter(
+                    RolePermission.role_id == role.id,
+                    RolePermission.permission_id == perm_map[perm_code].id,
+                ).first()
+                if not exists:
+                    rp = RolePermission(role_id=role.id, permission_id=perm_map[perm_code].id)
+                    db.add(rp)
     db.commit()
     return role_map
 

@@ -9,7 +9,7 @@ Pydantic 请求/响应模型
 """
 
 from datetime import datetime
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, EmailStr
 
 
@@ -166,6 +166,12 @@ class UserRoleAssign(BaseModel):
     """分配用户角色"""
 
     role_ids: list[int] = Field(..., description="角色 ID 列表")
+
+
+class UserRoleUpdate(BaseModel):
+    """设置用户身份（管理员或普通用户）"""
+
+    role: Literal["admin", "user"] = Field(..., description="用户身份")
 
 
 class UserStatusUpdate(BaseModel):

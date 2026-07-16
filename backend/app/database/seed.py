@@ -137,15 +137,17 @@ ROLE_PERMISSIONS_MAP = {
     "viewer": VIEWER_PERMISSIONS,
 }
 
-# ── 默认测试用户 ──────────────────────────────────────
-# 密码规则：用户名首字母大写 + @2026
-DEFAULT_USERS = [
-    {"username": "super", "role": "super_admin"},
-    {"username": "admin", "role": "admin"},
-    {"username": "operator", "role": "operator"},
-    {"username": "user", "role": "user"},
-    {"username": "viewer", "role": "viewer"},
-]
+# ── 默认管理员 ────────────────────────────────────────
+
+DEFAULT_ADMIN = {
+    "username": "admin",
+    "email": "admin@visagent.com",
+    "password": "admin2026",
+    "role": "admin",
+}
+
+# 旧版本自动生成的默认密码，仅用于将未修改过密码的旧管理员平滑迁移到新密码。
+LEGACY_DEFAULT_ADMIN_PASSWORD = "Admin@2026"
 
 
 DEFAULT_SCENES = [
@@ -406,6 +408,55 @@ DEFAULT_SCENES = [
 ]
 
 
+def seed_default_admin(db_session, admin_role):
+    """幂等创建默认管理员，并兼容迁移旧版本的默认密码。"""
+    from app.core.security import hash_password, verify_password
+    from app.entity.db_models import User, UserRole
+
+    username = DEFAULT_ADMIN["username"]
+    password = DEFAULT_ADMIN["password"]
+    user = db_session.query(User).filter(User.username == username).first()
+
+    if user is None:
+        user = User(
+            username=username,
+            email=DEFAULT_ADMIN["email"],
+            hashed_password=hash_password(password),
+            is_active=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+        logger.info("创建默认管理员: admin")
+    else:
+        # 不覆盖管理员自行修改过的密码；只迁移旧版本公开的默认密码。
+        try:
+            uses_legacy_password = verify_password(
+                LEGACY_DEFAULT_ADMIN_PASSWORD,
+                user.hashed_password,
+            )
+        except ValueError:
+            uses_legacy_password = False
+        if uses_legacy_password:
+            user.hashed_password = hash_password(password)
+            logger.info("已更新旧版默认管理员密码")
+
+    has_admin_role = (
+        db_session.query(UserRole)
+        .filter(
+            UserRole.user_id == user.id,
+            UserRole.role_id == admin_role.id,
+        )
+        .first()
+    )
+    if not has_admin_role:
+        db_session.add(UserRole(user_id=user.id, role_id=admin_role.id))
+        logger.info("已为默认管理员补充 admin 角色")
+
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+
 def seed_scenes(db_session) -> int:
     """
     初始化默认检测场景、角色和权限（如果表为空）
@@ -489,38 +540,12 @@ def seed_scenes(db_session) -> int:
     if new_perm_count == 0 and new_role_count == 0 and new_role_perm_count == 0:
         logger.info("角色和权限已存在，跳过初始化")
 
-    # ── 初始化默认用户 ─────────────────────────────────
-    from app.entity.db_models import User, UserRole
-    from app.core.security import hash_password
-
-    for user_data in DEFAULT_USERS:
-        username = user_data["username"]
-        role_name = user_data["role"]
-        email = f"{username}@visagent.com"
-        # 密码规则：用户名首字母大写 + @2026
-        password = username[0].upper() + username[1:] + "@2026"
-
-        existing_user = db_session.query(User).filter(User.username == username).first()
-        if existing_user:
-            logger.info(f"默认用户已存在，跳过: {username}")
-            continue
-
-        user = User(
-            username=username,
-            email=email,
-            hashed_password=hash_password(password),
-            is_active=True,
-        )
-        db_session.add(user)
-        db_session.flush()
-
-        role = role_objects.get(role_name)
-        if role:
-            db_session.add(UserRole(user_id=user.id, role_id=role.id))
-
-        logger.info(f"创建默认用户: {username} ({role_name})，已设置初始密码（请首次登录后修改）")
-
-    db_session.commit()
+    # ── 初始化默认管理员 ───────────────────────────────
+    admin_role = role_objects.get(DEFAULT_ADMIN["role"])
+    if admin_role:
+        seed_default_admin(db_session, admin_role)
+    else:
+        logger.error("admin 角色不存在，无法初始化默认管理员")
 
     # ── 初始化检测场景和模型 ───────────────────────────
     existing_count = db_session.query(DetectionScene).count()
