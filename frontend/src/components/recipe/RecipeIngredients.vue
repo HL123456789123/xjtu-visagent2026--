@@ -41,19 +41,24 @@ defineProps({
 <style lang="scss" scoped>
 .recipe-ingredients {
   display: grid;
-  gap: $spacing-sm;
+  gap: 12px;
+  border: 1px solid rgba(121, 82, 45, 0.11);
+  border-radius: 24px;
+  background: rgba(255, 252, 245, 0.78);
+  padding: 18px;
 }
 
 .recipe-ingredients__title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
+  color: #3a2a1d;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 22px;
+  font-weight: 500;
 }
 
 .recipe-ingredients__list {
   display: grid;
-  gap: $spacing-xs;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -63,23 +68,28 @@ defineProps({
   display: flex;
   align-items: baseline;
   gap: $spacing-xs;
-  padding: $spacing-xs 0;
-  border-bottom: 1px solid $border-color;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(121, 82, 45, 0.1);
   font-size: 14px;
+
+  &:last-child {
+    border-bottom: 0;
+  }
 }
 
 .recipe-ingredients__name {
-  color: $text-primary;
-  font-weight: 500;
+  color: #3a2a1d;
+  font-weight: 800;
 }
 
 .recipe-ingredients__amount {
-  color: $text-regular;
+  color: #8a4d2a;
   margin-left: auto;
+  font-weight: 700;
 }
 
 .recipe-ingredients__note {
-  color: $text-secondary;
+  color: #8a6a50;
   font-size: 12px;
 }
 
@@ -87,7 +97,7 @@ defineProps({
   margin: 0;
   padding: $spacing-lg 0;
   text-align: center;
-  color: $text-placeholder;
+  color: #ad947d;
   font-size: 14px;
 }
 </style>

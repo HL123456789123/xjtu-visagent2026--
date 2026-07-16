@@ -52,3 +52,81 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+// FridgeChef 暖色主题：Element Plus 全局覆盖
+body {
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: #fff8ea;
+  color: #3a2a1d;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #f58220;
+  --el-button-border-color: #f58220;
+  --el-button-hover-bg-color: #e96d3b;
+  --el-button-hover-border-color: #e96d3b;
+  --el-button-active-bg-color: #d76626;
+  --el-button-active-border-color: #d76626;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.el-message-box,
+.el-dialog {
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 28px !important;
+  background: #fffdf8 !important;
+  box-shadow: 0 26px 76px rgba(102, 68, 35, 0.18) !important;
+}
+
+.el-message-box__title,
+.el-dialog__title {
+  color: #3a2a1d !important;
+  font-family: Georgia, "Songti SC", serif;
+  font-weight: 500;
+}
+
+.el-message-box__message {
+  color: #76573f !important;
+}
+
+.el-message-box__btns .el-button,
+.el-dialog__footer .el-button {
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.el-message-box__btns .el-button--primary,
+.el-dialog__footer .el-button--primary {
+  border: 0;
+  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  color: #fffaf0;
+  box-shadow: 0 12px 26px rgba(229, 104, 52, 0.18);
+}
+
+.el-dropdown__popper,
+.el-select__popper {
+  border-color: rgba(121, 82, 45, 0.12) !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+
+.el-dropdown-menu {
+  background: #fffdf8;
+}
+
+.el-dropdown-menu__item {
+  color: #4c3a2c;
+  font-weight: 700;
+}
+
+.el-dropdown-menu__item:not(.is-disabled):focus,
+.el-dropdown-menu__item:not(.is-disabled):hover {
+  background: #fff1d2 !important;
+  color: #d76626 !important;
+}
+
+.el-tag {
+  border-radius: 999px;
+  font-weight: 700;
+}

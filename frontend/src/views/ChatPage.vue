@@ -317,29 +317,53 @@ onMounted(() => {
 
 <style lang="scss" scoped>
 .chat-page {
-  display: flex;
-  height: calc(100vh - #{$header-height} - 40px);
-  background: $bg-color;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 22px;
+  min-height: calc(100vh - #{$header-height});
+  padding: clamp(18px, 4vw, 42px);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 213, 118, 0.34), transparent 28%),
+    radial-gradient(circle at 86% 8%, rgba(137, 169, 79, 0.18), transparent 26%),
+    linear-gradient(180deg, #fff8ea 0%, #fffdf7 48%, #f8efe3 100%);
+  color: #3a2a1d;
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
 .session-list {
-  width: 280px;
-  background: $bg-color-white;
-  border-right: 1px solid $border-color;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.12);
+  backdrop-filter: blur(18px);
   display: flex;
   flex-direction: column;
 
   .session-header {
-    padding: $spacing-md;
-    border-bottom: 1px solid $border-color;
+    padding: 20px;
+    border-bottom: 1px solid rgba(121, 82, 45, 0.1);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 12px;
 
     h3 {
       margin: 0;
-      font-size: 16px;
-      color: $text-primary;
+      color: #3a2a1d;
+      font-family: Georgia, "Songti SC", serif;
+      font-size: 24px;
+      font-weight: 500;
+    }
+
+    :deep(.el-button) {
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #f1a93b, #e96d3b);
+      color: #fffaf0;
+      font-weight: 800;
+      box-shadow: 0 10px 22px rgba(229, 104, 52, 0.18);
     }
   }
 
@@ -353,18 +377,23 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: $spacing-sm;
-    padding: $spacing-sm $spacing-md;
-    border-radius: $border-radius-md;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-radius: 18px;
+    color: #6f5038;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, color 0.2s, transform 0.2s;
 
     &:hover {
-      background: $bg-color;
+      background: #fff8ea;
+      transform: translateY(-1px);
     }
 
     &.active {
-      background: $bg-color-light-blue;
-      color: $primary-color;
+      border-color: rgba(233, 109, 59, 0.2);
+      background: #fff1d2;
+      color: #d76626;
+      font-weight: 800;
     }
 
     .session-title {
@@ -377,25 +406,32 @@ onMounted(() => {
 }
 
 .chat-container {
-  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: $bg-color-white;
+  overflow: hidden;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.12);
+  backdrop-filter: blur(18px);
 }
 
 .chat-header {
-  padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid $border-color;
+  padding: 22px 26px;
+  border-bottom: 1px solid rgba(121, 82, 45, 0.1);
 
   h3 {
     margin: 0;
-    font-size: 18px;
-    color: $text-primary;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 28px;
+    font-weight: 500;
   }
 
   .session-info {
     font-size: 12px;
-    color: $text-secondary;
+    color: #9a7659;
   }
 }
 
@@ -411,16 +447,24 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: $text-secondary;
+  color: #856449;
+  border: 1px dashed rgba(121, 82, 45, 0.18);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255, 218, 132, 0.24), transparent 34%),
+    rgba(255, 252, 244, 0.55);
 
   p {
     margin: $spacing-md 0 0;
-    font-size: 16px;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 24px;
   }
 
   .hint {
     font-size: 14px;
-    color: $text-placeholder;
+    color: #9a7659;
+    font-family: inherit;
   }
 }
 
@@ -433,9 +477,10 @@ onMounted(() => {
     justify-content: flex-end;
 
     .message-content {
-      background: $primary-color;
-      color: $bg-color-white;
-      border-radius: $border-radius-lg $border-radius-lg 0 $border-radius-lg;
+      background: linear-gradient(135deg, #f1a93b, #e96d3b);
+      color: #fffaf0;
+      border-radius: 22px 22px 4px 22px;
+      box-shadow: 0 12px 26px rgba(229, 104, 52, 0.16);
     }
   }
 
@@ -443,9 +488,10 @@ onMounted(() => {
     justify-content: flex-start;
 
     .message-content {
-      background: $bg-color;
-      color: $text-primary;
-      border-radius: $border-radius-lg $border-radius-lg $border-radius-lg 0;
+      border: 1px solid rgba(121, 82, 45, 0.1);
+      background: #fffaf1;
+      color: #3a2a1d;
+      border-radius: 22px 22px 22px 4px;
     }
   }
 }
@@ -460,13 +506,13 @@ onMounted(() => {
   flex-shrink: 0;
 
   &.ai-avatar {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: $bg-color-white;
+    background: linear-gradient(135deg, #89a94f, #e6a23c);
+    color: #fffaf0;
   }
 
   &.user-avatar {
-    background: $primary-color;
-    color: $bg-color-white;
+    background: #f58220;
+    color: #fffaf0;
   }
 }
 
@@ -529,16 +575,16 @@ onMounted(() => {
 
 .service-unavailable-banner {
   padding: $spacing-md $spacing-lg;
-  border-top: 1px solid #ffd3cc;
-  background: #fff7f6;
-  color: $danger-color;
+  border-top: 1px solid rgba(224, 82, 62, 0.16);
+  background: #fff1e9;
+  color: #c44b37;
   font-size: 14px;
   text-align: center;
 }
 
 .input-area {
-  padding: $spacing-md $spacing-lg;
-  border-top: 1px solid $border-color;
+  padding: 18px 22px;
+  border-top: 1px solid rgba(121, 82, 45, 0.1);
   display: flex;
   gap: $spacing-md;
 
@@ -548,6 +594,28 @@ onMounted(() => {
 
   .el-button {
     align-self: flex-end;
+    min-width: 92px;
+    border: 0;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #f1a93b, #e96d3b);
+    color: #fffaf0;
+    font-weight: 900;
+    box-shadow: 0 12px 26px rgba(229, 104, 52, 0.18);
+  }
+
+  :deep(.el-textarea__inner) {
+    border-radius: 18px;
+    box-shadow: 0 0 0 1px rgba(121, 82, 45, 0.14) inset;
+  }
+}
+
+@media (max-width: 860px) {
+  .chat-page {
+    grid-template-columns: 1fr;
+  }
+
+  .session-list {
+    max-height: 260px;
   }
 }
 </style>

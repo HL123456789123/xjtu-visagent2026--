@@ -39,19 +39,24 @@ defineProps({
 <style lang="scss" scoped>
 .recipe-steps {
   display: grid;
-  gap: $spacing-sm;
+  gap: 14px;
+  border: 1px solid rgba(121, 82, 45, 0.11);
+  border-radius: 24px;
+  background: rgba(255, 252, 245, 0.78);
+  padding: 18px;
 }
 
 .recipe-steps__title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
+  color: #3a2a1d;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 22px;
+  font-weight: 500;
 }
 
 .recipe-steps__list {
   display: grid;
-  gap: $spacing-md;
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -60,7 +65,10 @@ defineProps({
 
 .recipe-steps__item {
   display: flex;
-  gap: $spacing-md;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(255, 248, 234, 0.78);
 }
 
 .recipe-steps__no {
@@ -71,8 +79,9 @@ defineProps({
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: $primary-color;
-  color: #fff;
+  background: #e96d3b;
+  color: #fffaf0;
+  box-shadow: 0 8px 18px rgba(233, 109, 59, 0.22);
   font-size: 13px;
   font-weight: 600;
 }
@@ -87,21 +96,22 @@ defineProps({
 
 .recipe-steps__desc {
   margin: 0;
-  color: $text-primary;
+  color: #3a2a1d;
   font-size: 14px;
   line-height: 1.6;
 }
 
 .recipe-steps__duration {
-  color: $text-secondary;
+  color: #9a7659;
   font-size: 12px;
+  font-weight: 700;
 }
 
 .recipe-steps__empty {
   margin: 0;
   padding: $spacing-lg 0;
   text-align: center;
-  color: $text-placeholder;
+  color: #ad947d;
   font-size: 14px;
 }
 </style>

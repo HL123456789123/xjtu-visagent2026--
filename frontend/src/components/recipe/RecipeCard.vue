@@ -120,11 +120,15 @@ function emitRetry() {
 <style lang="scss" scoped>
 .recipe-card {
   display: grid;
-  gap: $spacing-lg;
-  border: 1px solid $border-color;
-  border-radius: $border-radius-md;
-  background: $bg-color-white;
-  padding: $spacing-lg;
+  gap: 24px;
+  border: 1px solid rgba(121, 82, 45, 0.13);
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(246, 190, 74, 0.22), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 241, 0.94));
+  box-shadow: 0 26px 70px rgba(102, 68, 35, 0.14);
+  padding: clamp(20px, 3vw, 30px);
+  color: #3a2a1d;
 }
 
 .recipe-card__loading {
@@ -134,7 +138,7 @@ function emitRetry() {
   gap: $spacing-md;
   min-height: 220px;
   justify-content: center;
-  color: $text-secondary;
+  color: #856449;
 
   p {
     margin: 0;
@@ -145,8 +149,8 @@ function emitRetry() {
 .recipe-card__spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #d9e8ff;
-  border-top-color: $primary-color;
+  border: 3px solid #ffe0a1;
+  border-top-color: #e96d3b;
   border-radius: 50%;
   animation: recipe-spin 0.8s linear infinite;
 }
@@ -162,12 +166,12 @@ function emitRetry() {
   gap: $spacing-sm;
   align-content: center;
   min-height: 220px;
-  border: 1px dashed #ffd3cc;
-  border-radius: $border-radius-md;
-  background: #fff7f6;
+  border: 1px dashed rgba(224, 82, 62, 0.22);
+  border-radius: 24px;
+  background: #fff1e9;
   padding: $spacing-lg;
   text-align: center;
-  color: $danger-color;
+  color: #c44b37;
 
   strong {
     font-size: 16px;
@@ -175,19 +179,19 @@ function emitRetry() {
 
   p {
     margin: 0;
-    color: $text-secondary;
+    color: #856449;
     font-size: 14px;
   }
 }
 
 .recipe-card__retry {
   justify-self: center;
-  border: 1px solid $primary-color;
-  border-radius: $border-radius-sm;
-  background: $primary-color;
-  color: #fff;
-  height: 36px;
-  padding: 0 $spacing-lg;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  color: #fffaf0;
+  height: 38px;
+  padding: 0 22px;
   cursor: pointer;
   font-size: 14px;
 
@@ -200,9 +204,10 @@ function emitRetry() {
   display: grid;
   place-items: center;
   min-height: 220px;
-  border: 1px dashed $border-color-light;
-  border-radius: $border-radius-md;
-  color: $text-secondary;
+  border: 1px dashed rgba(121, 82, 45, 0.22);
+  border-radius: 24px;
+  background: #fffaf1;
+  color: #8a6a50;
   text-align: center;
   font-size: 14px;
 }
@@ -213,24 +218,26 @@ function emitRetry() {
 }
 
 .recipe-card__actions {
-  border-top: 1px solid $border-color;
+  border-top: 1px solid rgba(121, 82, 45, 0.12);
   padding-top: $spacing-md;
 }
 
 .recipe-card__chat-btn {
-  border: 1px solid $success-color;
-  border-radius: $border-radius-sm;
-  background: $success-color;
-  color: #fff;
-  height: 38px;
-  padding: 0 $spacing-xl;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #89a94f, #e6a23c);
+  color: #fffaf0;
+  height: 42px;
+  padding: 0 24px;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 14px 26px rgba(137, 169, 79, 0.22);
 
   &:disabled {
-    border-color: $border-color-light;
-    background: #f2f4f7;
-    color: $text-placeholder;
+    background: #eadfce;
+    color: #ad947d;
+    box-shadow: none;
     cursor: not-allowed;
   }
 }

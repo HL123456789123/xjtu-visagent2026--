@@ -26,9 +26,15 @@ const routes = [
   {
     path: '/',
     component: () => import('@/components/layout/MainLayout.vue'),
-    redirect: '/food-recipes',
+    redirect: '/start',
     meta: { requiresAuth: true },
     children: [
+      {
+        path: 'start',
+        name: 'Start',
+        component: () => import('@/views/StartPage.vue'),
+        meta: { title: '开始', icon: 'Goods' },
+      },
       {
         path: 'food-recipes',
         name: 'FoodRecipe',
