@@ -74,6 +74,9 @@ request.interceptors.response.use(
             ElMessage.error(msg || detail || '请求参数错误')
           }
           break
+        case 503:
+          ElMessage.error(msg || detail || '服务暂时不可用，请稍后重试')
+          break
         case 500:
           ElMessage.error(msg || '服务器内部错误')
           break
@@ -129,6 +132,9 @@ uploadRequest.interceptors.response.use(
           } else {
             ElMessage.error(msg || detail || '请求参数错误')
           }
+          break
+        case 503:
+          ElMessage.error(msg || detail || '服务暂时不可用，请稍后重试')
           break
         default:
           ElMessage.error(msg || detail || `请求错误 (${response.status})`)

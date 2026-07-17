@@ -14,13 +14,15 @@
         <div class="food-recipe-page__steps-line"></div>
       </div>
       <select v-model="mockScenario" aria-label="Mock response scenario" data-testid="mock-scenario">
-        <option value="success">Mock 成功</option>
-        <option value="empty">Mock 空识别</option>
-        <option value="401">Mock 401</option>
-        <option value="413">Mock 413</option>
-        <option value="415">Mock 415</option>
-        <option value="422">Mock 422</option>
-        <option value="503">Mock 503</option>
+        <option value="off">后端 Mock API</option>
+        <option value="success">前端 Mock 成功</option>
+        <option value="empty">前端 Mock 空识别</option>
+        <option value="401">前端 Mock 401</option>
+        <option value="413">前端 Mock 413</option>
+        <option value="415">前端 Mock 415</option>
+        <option value="422">前端 Mock 422</option>
+        <option value="503">前端 Mock 503</option>
+        <option value="network">前端 Mock 网络失败</option>
       </select>
       <span class="food-recipe-page__state-badge" data-testid="workflow-state">
         {{ workflowState }}
@@ -121,8 +123,73 @@
             :model-version="recognitionMeta.modelVersion"
             :image-count="recognizedImageCount"
             :source-image-names="selectedImageNames"
-            @generate-recipe="emitRecipeRequest"
+            @generate-recipe="generateRecipeFromRecognition"
           />
+
+          <section
+            v-if="showRecipeFlow"
+            class="food-recipe-page__recipe-flow"
+            data-testid="recipe-flow"
+          >
+            <header class="food-recipe-page__recipe-header">
+              <div>
+                <span>Recipe Flow</span>
+                <h2>菜谱生成结果</h2>
+              </div>
+              <strong data-testid="recipe-flow-recognition-id">
+                recognition_id: {{ recognitionId }}
+              </strong>
+            </header>
+
+            <div class="food-recipe-page__preferences" data-testid="recipe-preferences">
+              <label>
+                <span>份数</span>
+                <input
+                  v-model.number="recipePreferences.servings"
+                  type="number"
+                  min="1"
+                  max="10"
+                  :disabled="recipeLoading"
+                />
+              </label>
+              <label>
+                <span>口味</span>
+                <input
+                  v-model.trim="recipePreferences.taste"
+                  type="text"
+                  maxlength="20"
+                  :disabled="recipeLoading"
+                />
+              </label>
+              <label>
+                <span>最长时间</span>
+                <input
+                  v-model.number="recipePreferences.max_time_minutes"
+                  type="number"
+                  min="5"
+                  max="180"
+                  :disabled="recipeLoading"
+                />
+              </label>
+              <label>
+                <span>忌口</span>
+                <input
+                  v-model.trim="avoidIngredientsText"
+                  type="text"
+                  placeholder="例如：香菜, 辣椒"
+                  :disabled="recipeLoading"
+                />
+              </label>
+            </div>
+
+            <RecipeCard
+              :recipe="generatedRecipe"
+              :loading="recipeLoading"
+              :error="recipeError"
+              :show-actions="false"
+              @retry="generateRecipeFromRecognition"
+            />
+          </section>
         </template>
       </section>
     </section>
@@ -140,19 +207,31 @@ import {
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
 import IngredientEditor from '@/components/food/IngredientEditor.vue'
 import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
+import RecipeCard from '@/components/recipe/RecipeCard.vue'
 import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
+import { createRecipe, unwrapRecipeApiData } from '@/api/recipe'
 
 const emit = defineEmits(['confirmed', 'recipe-requested'])
 
 const workflowState = ref('idle')
 const selectedFiles = ref([])
 const confThreshold = ref(0.25)
-const mockScenario = ref('success')
+const mockScenario = ref('off')
 const recognizedIngredients = ref([])
 const confirmedIngredients = ref([])
 const recognizedImageCount = ref(0)
 const recognitionId = ref('')
 const validationMessage = ref('')
+const generatedRecipe = ref(null)
+const recipeLoading = ref(false)
+const recipeError = ref(null)
+const avoidIngredientsText = ref('')
+const recipePreferences = ref({
+  servings: 2,
+  taste: '家常',
+  max_time_minutes: 30,
+  avoid_ingredients: [],
+})
 const errorState = ref({
   status: null,
   title: '',
@@ -207,11 +286,20 @@ const visibleStateKey = computed(() => {
 const isBusy = computed(() => workflowState.value === 'uploading' || workflowState.value === 'confirming')
 const busyText = computed(() => (workflowState.value === 'confirming' ? '正在确认食材...' : '正在识别食材...'))
 const selectedImageNames = computed(() => selectedFiles.value.map((file) => file.name))
+const showRecipeFlow = computed(
+  () => workflowState.value === 'confirmed' || recipeLoading.value || generatedRecipe.value || recipeError.value
+)
 const selectedImageText = computed(() => {
   const count = selectedFiles.value.length
   if (count <= 1) return '图片'
   return `${count} 张图片`
 })
+
+function resetRecipeFlow() {
+  generatedRecipe.value = null
+  recipeError.value = null
+  recipeLoading.value = false
+}
 
 function handleFileSelected() {
   workflowState.value = 'selecting'
@@ -226,6 +314,7 @@ function resetRecognition() {
   validationMessage.value = ''
   errorState.value = { status: null, title: '', message: '' }
   recognitionMeta.value = { provider: '', modelVersion: '' }
+  resetRecipeFlow()
   if (selectedFiles.value.length === 0) workflowState.value = 'idle'
 }
 
@@ -240,6 +329,7 @@ function setValidationError(message) {
 }
 
 function getErrorTitle(status) {
+  if (status === 0) return '网络连接失败'
   if (status === 401) return '需要重新登录'
   if (status === 413) return '图片过大'
   if (status === 415) return '图片格式不支持'
@@ -249,12 +339,12 @@ function getErrorTitle(status) {
 }
 
 function handleApiError(error) {
-  const status = error?.response?.status || 503
+  const status = error?.response?.status ?? 0
   const message =
     error?.response?.data?.message ||
     error?.response?.data?.detail ||
     error?.message ||
-    '识别暂时失败，请稍后重试。'
+    '网络连接失败，请检查后端服务。'
 
   errorState.value = {
     status,
@@ -268,7 +358,12 @@ function applyRecognitionResult(response) {
   const payload = unwrapFoodApiData(response)
   const nextRecognitionId = normalizeRecognitionId(payload.recognition_id)
   if (!nextRecognitionId) {
-    handleApiError(new Error('识别结果缺少整数 recognition_id。'))
+    handleApiError({
+      response: {
+        status: 422,
+        data: { message: '识别结果缺少整数 recognition_id。' },
+      },
+    })
     return
   }
 
@@ -279,6 +374,7 @@ function applyRecognitionResult(response) {
   }
   recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
   confirmedIngredients.value = []
+  resetRecipeFlow()
   recognizedImageCount.value = payload.images?.length || selectedFiles.value.length
   workflowState.value = 'recognized'
 }
@@ -323,6 +419,7 @@ async function handleConfirm(ingredients) {
     recognitionId.value = confirmedRecognitionId
     confirmedIngredients.value = confirmed
     workflowState.value = 'confirmed'
+    resetRecipeFlow()
 
     emit('confirmed', {
       recognition_id: confirmedRecognitionId,
@@ -337,11 +434,73 @@ function handleIngredientValidation(errors) {
   validationMessage.value = errors[0] || ''
 }
 
-function emitRecipeRequest(payload) {
-  emit('recipe-requested', {
-    recognition_id: normalizeRecognitionId(payload.recognition_id),
-    confirmed_ingredients: payload.confirmed_ingredients,
-  })
+function buildRecipePreferences() {
+  const avoidIngredients = avoidIngredientsText.value
+    .split(/[,，、\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return {
+    servings: Number(recipePreferences.value.servings) || 2,
+    taste: recipePreferences.value.taste || '家常',
+    max_time_minutes: recipePreferences.value.max_time_minutes || null,
+    avoid_ingredients: avoidIngredients,
+  }
+}
+
+function resolveRecipeMockScenario() {
+  return mockScenario.value === 'off' ? 'off' : 'success'
+}
+
+function normalizeRecipeError(error) {
+  const status = error?.response?.status ?? 0
+  return {
+    status,
+    code: error?.response?.data?.code || (status === 0 ? 'NETWORK_ERROR' : undefined),
+    message:
+      error?.response?.data?.message ||
+      error?.response?.data?.detail ||
+      error?.message ||
+      '菜谱生成失败，请稍后重试。',
+  }
+}
+
+async function generateRecipeFromRecognition(payload = {}) {
+  const nextRecognitionId = normalizeRecognitionId(payload.recognition_id ?? recognitionId.value)
+  if (!nextRecognitionId) {
+    recipeError.value = {
+      status: 422,
+      code: 'BAD_REQUEST',
+      message: '缺少有效的 recognition_id，无法生成菜谱。',
+    }
+    return
+  }
+
+  const preferences = buildRecipePreferences()
+  recipeLoading.value = true
+  recipeError.value = null
+
+  try {
+    const response = await createRecipe(
+      {
+        recognition_id: nextRecognitionId,
+        preferences,
+      },
+      { mockScenario: resolveRecipeMockScenario() }
+    )
+    const recipe = unwrapRecipeApiData(response)
+    generatedRecipe.value = recipe
+    emit('recipe-requested', {
+      recognition_id: nextRecognitionId,
+      preferences,
+      recipe_id: recipe?.recipe_id,
+      confirmed_ingredients: payload.confirmed_ingredients || confirmedIngredients.value,
+    })
+  } catch (error) {
+    recipeError.value = normalizeRecipeError(error)
+  } finally {
+    recipeLoading.value = false
+  }
 }
 </script>
 
@@ -711,6 +870,84 @@ function emitRecipeRequest(payload) {
   }
 }
 
+.food-recipe-page__recipe-flow {
+  display: grid;
+  gap: 18px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(121, 82, 45, 0.12);
+  padding-top: 24px;
+}
+
+.food-recipe-page__recipe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+
+  span {
+    color: #7b8c37;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 4px 0 0;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 24px;
+    font-weight: 500;
+  }
+
+  strong {
+    border-radius: 999px;
+    background: #eff8d6;
+    color: #62772b;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+}
+
+.food-recipe-page__preferences {
+  display: grid;
+  grid-template-columns: 90px minmax(120px, 0.8fr) 110px minmax(160px, 1fr);
+  gap: $spacing-md;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 250, 241, 0.82);
+  padding: 14px;
+
+  label {
+    display: grid;
+    gap: $spacing-xs;
+    color: #8a6a50;
+    font-size: 12px;
+  }
+
+  input {
+    width: 100%;
+    height: 38px;
+    box-sizing: border-box;
+    border: 1px solid rgba(121, 82, 45, 0.16);
+    border-radius: 14px;
+    padding: 0 12px;
+    color: #3a2a1d;
+    background: #fffefa;
+
+    &:disabled {
+      color: #ad947d;
+      background: #f6efe4;
+    }
+
+    &:focus {
+      border-color: #89a94f;
+      box-shadow: 0 0 0 3px rgba(137, 169, 79, 0.14);
+      outline: none;
+    }
+  }
+}
+
 @keyframes food-spin {
   to {
     transform: rotate(360deg);
@@ -727,6 +964,10 @@ function emitRecipeRequest(payload) {
     height: auto;
     min-height: calc(100vh - #{$header-height});
   }
+
+  .food-recipe-page__preferences {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -734,8 +975,18 @@ function emitRecipeRequest(payload) {
     padding: 0 14px 20px;
   }
 
+  .food-recipe-page__panel-header,
+  .food-recipe-page__recipe-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .food-recipe-page__toolbar {
     padding: 10px 14px;
+  }
+
+  .food-recipe-page__preferences {
+    grid-template-columns: 1fr;
   }
 }
 </style>

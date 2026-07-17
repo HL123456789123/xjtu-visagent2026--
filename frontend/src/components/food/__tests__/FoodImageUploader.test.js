@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FoodImageUploader from '../FoodImageUploader.vue'
 
 describe('FoodImageUploader', () => {
@@ -9,6 +9,10 @@ describe('FoodImageUploader', () => {
       createObjectURL: vi.fn((file) => `blob:${file.name}`),
       revokeObjectURL: vi.fn(),
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('accepts one JPG image and emits preview metadata', () => {
@@ -30,6 +34,28 @@ describe('FoodImageUploader', () => {
     expect(wrapper.text()).toContain('1 至 5 张')
     expect(wrapper.text()).toContain('单图不超过 10 MB')
     expect(wrapper.text()).toContain('整批不超过 50 MB')
+  })
+
+  it('loads the fixed demo image through the same selection flow', async () => {
+    const blob = new Blob(['demo'], { type: 'image/jpeg' })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(blob),
+      })
+    )
+    const wrapper = mount(FoodImageUploader)
+
+    await wrapper.find('[data-testid="food-image-demo"]').trigger('click')
+    await flushPromises()
+
+    const selectedFile = wrapper.emitted('selected')?.[0][0][0]
+    expect(fetch).toHaveBeenCalledWith('/food-carousel-1.jpg')
+    expect(selectedFile.name).toBe('fixed-demo-food.jpg')
+    expect(selectedFile.type).toBe('image/jpeg')
+    await wrapper.setProps({ modelValue: [selectedFile] })
+    expect(wrapper.find('[data-testid="food-image-name"]').text()).toBe('fixed-demo-food.jpg')
   })
 
   it('rejects non JPG/PNG files', async () => {

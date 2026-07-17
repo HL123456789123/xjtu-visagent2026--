@@ -12,4 +12,5 @@ export const foodRecognitionErrorFixtures = Object.freeze({
   415: { status: 415, message: '仅支持 JPG、JPEG 或 PNG 图片。', code: 'UNSUPPORTED_IMAGE_TYPE' },
   422: { status: 422, message: '图片或参数校验未通过。', code: 'EMPTY_INGREDIENTS' },
   503: { status: 503, message: '食物识别服务暂不可用，请稍后重试。', code: 'FOOD_MODEL_UNAVAILABLE' },
+  network: { status: 0, message: '网络连接失败，请检查后端 Mock 服务是否已启动。', code: 'NETWORK_ERROR' },
 })

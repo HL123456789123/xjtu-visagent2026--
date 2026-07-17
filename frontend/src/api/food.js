@@ -27,6 +27,8 @@ function cloneFixture(value) {
 function createMockError(status) {
   const fixture = foodRecognitionErrorFixtures[status] || foodRecognitionErrorFixtures[503]
   const error = new Error(fixture.message)
+  if (status === 'network') return error
+
   error.response = {
     status: fixture.status,
     data: {
@@ -66,6 +68,7 @@ function resolveMockScenario(scenario, operation = 'create') {
   const code = operation === 'create' ? 201 : 200
   if (scenario === 'success') return mockResponse(foodRecognitionFixtures.success, 'mock', code)
   if (scenario === 'empty') return mockResponse(foodRecognitionFixtures.empty, 'mock', code)
+  if (scenario === 'network') return Promise.reject(createMockError(scenario))
   if (foodRecognitionErrorFixtures[scenario]) {
     return Promise.reject(createMockError(scenario))
   }
