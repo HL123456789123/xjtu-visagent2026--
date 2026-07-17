@@ -6,10 +6,20 @@
     "status": "completed",
     "provider": "yolo",
     "model_version": "food-yolo-v1",
-    "image_url": "/api/files/food/12",
+    "images": [
+      {
+        "image_index": 0,
+        "image_url": "/api/files/food/12/0"
+      },
+      {
+        "image_index": 1,
+        "image_url": "/api/files/food/12/1"
+      }
+    ],
     "ingredients": [
       {
-        "candidate_id": "det-1",
+        "candidate_id": "img-0-det-1",
+        "image_index": 0,
         "class_name": "tomato",
         "display_name": "番茄",
         "confidence": 0.9321,
@@ -22,7 +32,8 @@
         "source": "model"
       },
       {
-        "candidate_id": "det-2",
+        "candidate_id": "img-1-det-1",
+        "image_index": 1,
         "class_name": "egg",
         "display_name": "鸡蛋",
         "confidence": 0.88,
@@ -31,6 +42,20 @@
           "y1": 100.0,
           "x2": 470.0,
           "y2": 230.0
+        },
+        "source": "model"
+      },
+      {
+        "candidate_id": "img-1-det-2",
+        "image_index": 1,
+        "class_name": "cucumber",
+        "display_name": "黄瓜",
+        "confidence": 0.7642,
+        "bbox": {
+          "x1": 40.0,
+          "y1": 320.0,
+          "x2": 260.0,
+          "y2": 390.0
         },
         "source": "model"
       }
