@@ -57,6 +57,12 @@ request.interceptors.response.use(
         case 403:
           ElMessage.error(msg || '没有权限访问该资源')
           break
+        case 413:
+          ElMessage.error(msg || detail || '上传图片总大小超过限制')
+          break
+        case 415:
+          ElMessage.error(msg || detail || '图片格式不受支持')
+          break
         case 404:
           ElMessage.error(msg || '请求的资源不存在')
           break
@@ -70,6 +76,9 @@ request.interceptors.response.use(
           break
         case 500:
           ElMessage.error(msg || '服务器内部错误')
+          break
+        case 503:
+          ElMessage.error(msg || detail || '服务暂时不可用')
           break
         default:
           ElMessage.error(msg || detail || `请求错误 (${response.status})`)
@@ -111,12 +120,21 @@ uploadRequest.interceptors.response.use(
         case 403:
           ElMessage.error(msg || '没有权限访问该资源')
           break
+        case 413:
+          ElMessage.error(msg || detail || '上传图片总大小超过限制')
+          break
+        case 415:
+          ElMessage.error(msg || detail || '图片格式不受支持')
+          break
         case 422:
           if (Array.isArray(detail)) {
             ElMessage.error(detail[0]?.msg || msg || '请求参数错误')
           } else {
             ElMessage.error(msg || detail || '请求参数错误')
           }
+          break
+        case 503:
+          ElMessage.error(msg || detail || '服务暂时不可用')
           break
         default:
           ElMessage.error(msg || detail || `请求错误 (${response.status})`)

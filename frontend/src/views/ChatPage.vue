@@ -1,559 +1,259 @@
 <template>
-  <div class="chat-page">
-    <!-- 左侧会话列表 -->
-    <div class="session-list">
-      <div class="session-header">
-        <h3>对话会话</h3>
-        <el-button type="primary" size="small" @click="createSession">
-          <el-icon><Plus /></el-icon>新建会话
-        </el-button>
+  <section class="recipe-chat" data-testid="chat-page">
+    <header class="recipe-chat__header">
+      <div>
+        <span>Recipe Chat</span>
+        <h2>菜谱对话</h2>
       </div>
-      <div class="session-items">
-        <div
-          v-for="session in sessions"
-          :key="session.id"
-          :class="['session-item', { active: currentSession?.id === session.id }]"
-          @click="selectSession(session)"
-        >
-          <el-icon><ChatDotRound /></el-icon>
-          <span class="session-title">{{ session.title || '新对话' }}</span>
-          <el-button
-            type="danger"
-            size="small"
-            link
-            @click.stop="deleteSession(session.id)"
-          >
-            <el-icon><Delete /></el-icon>
-          </el-button>
-        </div>
-      </div>
+      <span class="recipe-chat__session" data-testid="session-state">
+        {{ sessionId ? `会话 #${sessionId}` : '等待菜谱' }}
+      </span>
+    </header>
+
+    <p v-if="!recipeId" class="recipe-chat__notice">
+      请先生成菜谱，再开始对话。
+    </p>
+    <p v-if="serviceError" class="recipe-chat__error" data-testid="chat-error">
+      {{ serviceError }}
+    </p>
+
+    <div ref="messageList" class="recipe-chat__messages" data-testid="chat-messages">
+      <p v-if="messages.length === 0" class="recipe-chat__empty">
+        可以询问烹饪技巧，或要求修改当前菜谱。
+      </p>
+      <article
+        v-for="(message, index) in messages"
+        :key="`${message.role}-${index}`"
+        :class="['recipe-chat__message', `recipe-chat__message--${message.role}`]"
+      >
+        <strong>{{ message.role === 'user' ? '我' : '菜谱助手' }}</strong>
+        <p>{{ message.content }}</p>
+      </article>
     </div>
 
-    <!-- 右侧对话区域 -->
-    <div class="chat-container">
-      <!-- 对话头部 -->
-      <div class="chat-header">
-        <h3>{{ currentSession?.title || '智能对话' }}</h3>
-        <span class="session-info">
-          基于 LangGraph 多Agent 协作
-        </span>
-      </div>
-
-      <!-- 消息列表 -->
-      <div class="message-list" ref="messageListRef">
-        <div v-if="messages.length === 0" class="empty-state">
-          <el-icon :size="64"><ChatDotRound /></el-icon>
-          <p>开始新的对话</p>
-          <p class="hint">输入问题，智能助手将为您解答</p>
-        </div>
-        <div
-          v-for="(msg, index) in messages"
-          :key="index"
-          :class="['message-item', msg.role]"
-        >
-          <!-- AI 头像 -->
-          <div v-if="msg.role === 'assistant'" class="avatar ai-avatar">
-            <el-icon><Monitor /></el-icon>
-          </div>
-          <!-- 消息内容 -->
-          <div class="message-content">
-            <!-- 工具调用展示 -->
-            <div v-if="msg.tool_calls && msg.tool_calls.length > 0" class="tool-calls">
-              <div v-for="(tool, tIdx) in msg.tool_calls" :key="tIdx" class="tool-call">
-                <el-tag type="info" size="small">
-                  <el-icon><SetUp /></el-icon>
-                  {{ tool.name }}
-                </el-tag>
-                <span class="tool-desc">{{ tool.description }}</span>
-              </div>
-            </div>
-            <!-- 消息文本 -->
-            <div class="message-text" v-html="renderMarkdown(msg.content)"></div>
-            <!-- 时间 -->
-            <div class="message-time">{{ formatTime(msg.created_at) }}</div>
-          </div>
-          <!-- 用户头像 -->
-          <div v-if="msg.role === 'user'" class="avatar user-avatar">
-            <el-icon><User /></el-icon>
-          </div>
-        </div>
-        <!-- 加载状态 -->
-        <div v-if="loading" class="message-item assistant">
-          <div class="avatar ai-avatar">
-            <el-icon><Monitor /></el-icon>
-          </div>
-          <div class="message-content">
-            <div class="loading-dots">
-              <span></span><span></span><span></span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 输入区域 -->
-      <div class="input-area">
-        <el-input
-          v-model="inputMessage"
-          type="textarea"
-          :rows="3"
-          placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-          @keydown.enter.exact.prevent="sendMessage"
-          :disabled="loading"
-        />
-        <el-button
-          type="primary"
-          :loading="loading"
-          @click="sendMessage"
-          :disabled="!inputMessage.trim()"
-        >
-          <el-icon><Promotion /></el-icon>发送
-        </el-button>
-      </div>
-    </div>
-  </div>
+    <form class="recipe-chat__composer" @submit.prevent="sendMessage">
+      <textarea
+        v-model="draft"
+        rows="3"
+        maxlength="4000"
+        :disabled="!recipeId || loading"
+        placeholder="例如：改成三人份并且少放油"
+        data-testid="chat-input"
+      />
+      <button
+        type="submit"
+        :disabled="!recipeId || !draft.trim() || loading"
+        data-testid="chat-send"
+      >
+        {{ loading ? '处理中…' : '发送' }}
+      </button>
+    </form>
+  </section>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue'
-import { Plus, ChatDotRound, Delete, Monitor, User, SetUp, Promotion } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { createSessionApi, getSessionsApi, getMessagesApi, deleteSessionApi } from '@/api/chat'
-import { streamChat } from '@/utils/sse'
-import { renderMarkdown } from '@/utils/markdown'
-import { formatTime } from '@/utils/format'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { createChatSession, sendChatMessage } from '@/api/chat'
 
-// 会话列表
-const sessions = ref([])
-const currentSession = ref(null)
+const props = defineProps({
+  recipeId: {
+    type: Number,
+    default: null,
+  },
+})
+
+const emit = defineEmits(['recipe-updated', 'service-unavailable'])
+
+const sessionId = ref(null)
+const sessionRecipeId = ref(null)
 const messages = ref([])
-const inputMessage = ref('')
+const draft = ref('')
 const loading = ref(false)
-const messageListRef = ref(null)
+const serviceError = ref('')
+const messageList = ref(null)
+let stopStream = null
+let sessionPromise = null
 
-// 加载会话列表
-async function loadSessions() {
-  try {
-    const res = await getSessionsApi({ page: 1, page_size: 100 })
-    sessions.value = res.data?.items || []
-  } catch (error) {
-    console.error('加载会话列表失败:', error)
-  }
-}
-
-// 创建新会话
-async function createSession() {
-  try {
-    const res = await createSessionApi({ title: `对话 ${sessions.value.length + 1}` })
-    if (res.data) {
-      // 后端返回的数据结构：{ session_id, session_uuid, title }
-      // 需要转换为前端期望的数据结构：{ id, session_uuid, title, ... }
-      const session = {
-        id: res.data.session_id,
-        session_uuid: res.data.session_uuid,
-        title: res.data.title,
-        message_count: 0,
-        last_message_at: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      }
-      sessions.value.unshift(session)
-      await selectSession(session)
-    }
-  } catch (error) {
-    ElMessage.error('创建会话失败')
-  }
-}
-
-// 选择会话
-async function selectSession(session) {
-  currentSession.value = session
-  messages.value = []
-  try {
-    const res = await getMessagesApi(session.id, { limit: 100 })
-    messages.value = res.data?.messages || []
-    scrollToBottom()
-  } catch (error) {
-    console.error('加载消息失败:', error)
-  }
-}
-
-// 删除会话
-async function deleteSession(sessionId) {
-  try {
-    await ElMessageBox.confirm('确定删除这个会话吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-    await deleteSessionApi(sessionId)
-    sessions.value = sessions.value.filter(s => s.id !== sessionId)
-    if (currentSession.value?.id === sessionId) {
-      currentSession.value = null
-      messages.value = []
-    }
-    ElMessage.success('会话已删除')
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除会话失败')
-    }
-  }
-}
-
-// 发送消息
-async function sendMessage() {
-  const message = inputMessage.value.trim()
-  if (!message || loading.value) return
-
-  // 如果没有会话，先创建
-  if (!currentSession.value) {
-    try {
-      await createSession()
-      // 创建会话失败则中止
-      if (!currentSession.value) return
-      doSendMessage(message)
-    } catch (error) {
-      ElMessage.error('创建会话失败')
-      return
-    }
-  } else {
-    doSendMessage(message)
-  }
-}
-
-function doSendMessage(message) {
-  // 添加用户消息
-  messages.value.push({
-    role: 'user',
-    content: message,
-    created_at: new Date().toISOString()
-  })
-  inputMessage.value = ''
-  loading.value = true
-  scrollToBottom()
-
-  // 发起 SSE 流式请求
-  // 后端期望 message 作为 JSON body
-  const url = `/api/chat/sessions/${currentSession.value.id}/messages`
-  const stop = streamChat(
-    url,
-    { message },
-    {
-      onMessage: (data) => {
-        if (typeof data === 'string') {
-          // 普通文本消息
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += data
-          } else {
-            messages.value.push({
-              role: 'assistant',
-              content: data,
-              created_at: new Date().toISOString()
-            })
-          }
-        } else if (data.type === 'tool_call') {
-          // 工具调用
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            if (!lastMsg.tool_calls) lastMsg.tool_calls = []
-            lastMsg.tool_calls.push({
-              name: data.name,
-              description: data.description
-            })
-          }
-        } else if (data.type === 'error') {
-          // 错误消息
-          ElMessage.error(data.content || '处理消息时出现错误')
-        } else if (data.type === 'token') {
-          // 流式 token
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += data.content
-          } else {
-            messages.value.push({
-              role: 'assistant',
-              content: data.content,
-              created_at: new Date().toISOString()
-            })
-          }
-        }
-        scrollToBottom()
-      },
-      onDone: () => {
-        loading.value = false
-      },
-      onError: (err) => {
-        loading.value = false
-        ElMessage.error('发送消息失败')
-        console.error('Stream error:', err)
-      }
-    }
-  )
-}
-
-// 滚动到底部
 function scrollToBottom() {
   nextTick(() => {
-    if (messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight
-    }
+    if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight
   })
 }
 
-// 使用公共的 formatTime 函数
+async function ensureSession() {
+  if (!props.recipeId) return null
+  if (sessionId.value && sessionRecipeId.value === props.recipeId) return sessionId.value
+  if (sessionPromise) return sessionPromise
 
-// 监听消息变化，自动滚动
-watch(messages, () => {
-  scrollToBottom()
-}, { deep: true })
+  sessionPromise = createChatSession(props.recipeId)
+    .then((response) => {
+      const createdId = response?.data?.session_id
+      if (!Number.isInteger(createdId)) throw new Error('会话响应缺少整数 session_id')
+      sessionId.value = createdId
+      sessionRecipeId.value = props.recipeId
+      return createdId
+    })
+    .finally(() => {
+      sessionPromise = null
+    })
+  return sessionPromise
+}
 
-onMounted(() => {
-  loadSessions()
-})
+async function sendMessage() {
+  const content = draft.value.trim()
+  if (!content || loading.value || !props.recipeId) return
+
+  serviceError.value = ''
+  try {
+    const activeSessionId = await ensureSession()
+    if (!activeSessionId) return
+    messages.value.push({ role: 'user', content })
+    draft.value = ''
+    loading.value = true
+    scrollToBottom()
+
+    stopStream = sendChatMessage(activeSessionId, content, {
+      onToken(payload) {
+        const text = String(payload?.content || '')
+        const last = messages.value[messages.value.length - 1]
+        if (last?.role === 'assistant') last.content += text
+        else messages.value.push({ role: 'assistant', content: text })
+        scrollToBottom()
+      },
+      onRecipeUpdated(payload) {
+        if (Number.isInteger(payload?.recipe_id) && Number.isInteger(payload?.version)) {
+          emit('recipe-updated', payload)
+        }
+      },
+      onDone() {
+        loading.value = false
+        stopStream = null
+      },
+      onError(payload) {
+        loading.value = false
+        stopStream = null
+        serviceError.value = payload?.message || '智能服务暂时不可用'
+        if (payload?.code === 'LLM_UNAVAILABLE') {
+          emit('service-unavailable', payload)
+        }
+      },
+    })
+  } catch (error) {
+    loading.value = false
+    serviceError.value = error?.response?.data?.message || error?.message || '会话创建失败'
+  }
+}
+
+watch(
+  () => props.recipeId,
+  () => {
+    stopStream?.()
+    stopStream = null
+    sessionId.value = null
+    sessionRecipeId.value = null
+    messages.value = []
+    serviceError.value = ''
+    if (props.recipeId) ensureSession().catch((error) => {
+      serviceError.value = error?.response?.data?.message || error?.message || '会话创建失败'
+    })
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => stopStream?.())
 </script>
 
-<style lang="scss" scoped>
-.chat-page {
+<style scoped>
+.recipe-chat {
+  display: grid;
+  gap: 16px;
+  min-height: 420px;
+  padding: 22px;
+  border: 1px solid rgba(121, 82, 45, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.recipe-chat__header {
   display: flex;
-  height: calc(100vh - #{$header-height} - 40px);
-  background: $bg-color;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.session-list {
-  width: 280px;
-  background: $bg-color-white;
-  border-right: 1px solid $border-color;
-  display: flex;
-  flex-direction: column;
-
-  .session-header {
-    padding: $spacing-md;
-    border-bottom: 1px solid $border-color;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: $text-primary;
-    }
-  }
-
-  .session-items {
-    flex: 1;
-    overflow-y: auto;
-    padding: $spacing-sm;
-  }
-
-  .session-item {
-    display: flex;
-    align-items: center;
-    gap: $spacing-sm;
-    padding: $spacing-sm $spacing-md;
-    border-radius: $border-radius-md;
-    cursor: pointer;
-    transition: background 0.2s;
-
-    &:hover {
-      background: $bg-color;
-    }
-
-    &.active {
-      background: $bg-color-light-blue;
-      color: $primary-color;
-    }
-
-    .session-title {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
+.recipe-chat__header span,
+.recipe-chat__session {
+  color: #8b6846;
+  font-size: 13px;
 }
 
-.chat-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: $bg-color-white;
+.recipe-chat__header h2 {
+  margin: 4px 0 0;
+  color: #3a2a1d;
 }
 
-.chat-header {
-  padding: $spacing-md $spacing-lg;
-  border-bottom: 1px solid $border-color;
-
-  h3 {
-    margin: 0;
-    font-size: 18px;
-    color: $text-primary;
-  }
-
-  .session-info {
-    font-size: 12px;
-    color: $text-secondary;
-  }
-}
-
-.message-list {
-  flex: 1;
+.recipe-chat__messages {
+  min-height: 230px;
+  max-height: 420px;
   overflow-y: auto;
-  padding: $spacing-lg;
+  padding: 14px;
+  border-radius: 18px;
+  background: #fffaf1;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: $text-secondary;
-
-  p {
-    margin: $spacing-md 0 0;
-    font-size: 16px;
-  }
-
-  .hint {
-    font-size: 14px;
-    color: $text-placeholder;
-  }
+.recipe-chat__empty,
+.recipe-chat__notice {
+  color: #806a55;
+  text-align: center;
 }
 
-.message-item {
-  display: flex;
-  gap: $spacing-md;
-  margin-bottom: $spacing-lg;
-
-  &.user {
-    justify-content: flex-end;
-
-    .message-content {
-      background: $primary-color;
-      color: $bg-color-white;
-      border-radius: $border-radius-lg $border-radius-lg 0 $border-radius-lg;
-    }
-  }
-
-  &.assistant {
-    justify-content: flex-start;
-
-    .message-content {
-      background: $bg-color;
-      color: $text-primary;
-      border-radius: $border-radius-lg $border-radius-lg $border-radius-lg 0;
-    }
-  }
+.recipe-chat__error {
+  margin: 0;
+  color: #c44b37;
 }
 
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  &.ai-avatar {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: $bg-color-white;
-  }
-
-  &.user-avatar {
-    background: $primary-color;
-    color: $bg-color-white;
-  }
+.recipe-chat__message {
+  max-width: 82%;
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff;
 }
 
-.message-content {
-  max-width: 70%;
-  padding: $spacing-md;
-
-  .tool-calls {
-    margin-bottom: $spacing-sm;
-    padding: $spacing-sm;
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: $border-radius-sm;
-
-    .tool-call {
-      display: flex;
-      align-items: center;
-      gap: $spacing-sm;
-      margin-bottom: $spacing-xs;
-
-      .tool-desc {
-        font-size: 12px;
-        color: $text-secondary;
-      }
-    }
-  }
-
-  .message-text {
-    line-height: 1.6;
-    word-break: break-word;
-
-    :deep(p) {
-      margin: 0 0 $spacing-sm;
-    }
-
-    :deep(code) {
-      background: rgba(0, 0, 0, 0.1);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-family: monospace;
-    }
-
-    :deep(pre) {
-      background: $code-bg;
-      color: $code-text;
-      padding: $spacing-md;
-      border-radius: $border-radius-md;
-      overflow-x: auto;
-    }
-  }
-
-  .message-time {
-    font-size: 12px;
-    color: $text-secondary;
-    margin-top: $spacing-xs;
-  }
+.recipe-chat__message--user {
+  margin-left: auto;
+  background: #f8e2bd;
 }
 
-.loading-dots {
-  display: flex;
-  gap: 6px;
-  padding: $spacing-sm;
-
-  span {
-    width: 8px;
-    height: 8px;
-    background: $text-secondary;
-    border-radius: 50%;
-    animation: bounce 1.4s infinite ease-in-out both;
-
-    &:nth-child(1) { animation-delay: -0.32s; }
-    &:nth-child(2) { animation-delay: -0.16s; }
-  }
+.recipe-chat__message p {
+  margin: 5px 0 0;
+  white-space: pre-wrap;
 }
 
-@keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+.recipe-chat__composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
 }
 
-.input-area {
-  padding: $spacing-md $spacing-lg;
-  border-top: 1px solid $border-color;
-  display: flex;
-  gap: $spacing-md;
+.recipe-chat__composer textarea {
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid rgba(121, 82, 45, 0.2);
+  border-radius: 14px;
+}
 
-  .el-input {
-    flex: 1;
-  }
+.recipe-chat__composer button {
+  align-self: end;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 14px;
+  background: #e8783d;
+  color: white;
+  font-weight: 700;
+}
 
-  .el-button {
-    align-self: flex-end;
-  }
+.recipe-chat__composer button:disabled {
+  opacity: 0.5;
 }
 </style>

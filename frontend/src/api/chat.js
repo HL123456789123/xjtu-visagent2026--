@@ -1,37 +1,19 @@
-/**
- * 对话相关 API
- */
 import request from '@/utils/request'
+import { streamChat } from '@/utils/stream'
 
-/**
- * 创建对话会话
- * @param {Object} data - { title }
- */
-export function createSessionApi(data) {
-  return request.post('/chat/sessions', data)
+export const CHAT_PATHS = Object.freeze({
+  sessions: '/chat/sessions',
+  messages: (sessionId) => `/chat/sessions/${sessionId}/messages`,
+})
+
+export function createChatSession(recipeId) {
+  return request.post(CHAT_PATHS.sessions, { recipe_id: recipeId })
 }
 
-/**
- * 获取会话列表
- * @param {Object} params - { page, page_size }
- */
-export function getSessionsApi(params) {
-  return request.get('/chat/sessions', { params })
-}
-
-/**
- * 获取对话历史
- * @param {number} sessionId
- * @param {Object} params - { limit }
- */
-export function getMessagesApi(sessionId, params) {
-  return request.get(`/chat/sessions/${sessionId}/messages`, { params })
-}
-
-/**
- * 删除会话
- * @param {number} sessionId
- */
-export function deleteSessionApi(sessionId) {
-  return request.delete(`/chat/sessions/${sessionId}`)
+export function sendChatMessage(sessionId, content, callbacks = {}) {
+  return streamChat(
+    `/api${CHAT_PATHS.messages(sessionId)}`,
+    { content },
+    callbacks,
+  )
 }
