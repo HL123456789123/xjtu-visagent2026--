@@ -11,6 +11,9 @@ from app.api.health import router as health_router
 from app.api.training import router as training_router
 from app.api.detection import router as detection_router
 from app.api.chat import router as chat_router
+from app.api.food import file_router as food_file_router
+from app.api.food import router as food_router
+from app.api.recipes import router as recipes_router
 from app.api.dashboard import router as dashboard_router
 from app.api.camera import router as camera_router
 from app.api.knowledge import router as knowledge_router
@@ -222,6 +225,9 @@ app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(training_router)
 app.include_router(detection_router)
+app.include_router(food_router)
+app.include_router(food_file_router)
+app.include_router(recipes_router)
 app.include_router(chat_router)
 app.include_router(dashboard_router)
 app.include_router(camera_router)
