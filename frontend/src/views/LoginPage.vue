@@ -1,38 +1,20 @@
 <template>
   <div class="login-page">
     <section class="login-visual">
-      <router-link class="login-brand" to="/entry">
+      <router-link class="login-brand" to="/login">
         <span>🍳</span>
         <strong>FridgeChef</strong>
       </router-link>
       <h1>{{ visualTitle }}</h1>
       <p>{{ visualCopy }}</p>
-      <img src="/login-hero.jpg" alt="新鲜蔬果食材" />
+      <img src="/login-hero.jpg" alt="新鲜食材" />
     </section>
 
     <section class="login-card">
       <div class="login-header">
-        <span class="login-kicker">Welcome back</span>
-        <h2>{{ loginTitle }}</h2>
+        <span class="login-kicker">{{ isAdminLogin ? 'Admin login' : 'Welcome back' }}</span>
+        <h2>{{ isAdminLogin ? '管理者登录' : '账号登录' }}</h2>
         <p>{{ loginCopy }}</p>
-      </div>
-
-      <div class="mode-switch" role="tablist" aria-label="选择登录入口">
-        <button
-          v-for="item in modeOptions"
-          :key="item.value"
-          type="button"
-          class="mode-switch__item"
-          :class="{ active: selectedMode === item.value }"
-          :aria-selected="selectedMode === item.value"
-          role="tab"
-          @click="selectMode(item.value)"
-        >
-          <el-icon>
-            <component :is="item.icon" />
-          </el-icon>
-          <span>{{ item.label }}</span>
-        </button>
       </div>
 
       <el-form
@@ -75,7 +57,7 @@
             :loading="loading"
             @click="handleLogin"
           >
-            {{ loginButtonText }}
+            登录
           </el-button>
         </el-form-item>
       </el-form>
@@ -85,6 +67,16 @@
         <router-link to="/register">立即注册</router-link>
       </div>
     </section>
+
+    <button
+      class="admin-toggle"
+      type="button"
+      :title="isAdminLogin ? '切换为用户端登录' : '切换为管理端登录'"
+      @click="toggleMode"
+    >
+      <el-icon><component :is="isAdminLogin ? User : Setting" /></el-icon>
+      <span>{{ isAdminLogin ? '用户端' : '管理端' }}</span>
+    </button>
   </div>
 </template>
 
@@ -92,7 +84,7 @@
 import { computed, ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { DataAnalysis, Lock, User } from '@element-plus/icons-vue'
+import { Lock, Setting, User } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { ACCESS_MODES, isManagerPath, normalizeAccessMode } from '@/utils/accessMode'
 
@@ -103,37 +95,28 @@ const userStore = useUserStore()
 const formRef = ref(null)
 const loading = ref(false)
 
-const modeOptions = [
-  { value: ACCESS_MODES.USER, label: '用户端', icon: User },
-  { value: ACCESS_MODES.ADMIN, label: '管理端', icon: DataAnalysis },
-]
-
 const selectedMode = computed(() => normalizeAccessMode(route.query.mode || userStore.accessMode))
 const isAdminLogin = computed(() => selectedMode.value === ACCESS_MODES.ADMIN)
 
 const visualTitle = computed(() =>
-  isAdminLogin.value ? '登录管理端，掌握模型训练与数据变化' : '登录后，开启你的专属美食之旅'
+  isAdminLogin.value ? '登录管理端，掌握模型训练与数据变化' : '开始你的专属美食之旅'
 )
 const visualCopy = computed(() =>
   isAdminLogin.value
     ? '管理者可在日常食物工作流之外，进入模型训练和数据看板。'
     : '识别食材、确认清单、生成家常食谱，把每天吃什么变得轻松一点。'
 )
-const loginTitle = computed(() => (isAdminLogin.value ? '管理者登录' : '欢迎回来'))
 const loginCopy = computed(() =>
   isAdminLogin.value
-    ? '请使用已开通管理者入口权限的账号进入管理端。'
-    : '登录 FridgeChef，继续你的日常美食计划。'
+    ? '请使用已开通管理者入口权限的账号登录。'
+    : '输入用户名和密码即可开始使用。'
 )
-const loginButtonText = computed(() => (isAdminLogin.value ? '登录并进入管理端' : '登录并进入开始页'))
 
-/** 登录表单 */
 const loginForm = reactive({
   username: '',
   password: '',
 })
 
-/** 表单验证规则 */
 const loginRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -156,19 +139,19 @@ function getRedirectTarget(mode) {
   return redirect && !isManagerPath(redirect) ? redirect : '/start'
 }
 
-function selectMode(mode) {
-  userStore.setAccessMode(mode)
+function toggleMode() {
+  const next = isAdminLogin.value ? ACCESS_MODES.USER : ACCESS_MODES.ADMIN
+  userStore.setAccessMode(next)
   router.replace({
     path: route.path,
     query: {
       ...route.query,
-      mode,
-      redirect: getRedirectTarget(mode),
+      mode: next,
+      redirect: getRedirectTarget(next),
     },
   })
 }
 
-/** 处理登录 */
 async function handleLogin() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
@@ -203,11 +186,13 @@ async function handleLogin() {
   width: 100%;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 460px;
+  grid-template-columns: minmax(0, 1fr) 420px;
   align-items: center;
   gap: clamp(28px, 5vw, 72px);
   padding: clamp(28px, 5vw, 70px);
+  padding-right: clamp(28px, 5vw, 100px);
   box-sizing: border-box;
+  position: relative;
   background:
     radial-gradient(circle at 10% 12%, rgba(255, 213, 118, 0.42), transparent 28%),
     radial-gradient(circle at 88% 8%, rgba(137, 169, 79, 0.18), transparent 24%),
@@ -274,7 +259,7 @@ async function handleLogin() {
 
 .login-card {
   width: 100%;
-  padding: 40px;
+  padding: 36px;
   box-sizing: border-box;
   border: 1px solid rgba(121, 82, 45, 0.12);
   border-radius: 32px;
@@ -285,13 +270,13 @@ async function handleLogin() {
 
 .login-header {
   text-align: left;
-  margin-bottom: 22px;
+  margin-bottom: 28px;
 
   h2 {
     margin: 6px 0 0;
     color: #3a2a1d;
     font-family: Georgia, "Songti SC", serif;
-    font-size: 34px;
+    font-size: 30px;
     font-weight: 500;
   }
 
@@ -300,37 +285,6 @@ async function handleLogin() {
     font-size: 13px;
     color: #856449;
     line-height: 1.7;
-  }
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 24px;
-}
-
-.mode-switch__item {
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid rgba(121, 82, 45, 0.14);
-  border-radius: 8px;
-  background: #fffaf0;
-  color: #76573f;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 900;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-
-  &.active,
-  &:hover {
-    border-color: rgba(233, 109, 59, 0.5);
-    background: #fff1d2;
-    color: #d76626;
   }
 }
 
@@ -374,19 +328,53 @@ async function handleLogin() {
   }
 }
 
+.admin-toggle {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(121, 82, 45, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(12px);
+  color: #6f5038;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    background: #fff1d2;
+    border-color: rgba(233, 109, 59, 0.4);
+    color: #d76626;
+  }
+}
+
 @media (max-width: 960px) {
   .login-page {
     grid-template-columns: 1fr;
+    padding-right: clamp(20px, 5vw, 70px);
   }
 
   .login-card {
     max-width: 520px;
+  }
+
+  .admin-toggle {
+    top: 18px;
+    right: 18px;
   }
 }
 
 @media (max-width: 560px) {
   .login-page {
     padding: 20px;
+    padding-right: 20px;
   }
 
   .login-card {

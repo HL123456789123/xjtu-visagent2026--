@@ -12,12 +12,6 @@ import { ACCESS_MODES, isManagerPath, normalizeAccessMode } from '@/utils/access
 // 路由表
 const routes = [
   {
-    path: '/entry',
-    name: 'Entry',
-    component: () => import('@/views/EntryPage.vue'),
-    meta: { title: '选择入口', requiresAuth: false },
-  },
-  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/LoginPage.vue'),
@@ -184,7 +178,7 @@ router.beforeEach(async (to, from, next) => {
       setVerified(false)
       userStore.user = null
       // 用户状态已失效，直接跳转登录页，避免后续权限检查误判为 404
-      next({ path: '/entry', query: { redirect: to.fullPath } })
+      next({ path: '/login', query: { redirect: to.fullPath } })
       return
     }
   }
@@ -195,8 +189,8 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (requiresAuth && !userStore.isLoggedIn) {
-    // 未登录，先进入入口选择页
-    next({ path: '/entry', query: { redirect: to.fullPath } })
+    // 未登录，跳转登录页
+    next({ path: '/login', query: { redirect: to.fullPath } })
     return
   }
 
@@ -208,18 +202,13 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  if (to.path === '/entry' && userStore.isLoggedIn && from.path === '/login') {
-    next(getDefaultAuthedPath(userStore))
-    return
-  }
-
   if (to.matched.some((record) => record.meta.requiresManager)) {
     // 管理端页面需要入口权限，并且当前处于管理端入口模式
     if (!userStore.canUseAdminMode) {
       next({ name: 'NotFound' })
       return
     } else if (userStore.accessMode !== ACCESS_MODES.ADMIN) {
-      next({ path: '/entry', query: { redirect: to.fullPath } })
+      next({ path: '/login', query: { redirect: to.fullPath } })
       return
     }
   }

@@ -44,9 +44,6 @@
     </nav>
 
     <div class="header-right">
-      <button class="start-detect" type="button" @click="router.push('/food-recipes')">
-        开始识别
-      </button>
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="user-info">
           <span class="mode-badge">{{ userStore.isAdminMode ? '管理端' : '用户端' }}</span>
@@ -59,7 +56,7 @@
 
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="entry">
+            <el-dropdown-item command="switch">
               <el-icon><Switch /></el-icon>切换入口
             </el-dropdown-item>
             <el-dropdown-item command="profile">
@@ -132,8 +129,8 @@ async function handleCommand(command) {
     case 'profile':
       router.push('/profile')
       break
-    case 'entry':
-      router.push('/entry')
+    case 'switch':
+      router.push('/login')
       break
     case 'logout':
       try {
@@ -143,7 +140,7 @@ async function handleCommand(command) {
           type: 'warning',
         })
         await userStore.logout()
-        router.push('/entry')
+        router.push('/login')
       } catch {
         // 用户取消确认框或 logout 出错，不做处理
       }
@@ -251,18 +248,6 @@ async function handleCommand(command) {
   flex: 0 0 auto;
 }
 
-.start-detect {
-  height: 38px;
-  border: 0;
-  border-radius: 12px;
-  background: #f58220;
-  color: #fffaf0;
-  padding: 0 16px;
-  cursor: pointer;
-  font-weight: 900;
-  box-shadow: 0 10px 22px rgba(245, 130, 32, 0.22);
-}
-
 .user-info {
   display: flex;
   align-items: center;
@@ -322,8 +307,7 @@ async function handleCommand(command) {
 @media (max-width: 560px) {
   .brand-title,
   .mode-badge,
-  .username,
-  .start-detect {
+  .username {
     display: none;
   }
 }
