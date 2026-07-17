@@ -25,6 +25,7 @@ describe('FoodRecipePage', () => {
   it('runs the success mock flow and emits the recipe contract after confirmation', async () => {
     const wrapper = mount(FoodRecipePage)
 
+    await wrapper.find('[data-testid="mock-scenario"]').setValue('success')
     await selectImages(wrapper, [makeImageFile('breakfast.jpg'), makeImageFile('vegetables.jpg')])
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('selecting')
     expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('2 张图片')
@@ -45,6 +46,7 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('12')
     expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
     expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
+    expect(wrapper.find('[data-testid="recipe-flow-recognition-id"]').text()).toContain('12')
     expect(wrapper.emitted('confirmed')?.[0][0]).toEqual({
       recognition_id: 12,
       confirmed_ingredients: [
@@ -54,13 +56,23 @@ describe('FoodRecipePage', () => {
     })
 
     await wrapper.find('[data-testid="recipe-generate"]').trigger('click')
+    await flushPromises()
+
     expect(wrapper.emitted('recipe-requested')?.[0][0]).toEqual({
       recognition_id: 12,
+      preferences: {
+        servings: 2,
+        taste: '家常',
+        max_time_minutes: 30,
+        avoid_ingredients: [],
+      },
+      recipe_id: 101,
       confirmed_ingredients: [
         { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
         { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
       ],
     })
+    expect(wrapper.find('[data-testid="recipe-card"]').text()).toContain('番茄炒蛋')
   })
 
   it('keeps the empty-recognition state visible and allows manual ingredient input', async () => {
@@ -114,5 +126,18 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片格式不支持')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('JPG、JPEG 或 PNG')
+  })
+
+  it('shows a network failure state when the mock backend is unreachable', async () => {
+    const wrapper = mount(FoodRecipePage)
+
+    await wrapper.find('[data-testid="mock-scenario"]').setValue('network')
+    await selectImages(wrapper)
+    await wrapper.find('[data-testid="start-recognition"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('网络连接失败')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('后端 Mock 服务')
   })
 })

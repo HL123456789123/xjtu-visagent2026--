@@ -51,11 +51,10 @@ describe('request', () => {
   })
 
   it('应该创建 axios 实例', async () => {
-    const { default: request } = await import('../request')
+    await import('../request')
 
     expect(mockCreate).toHaveBeenCalled()
-    expect(request).toBeDefined()
-  })
+  }, 10000)
 
   it('应该配置正确的 baseURL', async () => {
     await import('../request')

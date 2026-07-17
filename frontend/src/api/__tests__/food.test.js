@@ -180,4 +180,10 @@ describe('food api contract', () => {
       },
     })
   })
+
+  it('exposes a reserved network failure mock without an HTTP response', async () => {
+    await expect(createFoodRecognition({}, { mockScenario: 'network' })).rejects.toMatchObject({
+      message: '网络连接失败，请检查后端 Mock 服务是否已启动。',
+    })
+  })
 })
