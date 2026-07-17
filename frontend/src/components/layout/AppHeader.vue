@@ -91,6 +91,7 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { ACCESS_MODES } from '@/utils/accessMode'
 
 const route = useRoute()
 const router = useRouter()
@@ -129,9 +130,14 @@ async function handleCommand(command) {
     case 'profile':
       router.push('/profile')
       break
-    case 'switch':
-      router.push('/login')
+    case 'switch': {
+      const wasAdmin = userStore.isAdminMode
+      await userStore.logout()
+      const nextMode = wasAdmin ? ACCESS_MODES.USER : ACCESS_MODES.ADMIN
+      userStore.setAccessMode(nextMode)
+      router.push(`/login?mode=${nextMode}`)
       break
+    }
     case 'logout':
       try {
         await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
