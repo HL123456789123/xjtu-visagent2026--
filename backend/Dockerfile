@@ -1,42 +1,36 @@
-# 后端 Dockerfile
-# 基于 Python 3.11 slim 镜像
-
+# Runtime image for the V1.1 FastAPI service. Dependencies are resolved solely
+# by uv from the committed lock file; local configuration and model weights are
+# provided at runtime and never copied into the image.
 FROM python:3.11-slim
 
-# 设置工作目录
-WORKDIR /app
+WORKDIR /app/backend
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    curl \
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+        curl \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 uv 包管理器
-RUN pip install --no-cache-dir uv
+# Install the package manager from its official image rather than using pip for
+# project dependency management.
+COPY --from=ghcr.io/astral-sh/uv:0.11.26 /uv /uvx /bin/
 
-# 复制依赖文件
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/backend/.venv/bin:$PATH"
+
 COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
-# 安装 Python 依赖
-RUN uv sync --no-dev --no-install-project
-
-# 复制应用代码
 COPY . .
 
-# 创建数据目录
-RUN mkdir -p data/models data/visagent.db logs
-
-# 暴露端口
 EXPOSE 8888
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8888/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl --fail --silent http://localhost:8888/api/health || exit 1
 
-# 启动命令
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8888"]
+CMD ["uv", "run", "--no-sync", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8888"]
