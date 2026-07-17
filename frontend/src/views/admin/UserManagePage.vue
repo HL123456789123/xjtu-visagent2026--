@@ -3,90 +3,90 @@
     <div class="page-header">
       <h2>用户管理</h2>
       <div class="header-actions">
+        <el-button type="primary" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon>新增用户
+        </el-button>
         <el-input
           v-model="searchKeyword"
           placeholder="搜索用户名或邮箱"
           clearable
           style="width: 240px"
-          @clear="loadUsers"
-          @keyup.enter="loadUsers"
+          @clear="searchUsers"
+          @keyup.enter="searchUsers"
         >
           <template #prefix>
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-select v-model="filterActive" placeholder="状态筛选" clearable style="width: 120px" @change="loadUsers">
+        <el-select
+          v-model="filterActive"
+          placeholder="状态筛选"
+          clearable
+          style="width: 120px"
+          @change="searchUsers"
+        >
           <el-option label="启用" :value="true" />
           <el-option label="禁用" :value="false" />
         </el-select>
-        <el-button type="primary" @click="loadUsers">
+        <el-button @click="searchUsers">
           <el-icon><Search /></el-icon>搜索
         </el-button>
       </div>
     </div>
 
-    <!-- 用户列表表格 -->
     <el-table :data="users" v-loading="loading" stripe border style="width: 100%">
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="username" label="用户名" width="120" />
-      <el-table-column prop="email" label="邮箱" min-width="180" />
-      <el-table-column prop="phone" label="手机号" width="120">
+      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column prop="username" label="用户名" width="140" />
+      <el-table-column prop="email" label="邮箱" min-width="200" />
+      <el-table-column prop="phone" label="手机号" width="140">
         <template #default="{ row }">
           {{ row.phone || '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="角色" min-width="150">
+      <el-table-column label="身份" width="120">
         <template #default="{ row }">
-          <el-tag
-            size="small"
-            :type="getRoleTagType(getUserRole(row))"
-          >
+          <el-tag :type="getRoleTagType(getUserRole(row))" size="small">
             {{ getRoleDisplayName(getUserRole(row)) }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="80">
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag :type="row.is_active ? 'success' : 'danger'" size="small">
             {{ row.is_active ? '启用' : '禁用' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="最后登录" width="160">
-        <template #default="{ row }">
-          {{ row.last_login_at ? formatTime(row.last_login_at) : '从未登录' }}
-        </template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="160">
+      <el-table-column label="创建时间" width="170">
         <template #default="{ row }">
           {{ formatTime(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button size="small" text @click="openEditDialog(row)">编辑</el-button>
           <el-button
             size="small"
             text
-            :disabled="row.id === userStore.user?.id"
-            @click="openRoleDialog(row)"
-          >
-            更改身份
-          </el-button>
-          <el-button
-            size="small"
-            text
             :type="row.is_active ? 'warning' : 'success'"
+            :disabled="!canManageAccount(row)"
             @click="toggleUserStatus(row)"
           >
             {{ row.is_active ? '禁用' : '启用' }}
           </el-button>
-          <el-button size="small" text type="danger" @click="deleteUser(row)">删除</el-button>
+          <el-button
+            size="small"
+            text
+            type="danger"
+            :disabled="!canManageAccount(row)"
+            @click="deleteUser(row)"
+          >
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 分页 -->
     <div class="pagination-wrapper">
       <el-pagination
         v-model:current-page="currentPage"
@@ -99,7 +99,36 @@
       />
     </div>
 
-    <!-- 编辑用户弹窗 -->
+    <el-dialog v-model="showCreateDialog" title="新增用户" width="500px">
+      <el-form
+        ref="createFormRef"
+        :model="createForm"
+        :rules="createRules"
+        label-width="90px"
+      >
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="createForm.username" placeholder="3-50 个字符" />
+        </el-form-item>
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="createForm.email" placeholder="请输入邮箱" />
+        </el-form-item>
+        <el-form-item label="初始密码" prop="password">
+          <el-input
+            v-model="createForm.password"
+            type="password"
+            show-password
+            placeholder="至少 6 个字符"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateDialog = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitCreate">
+          创建
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="showEditDialog" title="编辑用户" width="500px">
       <el-form :model="editForm" label-width="80px">
         <el-form-item label="用户名">
@@ -114,98 +143,93 @@
       </el-form>
       <template #footer>
         <el-button @click="showEditDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitEdit" :loading="submitting">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 更改身份弹窗 -->
-    <el-dialog v-model="showRoleDialog" title="更改身份" width="500px">
-      <div class="role-assign-info">
-        <p>设置用户 <strong>{{ currentUser?.username }}</strong> 的身份：</p>
-      </div>
-      <el-radio-group v-model="selectedRole" class="role-options">
-        <el-radio value="user">普通用户</el-radio>
-        <el-radio value="admin">管理员</el-radio>
-      </el-radio-group>
-      <template #footer>
-        <el-button @click="showRoleDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitRoleUpdate" :loading="submitting">保存</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitEdit">
+          保存
+        </el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import {
-  getUserListApi,
-  updateUserApi,
-  updateUserRoleApi,
-  toggleUserStatusApi,
+  createUserApi,
   deleteUserApi,
+  getUserListApi,
+  toggleUserStatusApi,
+  updateUserApi,
 } from '@/api/admin'
 
 const userStore = useUserStore()
-
-// 列表数据
 const users = ref([])
 const loading = ref(false)
+const submitting = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const searchKeyword = ref('')
 const filterActive = ref(null)
 
-// 编辑弹窗
+const showCreateDialog = ref(false)
+const createFormRef = ref(null)
+const createForm = ref({ username: '', email: '', password: '' })
+const createRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 50, message: '用户名长度为 3-50 个字符', trigger: 'blur' },
+  ],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱', trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: '请输入初始密码', trigger: 'blur' },
+    { min: 6, max: 100, message: '密码长度为 6-100 个字符', trigger: 'blur' },
+  ],
+}
+
 const showEditDialog = ref(false)
-const editForm = ref({
-  id: null,
-  username: '',
-  email: '',
-  phone: '',
-})
+const editForm = ref({ id: null, username: '', email: '', phone: '' })
 
-// 身份设置弹窗
-const showRoleDialog = ref(false)
-const currentUser = ref(null)
-const selectedRole = ref('user')
-const submitting = ref(false)
-
-// 角色显示名映射
-const roleDisplayNames = {
-  admin: '管理员',
-  user: '普通用户',
+function isAdminUser(user) {
+  return Boolean(user.is_superuser)
+    || user.roles?.some((role) => role === 'admin' || role === 'super_admin')
 }
 
-// 兼容旧数据中的历史角色，对外统一收敛为管理员/普通用户两种身份。
+function isSuperAdminUser(user) {
+  return Boolean(user.is_superuser) || user.roles?.includes('super_admin')
+}
+
 function getUserRole(user) {
-  return user.roles?.some((role) => role === 'admin' || role === 'super_admin')
-    ? 'admin'
-    : 'user'
+  if (isSuperAdminUser(user)) return 'super_admin'
+  return isAdminUser(user) ? 'admin' : 'user'
 }
 
-// 获取角色显示名
-function getRoleDisplayName(roleName) {
-  return roleDisplayNames[roleName] || roleName
+function getRoleDisplayName(role) {
+  return {
+    super_admin: '超级管理员',
+    admin: '管理员',
+    user: '普通用户',
+  }[role]
 }
 
-// 获取角色标签类型
-function getRoleTagType(roleName) {
-  const typeMap = {
-    admin: 'warning',
-    user: 'info',
-  }
-  return typeMap[roleName] || 'info'
+function getRoleTagType(role) {
+  return { super_admin: 'danger', admin: 'warning', user: 'info' }[role] || 'info'
 }
 
-// 格式化时间
-function formatTime(timeStr) {
-  if (!timeStr) return '-'
-  const date = new Date(timeStr)
-  return date.toLocaleString('zh-CN', {
+function canManageAccount(user) {
+  if (user.id === userStore.user?.id) return false
+  if (isAdminUser(user) && !userStore.isSuperAdmin) return false
+  return true
+}
+
+function formatTime(time) {
+  if (!time) return '-'
+  return new Date(time).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -214,23 +238,15 @@ function formatTime(timeStr) {
   })
 }
 
-// 加载用户列表
 async function loadUsers() {
   loading.value = true
   try {
-    const params = {
-      page: currentPage.value,
-      page_size: pageSize.value,
-    }
-    if (searchKeyword.value) {
-      params.keyword = searchKeyword.value
-    }
-    if (filterActive.value !== null) {
-      params.is_active = filterActive.value
-    }
-    const res = await getUserListApi(params)
-    users.value = res.data?.items || []
-    total.value = res.data?.total || 0
+    const params = { page: currentPage.value, page_size: pageSize.value }
+    if (searchKeyword.value.trim()) params.keyword = searchKeyword.value.trim()
+    if (filterActive.value !== null) params.is_active = filterActive.value
+    const response = await getUserListApi(params)
+    users.value = response.data?.items || []
+    total.value = response.data?.total || 0
   } catch (error) {
     console.error('加载用户列表失败:', error)
     ElMessage.error('加载用户列表失败')
@@ -239,7 +255,33 @@ async function loadUsers() {
   }
 }
 
-// 打开编辑弹窗
+function searchUsers() {
+  currentPage.value = 1
+  loadUsers()
+}
+
+function openCreateDialog() {
+  createForm.value = { username: '', email: '', password: '' }
+  showCreateDialog.value = true
+}
+
+async function submitCreate() {
+  const valid = await createFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  submitting.value = true
+  try {
+    await createUserApi(createForm.value)
+    ElMessage.success('用户创建成功')
+    showCreateDialog.value = false
+    searchUsers()
+  } catch (error) {
+    console.error('创建用户失败:', error)
+    ElMessage.error(error.response?.data?.message || '创建用户失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
 function openEditDialog(user) {
   editForm.value = {
     id: user.id,
@@ -250,7 +292,6 @@ function openEditDialog(user) {
   showEditDialog.value = true
 }
 
-// 提交编辑
 async function submitEdit() {
   submitting.value = true
   try {
@@ -263,46 +304,17 @@ async function submitEdit() {
     loadUsers()
   } catch (error) {
     console.error('更新用户失败:', error)
-    ElMessage.error(error.response?.data?.detail || '更新用户失败')
+    ElMessage.error(error.response?.data?.message || '更新用户失败')
   } finally {
     submitting.value = false
   }
 }
 
-// 打开身份设置弹窗
-function openRoleDialog(user) {
-  if (user.id === userStore.user?.id) {
-    ElMessage.warning('不能修改自身身份')
-    return
-  }
-  currentUser.value = user
-  selectedRole.value = getUserRole(user)
-  showRoleDialog.value = true
-}
-
-// 提交身份更新
-async function submitRoleUpdate() {
-  submitting.value = true
-  try {
-    await updateUserRoleApi(currentUser.value.id, {
-      role: selectedRole.value,
-    })
-    ElMessage.success('用户身份更新成功')
-    showRoleDialog.value = false
-    loadUsers()
-  } catch (error) {
-    console.error('更新用户身份失败:', error)
-    ElMessage.error(error.response?.data?.message || '更新用户身份失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 启用/禁用用户
 async function toggleUserStatus(user) {
+  if (!canManageAccount(user)) return
   const action = user.is_active ? '禁用' : '启用'
   try {
-    await ElMessageBox.confirm(`确定要${action}用户 "${user.username}" 吗？`, '确认操作', {
+    await ElMessageBox.confirm(`确定要${action}用户“${user.username}”吗？`, '确认操作', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
@@ -313,38 +325,32 @@ async function toggleUserStatus(user) {
   } catch (error) {
     if (error !== 'cancel') {
       console.error(`${action}用户失败:`, error)
-      ElMessage.error(error.response?.data?.detail || `${action}用户失败`)
+      ElMessage.error(error.response?.data?.message || `${action}用户失败`)
     }
   }
 }
 
-// 删除用户
 async function deleteUser(user) {
+  if (!canManageAccount(user)) return
   try {
-    await ElMessageBox.confirm(
-      `确定要删除用户 "${user.username}" 吗？此操作不可恢复！`,
-      '确认删除',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'error',
-      }
-    )
+    await ElMessageBox.confirm(`确定要删除用户“${user.username}”吗？此操作不可恢复。`, '确认删除', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'error',
+    })
     await deleteUserApi(user.id)
     ElMessage.success('用户已删除')
+    if (users.value.length === 1 && currentPage.value > 1) currentPage.value -= 1
     loadUsers()
   } catch (error) {
     if (error !== 'cancel') {
       console.error('删除用户失败:', error)
-      ElMessage.error(error.response?.data?.detail || '删除用户失败')
+      ElMessage.error(error.response?.data?.message || '删除用户失败')
     }
   }
 }
 
-// 初始化
-onMounted(() => {
-  loadUsers()
-})
+onMounted(loadUsers)
 </script>
 
 <style scoped>
@@ -358,6 +364,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
@@ -369,8 +376,10 @@ onMounted(() => {
 
 .header-actions {
   display: flex;
-  gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .pagination-wrapper {
@@ -379,20 +388,14 @@ onMounted(() => {
   margin-top: 20px;
 }
 
-.text-muted {
-  color: #909399;
-  font-size: 12px;
-}
+@media (max-width: 900px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 
-.role-assign-info {
-  margin-bottom: 16px;
-  color: #606266;
-}
-
-.role-options {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
+  .header-actions {
+    justify-content: flex-start;
+  }
 }
 </style>

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import request from '@/utils/request'
-import { updateUserRoleApi } from '../admin'
+import { createUserApi, getUserListApi, updateUserRoleApi } from '../admin'
 
 describe('admin api', () => {
   afterEach(() => {
@@ -17,5 +17,31 @@ describe('admin api', () => {
 
     expect(putSpy).toHaveBeenCalledOnce()
     expect(putSpy).toHaveBeenCalledWith('/admin/users/12/role', { role: 'admin' })
+  })
+
+  it('creates a normal user through the admin users endpoint', async () => {
+    const postSpy = vi.spyOn(request, 'post').mockResolvedValue({ code: 201 })
+    const payload = {
+      username: 'createduser',
+      email: 'created@example.com',
+      password: 'password123',
+    }
+
+    await createUserApi(payload)
+
+    expect(postSpy).toHaveBeenCalledWith('/admin/users', payload)
+  })
+
+  it('passes the search keyword to the user list endpoint', async () => {
+    const getSpy = vi.spyOn(request, 'get').mockResolvedValue({
+      code: 200,
+      data: { items: [], total: 0 },
+    })
+
+    await getUserListApi({ page: 1, page_size: 20, keyword: 'alice' })
+
+    expect(getSpy).toHaveBeenCalledWith('/admin/users', {
+      params: { page: 1, page_size: 20, keyword: 'alice' },
+    })
   })
 })

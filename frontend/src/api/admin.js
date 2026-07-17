@@ -17,6 +17,14 @@ export function getUserListApi(params) {
 }
 
 /**
+ * 管理员创建普通用户
+ * @param {Object} data - { username, email, password }
+ */
+export function createUserApi(data) {
+  return request.post('/admin/users', data)
+}
+
+/**
  * 获取用户详情
  * @param {number} userId
  */

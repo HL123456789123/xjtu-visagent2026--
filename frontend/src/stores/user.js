@@ -32,6 +32,7 @@ function extractSafeFields(user) {
     email: user.email,
     avatar: user.avatar,
     is_active: user.is_active,
+    is_superuser: Boolean(user.is_superuser),
   }
 }
 
@@ -60,7 +61,7 @@ export const useUserStore = defineStore('user', {
     permissions: (state) => state.user?.permissions || [],
     /** 是否为管理员（admin 或 super_admin） */
     isAdmin: (state) => isAdmin(state.user),
-    /** 是否为超级管理员（通过角色判断） */
+    /** 是否为超级管理员（super_admin 角色或历史持久化标记） */
     isSuperAdmin: (state) => isSuperAdmin(state.user),
     /** 是否拥有进入管理端的入口权限 */
     canUseAdminMode: (state) => hasPermission(state.user, MANAGER_ACCESS_PERMISSION),
