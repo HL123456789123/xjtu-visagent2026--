@@ -62,7 +62,7 @@ source=image_path, conf=conf_threshold, device=0, imgsz=640, half=True, verbose=
    首次加载必须失败，而不是输出错误类别。
 4. 用单图、多食材图、空白图调用 Provider：字段仅为 V1 `ModelDetection` 所需的
    `class_name`、`confidence`、原图像素 `bbox`；空白图返回 `[]`；0.25 阈值生效。
-5. 在同一进程连续处理 1 张和多张图片，mock/spying `YOLO` 构造器，断言只加载一次模型，
+5. 在同一进程连续处理 1 张和多张图片，替换并监视 `YOLO` 构造器，断言只加载一次模型，
    且 Food Service 以上传顺序聚合逐张结果。
 6. 使用 V2 `acceptance.json` 为 `accepted: true` 的权重进行一轮真实容器推理，记录 GPU
    P50/P95，并将 `best.pt` 与 `classes.yaml` 作为不可拆分版本一同发布与回滚。

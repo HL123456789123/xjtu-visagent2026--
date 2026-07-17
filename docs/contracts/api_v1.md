@@ -352,7 +352,7 @@ names:
 
 ## 5. 权重交付
 
-权重不进入 Git。
+权重与校验清单随仓库交付。
 
 宿主机：
 
@@ -371,7 +371,7 @@ Docker 容器：
 ```env
 FOOD_PROVIDER=yolo
 FOOD_MODEL_PATH=/models/food/best.pt
-FOOD_CLASSES_PATH=/app/backend/scripts/food_model/classes.yaml
+FOOD_CLASSES_PATH=/app/scripts/food_model/classes.yaml
 FOOD_CONF_THRESHOLD=0.25
 ```
 
@@ -440,10 +440,9 @@ conf_threshold：选填，默认 0.25
 }
 ```
 
-`provider` 只能是：
+`provider` 固定为：
 
 ```text
-mock
 yolo
 ```
 

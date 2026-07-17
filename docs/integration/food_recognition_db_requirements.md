@@ -31,7 +31,7 @@
 ```text
 验证单张 JPG/JPEG/PNG（最大 10 MB）
 → 上传原图到 MinIO
-→ 调用 mock 或 yolo Provider
+→ 调用 YOLO Provider
 → ModelDetection 转 IngredientCandidate
 → 保存 raw_detections
 → 返回同步识别结果
@@ -43,9 +43,8 @@
 
 ## Provider 与 Docker
 
-- `FOOD_PROVIDER=mock`：开发、测试及 Day 3 Mock 全链路。
-- `FOOD_PROVIDER=yolo`：严格读取 `FOOD_MODEL_PATH` 和 `FOOD_CLASSES_PATH`；缺权重、类别文件或推理失败均映射为 HTTP 503。
+- 食品识别固定使用 `FOOD_PROVIDER=yolo`，严格读取 `FOOD_MODEL_PATH` 和 `FOOD_CLASSES_PATH`；缺权重、类别文件或推理失败均映射为 HTTP 503。
 - `docker-compose.yml` 会把宿主机 `./models/food` 以只读方式挂载到容器 `/models/food`。
 - Docker 启动前执行 `alembic upgrade head`，再启动 Uvicorn。
 
-权重 `best.pt` 不进入 Git。没有挂载权重时，必须显式使用 `mock`，或在 `yolo` 模式得到 V1 规定的模型不可用响应；不会自动切换 Provider。
+权重 `best.pt` 与 `manifest.json` 随仓库交付。权重或类别文件不可用时返回 V1 规定的模型不可用响应，不会降级为虚拟识别结果。
