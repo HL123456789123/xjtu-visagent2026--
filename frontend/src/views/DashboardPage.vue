@@ -354,8 +354,13 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .dashboard-page {
   padding: $spacing-lg;
-  background: $bg-color;
   min-height: calc(100vh - #{$header-height} - 40px);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 213, 118, 0.34), transparent 28%),
+    radial-gradient(circle at 86% 8%, rgba(137, 169, 79, 0.18), transparent 26%),
+    linear-gradient(180deg, #fff8ea 0%, #fffdf7 48%, #f8efe3 100%);
+  color: #3a2a1d;
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
 .stats-cards {
