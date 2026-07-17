@@ -423,6 +423,7 @@ def seed_default_admin(db_session, admin_role):
             email=DEFAULT_ADMIN["email"],
             hashed_password=hash_password(password),
             is_active=True,
+            is_superuser=False,
         )
         db_session.add(user)
         db_session.flush()

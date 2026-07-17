@@ -6,12 +6,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.security import get_current_user, RequirePermission, is_super_admin
+from app.core.security import get_current_user, RequirePermission
 from app.core.logger import get_logger
 from app.database.session import get_db
 from app.entity.db_models import User
 from app.entity.schemas import (
     ApiResponse,
+    UserAdminCreate,
     UserAdminUpdate,
     UserRoleAssign,
     UserRoleUpdate,
@@ -53,6 +54,39 @@ async def list_users(
     return ApiResponse(code=200, data=result)
 
 
+@router.post(
+    "/users",
+    response_model=ApiResponse,
+    status_code=201,
+    dependencies=[Depends(RequirePermission("user:manage"))],
+)
+async def create_user(
+    data: UserAdminCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """管理员创建普通用户。"""
+    user = user_service.register(
+        db=db,
+        username=data.username,
+        email=data.email,
+        password=data.password,
+    )
+    return ApiResponse(
+        code=201,
+        message="用户创建成功",
+        data={
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "is_active": user.is_active,
+            "is_superuser": False,
+            "roles": ["user"],
+            "created_at": user.created_at,
+        },
+    )
+
+
 @router.get("/users/{user_id}", response_model=ApiResponse, dependencies=[Depends(RequirePermission("user:list"))])
 async def get_user(
     user_id: int,
@@ -74,7 +108,7 @@ async def get_user(
             "phone": user.phone,
             "avatar": user.avatar,
             "is_active": user.is_active,
-            "is_superuser": is_super_admin(user, db),
+            "is_superuser": bool(user.is_superuser),
             "roles": roles,
             "last_login_at": user.last_login_at,
             "created_at": user.created_at,

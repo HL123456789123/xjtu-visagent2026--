@@ -10,12 +10,13 @@ from app.entity.db_models import User, UserRole
 from app.services.user_service import user_service
 
 
-def create_user(db, username, role):
+def create_user(db, username, role, *, is_superuser=False):
     user = User(
         username=username,
         email=f"{username}@example.com",
         hashed_password=hash_password("password123"),
         is_active=True,
+        is_superuser=is_superuser,
     )
     db.add(user)
     db.flush()
@@ -32,8 +33,11 @@ class TestDefaultAdmin:
         assert admin.username == DEFAULT_ADMIN["username"]
         assert admin.email == DEFAULT_ADMIN["email"]
         assert verify_password(DEFAULT_ADMIN["password"], admin.hashed_password)
+        assert admin.is_superuser is False
         assert user_service.get_user_roles(db, admin) == ["admin"]
-        assert user_service.get_user_permissions(db, admin) == ["*"]
+        permissions = user_service.get_user_permissions(db, admin)
+        assert "user:manage" in permissions
+        assert "system:admin" not in permissions
 
         seed_default_admin(db, seed_rbac["admin"])
         assert db.query(User).filter(User.username == "admin").count() == 1
@@ -74,6 +78,39 @@ class TestAdminRoleApi:
         db.expire_all()
         assert user_service.get_user_roles(db, normal_user) == ["admin"]
 
+    def test_regular_admin_cannot_demote_another_admin(self, client, db, seed_rbac):
+        admin = create_user(db, "manager", seed_rbac["admin"])
+        target = create_user(db, "othermanager", seed_rbac["admin"])
+
+        response = client.put(
+            f"/api/admin/users/{target.id}/role",
+            json={"role": "user"},
+            headers=self.auth_headers(admin),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["message"] == "只有超级管理员可以降级管理员"
+        assert user_service.get_user_roles(db, target) == ["admin"]
+
+    def test_super_admin_can_demote_another_admin(self, client, db, seed_rbac):
+        super_admin = create_user(
+            db,
+            "supermanager",
+            seed_rbac["super_admin"],
+        )
+        target = create_user(db, "othermanager", seed_rbac["admin"])
+
+        response = client.put(
+            f"/api/admin/users/{target.id}/role",
+            json={"role": "user"},
+            headers=self.auth_headers(super_admin),
+        )
+
+        assert response.status_code == 200
+        db.expire_all()
+        assert user_service.get_user_roles(db, target) == ["user"]
+        assert target.is_superuser is False
+
     def test_normal_user_cannot_change_identity(self, client, db, seed_rbac):
         normal_user = create_user(db, "member", seed_rbac["user"])
         target = create_user(db, "target", seed_rbac["user"])
@@ -112,3 +149,85 @@ class TestAdminRoleApi:
 
         assert response.status_code == 422
         assert user_service.get_user_roles(db, target) == ["user"]
+
+
+class TestAdminUserApi:
+    @staticmethod
+    def auth_headers(user):
+        token = user_service.create_access_token_for_user(user)
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_admin_can_create_normal_user(self, client, db, seed_rbac):
+        admin = create_user(db, "manager", seed_rbac["admin"])
+
+        response = client.post(
+            "/api/admin/users",
+            json={
+                "username": "createduser",
+                "email": "created@example.com",
+                "password": "password123",
+            },
+            headers=self.auth_headers(admin),
+        )
+
+        assert response.status_code == 201
+        created = db.query(User).filter(User.username == "createduser").first()
+        assert created is not None
+        assert created.is_superuser is False
+        assert user_service.get_user_roles(db, created) == ["user"]
+
+    def test_user_search_matches_username_or_email(self, client, db, seed_rbac):
+        admin = create_user(db, "manager", seed_rbac["admin"])
+        create_user(db, "searchable", seed_rbac["user"])
+        create_user(db, "another", seed_rbac["user"])
+
+        response = client.get(
+            "/api/admin/users",
+            params={"keyword": "search"},
+            headers=self.auth_headers(admin),
+        )
+
+        assert response.status_code == 200
+        items = response.json()["data"]["items"]
+        assert [item["username"] for item in items] == ["searchable"]
+
+    def test_admin_can_delete_normal_user(self, client, db, seed_rbac):
+        admin = create_user(db, "manager", seed_rbac["admin"])
+        target = create_user(db, "member", seed_rbac["user"])
+
+        response = client.delete(
+            f"/api/admin/users/{target.id}",
+            headers=self.auth_headers(admin),
+        )
+
+        assert response.status_code == 200
+        assert db.query(User).filter(User.id == target.id).first() is None
+
+    def test_regular_admin_cannot_delete_another_admin(self, client, db, seed_rbac):
+        admin = create_user(db, "manager", seed_rbac["admin"])
+        target = create_user(db, "othermanager", seed_rbac["admin"])
+
+        response = client.delete(
+            f"/api/admin/users/{target.id}",
+            headers=self.auth_headers(admin),
+        )
+
+        assert response.status_code == 403
+        assert response.json()["message"] == "只有超级管理员可以删除管理员"
+        assert db.query(User).filter(User.id == target.id).first() is not None
+
+    def test_super_admin_can_delete_another_admin(self, client, db, seed_rbac):
+        super_admin = create_user(
+            db,
+            "supermanager",
+            seed_rbac["super_admin"],
+        )
+        target = create_user(db, "othermanager", seed_rbac["admin"])
+
+        response = client.delete(
+            f"/api/admin/users/{target.id}",
+            headers=self.auth_headers(super_admin),
+        )
+
+        assert response.status_code == 200
+        assert db.query(User).filter(User.id == target.id).first() is None

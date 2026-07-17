@@ -42,6 +42,7 @@ class UserBrief(BaseModel):
     username: str
     email: str
     avatar: Optional[str] = None
+    is_superuser: bool = False
     roles: list[str] = []
     permissions: list[str] = []
 
@@ -68,6 +69,7 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     avatar: Optional[str] = None
     is_active: bool
+    is_superuser: bool = False
     roles: list[str] = []
     permissions: list[str] = []
     last_login_at: Optional[datetime] = None
@@ -152,6 +154,14 @@ class PermissionGroupResponse(BaseModel):
 
 
 # --- 管理员用户管理 ---
+
+
+class UserAdminCreate(BaseModel):
+    """管理员创建普通用户"""
+
+    username: str = Field(..., min_length=3, max_length=50, description="用户名")
+    email: EmailStr = Field(..., description="邮箱")
+    password: str = Field(..., min_length=6, max_length=100, description="初始密码")
 
 
 class UserAdminUpdate(BaseModel):

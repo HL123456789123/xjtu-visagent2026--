@@ -123,18 +123,19 @@ async def get_current_user(
     user = user_service.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
-    # 预计算管理员状态并缓存，避免后续重复查库
+    # 预计算超级管理员状态并缓存，避免后续重复查库。
+    # super_admin 角色为主，users.is_superuser 仅兼容历史数据。
     from app.entity.db_models import UserRole, Role
-    _has_admin_role = (
+    _has_super_admin_role = (
         db.query(UserRole)
         .join(Role, Role.id == UserRole.role_id)
         .filter(
             UserRole.user_id == user.id,
-            Role.name.in_(("admin", "super_admin")),
+            Role.name == "super_admin",
         )
         .first()
     ) is not None
-    _super_admin_cache[user] = _has_admin_role
+    _super_admin_cache[user] = bool(_has_super_admin_role or user.is_superuser)
     return user
 
 
@@ -143,7 +144,7 @@ async def get_current_user(
 
 def is_super_admin(user, db: Session) -> bool:
     """
-    判断用户是否为管理员（admin；兼容旧数据中的 super_admin）
+    判断用户是否为超级管理员（super_admin 角色；兼容旧 is_superuser 标记）
     同一请求内缓存结果，避免重复查库
 
     Args:
@@ -151,7 +152,7 @@ def is_super_admin(user, db: Session) -> bool:
         db: 数据库会话
 
     Returns:
-        是否为管理员
+        是否为超级管理员
     """
     # 检查缓存
     cached = _super_admin_cache.get(user)
@@ -160,16 +161,16 @@ def is_super_admin(user, db: Session) -> bool:
 
     from app.entity.db_models import UserRole, Role
 
-    has_role = (
+    has_super_admin_role = (
         db.query(Role)
         .join(UserRole, UserRole.role_id == Role.id)
         .filter(
             UserRole.user_id == user.id,
-            Role.name.in_(("admin", "super_admin")),
+            Role.name == "super_admin",
         )
         .first()
     )
-    result = has_role is not None
+    result = bool(has_super_admin_role or user.is_superuser)
     _super_admin_cache[user] = result
     return result
 
@@ -185,7 +186,7 @@ class RequirePermission:
         @router.delete("/models/{id}", dependencies=[Depends(RequirePermission("model:delete"))])
 
     校验逻辑：
-        1. 管理员（admin，兼容旧 super_admin 角色）直接放行
+        1. 超级管理员直接放行
         2. 查询用户关联角色拥有的权限编码，匹配则放行
     """
 
@@ -197,7 +198,7 @@ class RequirePermission:
         current_user=Depends(get_current_user),
         db: Session = Depends(get_db),
     ):
-        # 管理员直接放行
+        # 超级管理员直接放行
         if is_super_admin(current_user, db):
             return current_user
 
@@ -226,7 +227,7 @@ class RequirePermission:
 
 class RequireSuperuser:
     """
-    管理员校验依赖（类名为兼容旧调用保留）
+    超级管理员校验依赖
 
     用法：
         @router.get("/admin/xxx", dependencies=[Depends(RequireSuperuser())])

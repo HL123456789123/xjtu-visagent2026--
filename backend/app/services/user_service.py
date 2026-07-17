@@ -197,6 +197,7 @@ class UserService:
                 "phone": user.phone,
                 "avatar": user.avatar,
                 "is_active": user.is_active,
+                "is_superuser": bool(user.is_superuser),
                 "roles": role_map.get(user.id, []),
                 "last_login_at": user.last_login_at,
                 "created_at": user.created_at,
@@ -263,13 +264,6 @@ class UserService:
         Raises:
             HTTPException: 用户不存在或角色不存在
         """
-        if user_id == current_user_id:
-            raise HTTPException(status_code=400, detail="不能修改自身身份")
-
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
-
         if len(role_ids) != 1:
             raise HTTPException(status_code=400, detail="用户必须且只能选择一种身份")
 
@@ -281,17 +275,12 @@ class UserService:
             raise HTTPException(status_code=400, detail=f"角色不存在: {missing_ids}")
         if roles[0].name not in {"admin", "user"}:
             raise HTTPException(status_code=400, detail="用户身份只能是管理员或普通用户")
-
-        # 删除旧角色关联
-        db.query(UserRole).filter(UserRole.user_id == user_id).delete()
-
-        # 添加新角色关联
-        for role_id in role_ids:
-            db.add(UserRole(user_id=user_id, role_id=role_id))
-
-        db.commit()
-        db.refresh(user)
-        return user
+        return UserService.set_user_role(
+            db=db,
+            user_id=user_id,
+            role_name=roles[0].name,
+            current_user_id=current_user_id,
+        )
 
     @staticmethod
     def set_user_role(
@@ -306,9 +295,18 @@ class UserService:
         if user_id == current_user_id:
             raise HTTPException(status_code=400, detail="不能修改自身身份")
 
+        current_user = db.query(User).filter(User.id == current_user_id).first()
+        if not current_user:
+            raise HTTPException(status_code=404, detail="当前用户不存在")
+
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+
+        target_is_admin = UserService.is_admin_user(db, user)
+        if role_name == "user" and target_is_admin:
+            if not UserService.is_super_admin_user(db, current_user):
+                raise HTTPException(status_code=403, detail="只有超级管理员可以降级管理员")
 
         role = db.query(Role).filter(Role.name == role_name).first()
         if not role:
@@ -317,9 +315,43 @@ class UserService:
         # 身份为二选一：清除旧关联后只保留 admin 或 user 中的一个。
         db.query(UserRole).filter(UserRole.user_id == user_id).delete()
         db.add(UserRole(user_id=user_id, role_id=role.id))
+        if role_name == "user":
+            user.is_superuser = False
         db.commit()
         db.refresh(user)
         return user
+
+    @staticmethod
+    def is_admin_user(db: Session, user: User) -> bool:
+        """判断目标用户是否为管理员或超级管理员。"""
+        if user.is_superuser:
+            return True
+        return (
+            db.query(UserRole)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(
+                UserRole.user_id == user.id,
+                Role.name.in_(("admin", "super_admin")),
+            )
+            .first()
+            is not None
+        )
+
+    @staticmethod
+    def is_super_admin_user(db: Session, user: User) -> bool:
+        """判断用户是否具有 super_admin 身份，兼容旧 is_superuser 标记。"""
+        if user.is_superuser:
+            return True
+        return (
+            db.query(UserRole)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(
+                UserRole.user_id == user.id,
+                Role.name == "super_admin",
+            )
+            .first()
+            is not None
+        )
 
     @staticmethod
     def toggle_user_active(db: Session, user_id: int, is_active: bool, current_user_id: int) -> User:
@@ -344,6 +376,11 @@ class UserService:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+
+        if UserService.is_admin_user(db, user):
+            current_user = db.query(User).filter(User.id == current_user_id).first()
+            if not current_user or not UserService.is_super_admin_user(db, current_user):
+                raise HTTPException(status_code=403, detail="只有超级管理员可以启用或禁用管理员")
 
         user.is_active = is_active
         db.commit()
@@ -372,6 +409,11 @@ class UserService:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
+
+        if UserService.is_admin_user(db, user):
+            current_user = db.query(User).filter(User.id == current_user_id).first()
+            if not current_user or not UserService.is_super_admin_user(db, current_user):
+                raise HTTPException(status_code=403, detail="只有超级管理员可以删除管理员")
 
         # 删除用户角色关联
         db.query(UserRole).filter(UserRole.user_id == user_id).delete()
