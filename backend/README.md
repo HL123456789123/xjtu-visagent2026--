@@ -2,11 +2,20 @@
 
 ## 默认管理员账号
 
-系统启动时会幂等创建默认管理员。公开注册接口固定分配 `user` 身份，只有拥有用户管理权限的管理员可以通过 `PUT /api/admin/users/{user_id}/role` 在 `admin` 和 `user` 之间调整用户身份。
+系统启动时会幂等创建默认普通管理员。公开注册接口和管理员新增接口固定分配 `user` 身份。普通管理员可以将普通用户升级为管理员；只有 `super_admin` 身份可以降级、禁用或删除其他管理员。
 
 | 用户名 | 密码 | 邮箱 | 角色 |
 |--------|------|------|------|
 | admin | admin2026 | admin@visagent.com | 管理员 |
+
+### 用户与角色管理接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/users` | 分页查询用户，`keyword` 支持按用户名或邮箱搜索 |
+| POST | `/api/admin/users` | 管理员新增普通用户 |
+| DELETE | `/api/admin/users/{user_id}` | 删除用户，普通管理员不能删除管理员 |
+| PUT | `/api/admin/users/{user_id}/role` | 升级或降级身份，降级管理员仅限 `super_admin` |
 
 ---
 
