@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.entity.db_models import Recipe
+from app.repositories.food_repository import FoodRepository
 
 
 class RecipeRepository:
@@ -15,6 +16,17 @@ class RecipeRepository:
 
     def __init__(self, db: Session):
         self.db = db
+        self.food_repository = FoodRepository(db)
+
+    def get_recognition_for_user(self, recognition_id: int, user_id: int):
+        """读取 Food 接口已经持久化且属于当前用户的识别任务。"""
+        return self.food_repository.get_recognition_for_user(recognition_id, user_id)
+
+    def get_confirmed_ingredients(
+        self, recognition_id: int, user_id: int
+    ) -> list[dict[str, Any]]:
+        """返回确认接口写入的食材快照，直接作为食谱生成输入。"""
+        return self.food_repository.get_confirmed_ingredients(recognition_id, user_id) or []
 
     def create_recipe(
         self,
@@ -43,6 +55,9 @@ class RecipeRepository:
         return (
             self.db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == user_id).first()
         )
+
+    def get_recipe(self, recipe_id: int) -> Recipe | None:
+        return self.db.get(Recipe, recipe_id)
 
     def save_new_recipe_version(
         self,

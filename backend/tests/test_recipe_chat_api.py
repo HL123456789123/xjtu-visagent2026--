@@ -36,25 +36,28 @@ def recipe_response():
     })
 
 
-def make_client():
+def make_client(*, recipe_service=None, chat_service=None):
     app = FastAPI()
     app.include_router(recipe_api.router)
     app.include_router(chat_api.router)
     app.dependency_overrides[get_db] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+    if recipe_service is not None:
+        app.dependency_overrides[recipe_api.get_recipe_service] = lambda: recipe_service
+    if chat_service is not None:
+        app.dependency_overrides[chat_api.get_chat_service] = lambda: chat_service
     return TestClient(app)
 
 
-def test_recipe_create_and_query_contract(monkeypatch):
+def test_recipe_create_and_query_contract():
     class Service:
-        async def create_recipe(self, db, body, user_id):
+        async def create_recipe(self, body, user_id):
             return recipe_response()
 
-        async def get_recipe(self, db, recipe_id, user_id):
+        async def get_recipe(self, recipe_id, user_id):
             return recipe_response()
 
-    monkeypatch.setattr(recipe_api, "recipe_service", Service())
-    with make_client() as client:
+    with make_client(recipe_service=Service()) as client:
         created = client.post("/api/recipes", json={"recognition_id": 12})
         queried = client.get("/api/recipes/1")
     assert created.status_code == 201
@@ -63,19 +66,18 @@ def test_recipe_create_and_query_contract(monkeypatch):
     assert queried.json()["data"]["title"] == "番茄炒蛋"
 
 
-def test_recipe_error_uses_v1_envelope(monkeypatch):
+def test_recipe_error_uses_v1_envelope():
     class Service:
-        async def create_recipe(self, db, body, user_id):
+        async def create_recipe(self, body, user_id):
             raise RecipeGenerationError("尚未确认食材", code="NO_CONFIRMED_INGREDIENTS")
 
-    monkeypatch.setattr(recipe_api, "recipe_service", Service())
-    with make_client() as client:
+    with make_client(recipe_service=Service()) as client:
         response = client.post("/api/recipes", json={"recognition_id": 12})
     assert response.status_code == 422
     assert response.json() == {"code": 422, "message": "尚未确认食材", "data": None}
 
 
-def test_chat_session_and_sse_contract(monkeypatch):
+def test_chat_session_and_sse_contract():
     class Service:
         async def create_session(self, db, user_id, recipe_id):
             return SimpleNamespace(id=5, recipe_id=recipe_id, created_at=datetime.now().astimezone())
@@ -88,8 +90,7 @@ def test_chat_session_and_sse_contract(monkeypatch):
             yield 'event: recipe_updated\ndata: {"recipe_id":1,"version":2}\n\n'
             yield 'event: done\ndata: {"message_id":9}\n\n'
 
-    monkeypatch.setattr(chat_api, "chat_service", Service())
-    with make_client() as client:
+    with make_client(chat_service=Service()) as client:
         session = client.post("/api/chat/sessions", json={"recipe_id": 1})
         message = client.post("/api/chat/sessions/5/messages", json={"content": "少放油"})
     assert session.status_code == 201

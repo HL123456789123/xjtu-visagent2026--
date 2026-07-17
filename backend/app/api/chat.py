@@ -10,9 +10,16 @@ from app.database.session import get_db
 from app.entity.db_models import User
 from app.entity.recipe_schema import CreateChatSessionRequest, SendChatMessageRequest
 from app.entity.schemas import ApiResponse
-from app.services.chat_service import chat_service
+from app.repositories.recipe_repository import RecipeRepository
+from app.services.chat_repository import chat_repository
+from app.services.chat_service import ChatService
+from app.services.recipe_service import RecipeService
 
 router = APIRouter(prefix="/api/chat", tags=["菜谱对话"])
+
+
+def get_chat_service(db: Session = Depends(get_db)) -> ChatService:
+    return ChatService(chat_repository, RecipeService(RecipeRepository(db)))
 
 
 def _error(status_code: int, message: str) -> JSONResponse:
@@ -27,9 +34,10 @@ async def create_session(
     body: CreateChatSessionRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
 ):
     try:
-        session = await chat_service.create_session(db, current_user.id, body.recipe_id)
+        session = await service.create_session(db, current_user.id, body.recipe_id)
     except RecipeNotFoundError as exc:
         return _error(404, exc.message)
     except PermissionDeniedError as exc:
@@ -51,13 +59,14 @@ async def send_message(
     body: SendChatMessageRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
 ):
     try:
-        chat_service.get_session(db, session_id, current_user.id)
+        service.get_session(db, session_id, current_user.id)
     except RecipeNotFoundError as exc:
         return _error(404, exc.message)
     return StreamingResponse(
-        chat_service.send_message_stream(db, session_id, current_user.id, body.content),
+        service.send_message_stream(db, session_id, current_user.id, body.content),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

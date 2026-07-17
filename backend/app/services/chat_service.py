@@ -9,7 +9,7 @@ from app.core.exceptions import PermissionDeniedError, RecipeNotFoundError
 from app.services.agent_graph import chat_recipe_graph
 from app.services.chat_repository import ChatRepository, chat_repository
 from app.services.llm_gateway import InvalidLLMOutputError, LLMUnavailableError
-from app.services.recipe_service import RecipeService, recipe_service
+from app.services.recipe_service import RecipeService
 
 
 def _sse(event: str, data: dict) -> str:
@@ -19,14 +19,14 @@ def _sse(event: str, data: dict) -> str:
 class ChatService:
     def __init__(
         self,
-        repository: ChatRepository = chat_repository,
-        recipes: RecipeService = recipe_service,
+        repository: ChatRepository,
+        recipes: RecipeService,
     ):
         self.repository = repository
         self.recipes = recipes
 
     async def create_session(self, db: Session, user_id: int, recipe_id: int):
-        await self.recipes.get_recipe(db, recipe_id, user_id)
+        await self.recipes.get_recipe(recipe_id, user_id)
         return self.repository.create_session(db, user_id, recipe_id)
 
     def get_session(self, db: Session, session_id: int, user_id: int):
@@ -40,7 +40,7 @@ class ChatService:
     ) -> AsyncGenerator[str, None]:
         session = self.get_session(db, session_id, user_id)
         try:
-            current = await self.recipes.get_recipe(db, session.recipe_id, user_id)
+            current = await self.recipes.get_recipe(session.recipe_id, user_id)
             self.repository.save_message(db, session_id, "user", content)
             current_data = current.model_dump(
                 mode="json",
@@ -63,7 +63,7 @@ class ChatService:
 
             if response["action"] == "update_recipe":
                 updated = await self.recipes.update_recipe(
-                    db, session.recipe_id, user_id, response["recipe"]
+                    session.recipe_id, user_id, response["recipe"]
                 )
                 yield _sse(
                     "recipe_updated",
@@ -80,6 +80,3 @@ class ChatService:
             yield _sse("error", {"code": "LLM_UNAVAILABLE", "message": "智能服务暂时不可用"})
         except Exception:
             yield _sse("error", {"code": "LLM_UNAVAILABLE", "message": "智能服务暂时不可用"})
-
-
-chat_service = ChatService()

@@ -1,17 +1,15 @@
 """菜谱业务服务：Repository、最小 LangGraph、结构校验与版本管理。"""
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import PermissionDeniedError, RecipeGenerationError, RecipeNotFoundError
 from app.entity.recipe_schema import RecipeCreateRequest, RecipeGenerateResult, RecipeResponse
 from app.services.agent_graph import generate_recipe_graph
 from app.services.agent_prompts import NUTRITION_DISCLAIMER
 from app.services.llm_gateway import InvalidLLMOutputError, LLMUnavailableError, get_llm_gateway
-from app.services.recipe_repository import RecipeRepository, recipe_repository
+from app.repositories.recipe_repository import RecipeRepository
 
 
 class RecipeService:
-    def __init__(self, repository: RecipeRepository = recipe_repository):
+    def __init__(self, repository: RecipeRepository):
         self.repository = repository
 
     @staticmethod
@@ -28,15 +26,17 @@ class RecipeService:
         )
 
     async def create_recipe(
-        self, db: Session, request: RecipeCreateRequest, user_id: int
+        self, request: RecipeCreateRequest, user_id: int
     ) -> RecipeResponse:
         recognition = self.repository.get_recognition_for_user(
-            db, request.recognition_id, user_id
+            request.recognition_id, user_id
         )
         if recognition is None:
-            raise RecipeGenerationError("识别记录不存在", code="RECOGNITION_NOT_FOUND")
+            raise RecipeGenerationError(
+                "识别记录不存在", code="RECOGNITION_NOT_FOUND"
+            )
         ingredients = self.repository.get_confirmed_ingredients(
-            db, request.recognition_id, user_id
+            request.recognition_id, user_id
         )
         if not ingredients:
             raise RecipeGenerationError(
@@ -62,7 +62,6 @@ class RecipeService:
             ) from exc
 
         record = self.repository.create_recipe(
-            db,
             user_id,
             request.recognition_id,
             recipe_data.model_dump(mode="json"),
@@ -70,8 +69,8 @@ class RecipeService:
         )
         return self._to_response(record)
 
-    async def get_recipe(self, db: Session, recipe_id: int, user_id: int) -> RecipeResponse:
-        record = self.repository.get_recipe(db, recipe_id)
+    async def get_recipe(self, recipe_id: int, user_id: int) -> RecipeResponse:
+        record = self.repository.get_recipe(recipe_id)
         if record is None:
             raise RecipeNotFoundError("菜谱不存在")
         if record.user_id != user_id:
@@ -79,17 +78,14 @@ class RecipeService:
         return self._to_response(record)
 
     async def update_recipe(
-        self, db: Session, recipe_id: int, user_id: int, new_recipe_data: dict
+        self, recipe_id: int, user_id: int, new_recipe_data: dict
     ) -> RecipeResponse:
         validated = RecipeGenerateResult.model_validate(new_recipe_data)
         record = self.repository.save_new_recipe_version(
-            db, recipe_id, user_id, validated.model_dump(mode="json")
+            recipe_id, user_id, validated.model_dump(mode="json")
         )
         if record is None:
-            if self.repository.get_recipe(db, recipe_id) is None:
+            if self.repository.get_recipe(recipe_id) is None:
                 raise RecipeNotFoundError("菜谱不存在")
             raise PermissionDeniedError("无权修改该菜谱")
         return self._to_response(record)
-
-
-recipe_service = RecipeService()

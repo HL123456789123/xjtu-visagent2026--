@@ -100,8 +100,7 @@ class RecipeGenerationError(AppException):
     """菜谱生成失败异常"""
 
     def __init__(self, message: str = "菜谱生成失败", code: str = "INTERNAL_ERROR"):
-        self.error_code = code
-        super().__init__(code=422, message=message)
+        super().__init__(code=422, message=message, error_code=code)
 
 
 class RecipeNotFoundError(AppException):

@@ -19,13 +19,13 @@ class FakeRecipeRepository:
         self.records = {}
         self.recognition = SimpleNamespace(id=12, user_id=1)
 
-    def get_recognition_for_user(self, db, recognition_id, user_id):
+    def get_recognition_for_user(self, recognition_id, user_id):
         return self.recognition if recognition_id == 12 and user_id == 1 else None
 
-    def get_confirmed_ingredients(self, db, recognition_id, user_id):
+    def get_confirmed_ingredients(self, recognition_id, user_id):
         return self.ingredients
 
-    def create_recipe(self, db, user_id, recognition_id, recipe_data, generator):
+    def create_recipe(self, user_id, recognition_id, recipe_data, generator):
         now = datetime.now().astimezone()
         record = SimpleNamespace(
             id=1, user_id=user_id, recognition_id=recognition_id, version=1,
@@ -34,10 +34,10 @@ class FakeRecipeRepository:
         self.records[1] = record
         return record
 
-    def get_recipe(self, db, recipe_id):
+    def get_recipe(self, recipe_id):
         return self.records.get(recipe_id)
 
-    def save_new_recipe_version(self, db, recipe_id, user_id, recipe_data):
+    def save_new_recipe_version(self, recipe_id, user_id, recipe_data):
         record = self.records.get(recipe_id)
         if not record or record.user_id != user_id:
             return None
@@ -62,26 +62,64 @@ def fake_gateway(monkeypatch):
 async def test_create_query_and_update_recipe(fake_gateway):
     repository = FakeRecipeRepository()
     service = RecipeService(repository)
-    created = await service.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+    created = await service.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     assert created.version == 1
     assert created.generator.is_mock is True
 
-    queried = await service.get_recipe(None, created.recipe_id, 1)
+    queried = await service.get_recipe(created.recipe_id, 1)
     payload = queried.model_dump(exclude={
         "recipe_id", "recognition_id", "version", "nutrition_disclaimer",
         "generator", "created_at", "updated_at",
     })
     payload["servings"] = 3
-    updated = await service.update_recipe(None, created.recipe_id, 1, payload)
+    updated = await service.update_recipe(created.recipe_id, 1, payload)
     assert updated.version == 2
     assert updated.servings == 3
+
+
+@pytest.mark.asyncio
+async def test_confirmed_food_snapshot_is_recipe_generation_input(fake_gateway, monkeypatch):
+    repository = FakeRecipeRepository(
+        ingredients=[
+            {
+                "name": "番茄",
+                "class_name": "tomato",
+                "quantity": 2,
+                "unit": "个",
+                "source": "model",
+            },
+            {
+                "name": "鸡蛋",
+                "class_name": "egg",
+                "quantity": 3,
+                "unit": "个",
+                "source": "manual",
+            },
+        ]
+    )
+    captured = {}
+    original_generate = fake_gateway.generate_recipe
+
+    async def capture_generate(system_prompt, user_prompt, ingredients, preferences):
+        captured["ingredients"] = ingredients
+        captured["preferences"] = preferences
+        return await original_generate(system_prompt, user_prompt, ingredients, preferences)
+
+    monkeypatch.setattr(fake_gateway, "generate_recipe", capture_generate)
+
+    await RecipeService(repository).create_recipe(
+        RecipeCreateRequest(recognition_id=12), user_id=1
+    )
+
+    assert captured["ingredients"] == repository.ingredients
+    assert captured["preferences"]["servings"] == 2
 
 
 @pytest.mark.asyncio
 async def test_unconfirmed_ingredients_is_422(fake_gateway):
     service = RecipeService(FakeRecipeRepository(ingredients=[]))
     with pytest.raises(RecipeGenerationError) as exc:
-        await service.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+        await service.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     assert exc.value.error_code == "NO_CONFIRMED_INGREDIENTS"
 
 
@@ -94,7 +132,7 @@ async def test_llm_unavailable_is_503(monkeypatch):
     monkeypatch.setattr(agent_graph_module, "get_llm_gateway", lambda: BrokenGateway())
     service = RecipeService(FakeRecipeRepository())
     with pytest.raises(RecipeGenerationError) as exc:
-        await service.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+        await service.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     assert exc.value.error_code == "LLM_UNAVAILABLE"
 
 
@@ -116,7 +154,7 @@ async def test_invalid_llm_output_is_422(monkeypatch):
     monkeypatch.setattr(agent_graph_module, "get_llm_gateway", lambda: InvalidGateway())
     service = RecipeService(FakeRecipeRepository())
     with pytest.raises(RecipeGenerationError) as exc:
-        await service.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+        await service.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     assert exc.value.error_code == "INVALID_LLM_OUTPUT"
 
 
@@ -125,7 +163,7 @@ async def test_not_found_and_permission(fake_gateway):
     repository = FakeRecipeRepository()
     service = RecipeService(repository)
     with pytest.raises(RecipeNotFoundError):
-        await service.get_recipe(None, 99, 1)
-    await service.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+        await service.get_recipe(99, 1)
+    await service.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     with pytest.raises(PermissionDeniedError):
-        await service.get_recipe(None, 1, 2)
+        await service.get_recipe(1, 2)

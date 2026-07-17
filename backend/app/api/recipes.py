@@ -10,9 +10,15 @@ from app.database.session import get_db
 from app.entity.db_models import User
 from app.entity.recipe_schema import RecipeCreateRequest
 from app.entity.schemas import ApiResponse
-from app.services.recipe_service import recipe_service
+from app.repositories.recipe_repository import RecipeRepository
+from app.services.recipe_service import RecipeService
 
 router = APIRouter(prefix="/api/recipes", tags=["菜谱"])
+
+
+def get_recipe_service(db: Session = Depends(get_db)) -> RecipeService:
+    """与 Food API 共用同一个请求级数据库会话。"""
+    return RecipeService(RecipeRepository(db))
 
 
 def _error(status_code: int, message: str) -> JSONResponse:
@@ -25,11 +31,11 @@ def _error(status_code: int, message: str) -> JSONResponse:
 @router.post("", response_model=ApiResponse, status_code=status.HTTP_201_CREATED)
 async def create_recipe(
     body: RecipeCreateRequest,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    service: RecipeService = Depends(get_recipe_service),
 ):
     try:
-        recipe = await recipe_service.create_recipe(db, body, current_user.id)
+        recipe = await service.create_recipe(body, current_user.id)
     except RecipeGenerationError as exc:
         status_code = {
             "RECOGNITION_NOT_FOUND": 404,
@@ -44,11 +50,11 @@ async def create_recipe(
 @router.get("/{recipe_id}", response_model=ApiResponse)
 async def get_recipe(
     recipe_id: int,
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    service: RecipeService = Depends(get_recipe_service),
 ):
     try:
-        recipe = await recipe_service.get_recipe(db, recipe_id, current_user.id)
+        recipe = await service.get_recipe(recipe_id, current_user.id)
     except RecipeNotFoundError as exc:
         return _error(404, exc.message)
     except PermissionDeniedError as exc:

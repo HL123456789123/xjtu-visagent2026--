@@ -45,23 +45,23 @@ async def collect(stream):
 @pytest.mark.asyncio
 async def test_answer_does_not_update_version(gateway):
     recipes = RecipeService(FakeRecipeRepository())
-    await recipes.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+    await recipes.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     chat = ChatService(FakeChatRepository(), recipes)
     output = await collect(chat.send_message_stream(None, 5, 1, "什么时候出锅？"))
     assert "event: token" in output
     assert "event: done" in output
     assert "event: recipe_updated" not in output
-    assert (await recipes.get_recipe(None, 1, 1)).version == 1
+    assert (await recipes.get_recipe(1, 1)).version == 1
 
 
 @pytest.mark.asyncio
 async def test_update_increments_version_and_emits_only_v1_events(gateway):
     recipes = RecipeService(FakeRecipeRepository())
-    await recipes.create_recipe(None, RecipeCreateRequest(recognition_id=12), 1)
+    await recipes.create_recipe(RecipeCreateRequest(recognition_id=12), 1)
     chat = ChatService(FakeChatRepository(), recipes)
     output = await collect(chat.send_message_stream(None, 5, 1, "改成三人份并少放油"))
     assert "event: token" in output
     assert "event: recipe_updated" in output
     assert "event: done" in output
     assert "tool_call" not in output and "tool_result" not in output
-    assert (await recipes.get_recipe(None, 1, 1)).version == 2
+    assert (await recipes.get_recipe(1, 1)).version == 2
