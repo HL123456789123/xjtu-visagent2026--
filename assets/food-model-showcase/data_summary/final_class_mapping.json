@@ -1,0 +1,45 @@
+{
+  "classes_yaml": "/root/autodl-tmp/visagent/repository/backend/scripts/food_model/classes.yaml",
+  "output_class_names": [
+    "sugar",
+    "strawberry",
+    "beef",
+    "chicken",
+    "cheese",
+    "milk",
+    "tomato",
+    "butter",
+    "corn",
+    "banana",
+    "egg",
+    "carrot"
+  ],
+  "selected_source_ids": [
+    27,
+    26,
+    2,
+    8,
+    7,
+    20,
+    29,
+    5,
+    11,
+    1,
+    12,
+    6
+  ],
+  "selected_source_names": [
+    "sugar",
+    "strawberries",
+    "beef",
+    "chicken",
+    "cheese",
+    "milk",
+    "tomato",
+    "butter",
+    "corn",
+    "banana",
+    "eggs",
+    "carrot"
+  ]
+}

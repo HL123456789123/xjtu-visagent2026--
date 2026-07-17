@@ -1,0 +1,268 @@
+{
+  "conf_threshold": 0.25,
+  "data": "/root/autodl-tmp/visagent/datasets/food12_grouped/data.yaml",
+  "fixed_images": [
+    {
+      "case": "single_or_regular",
+      "detections": [
+        {
+          "bbox": {
+            "x1": 287.5,
+            "x2": 357.5,
+            "y1": 43.71875,
+            "y2": 159.25
+          },
+          "class_id": 5,
+          "class_name": "milk",
+          "confidence": 0.94580078125
+        },
+        {
+          "bbox": {
+            "x1": 192.0,
+            "x2": 272.5,
+            "y1": 74.875,
+            "y2": 163.5
+          },
+          "class_id": 0,
+          "class_name": "sugar",
+          "confidence": 0.92919921875
+        },
+        {
+          "bbox": {
+            "x1": 441.0,
+            "x2": 513.0,
+            "y1": 308.75,
+            "y2": 399.25
+          },
+          "class_id": 0,
+          "class_name": "sugar",
+          "confidence": 0.92431640625
+        },
+        {
+          "bbox": {
+            "x1": 400.5,
+            "x2": 503.5,
+            "y1": 488.25,
+            "y2": 562.0
+          },
+          "class_id": 7,
+          "class_name": "butter",
+          "confidence": 0.91943359375
+        },
+        {
+          "bbox": {
+            "x1": 313.0,
+            "x2": 427.0,
+            "y1": 525.0,
+            "y2": 595.0
+          },
+          "class_id": 9,
+          "class_name": "banana",
+          "confidence": 0.91796875
+        },
+        {
+          "bbox": {
+            "x1": 457.0,
+            "x2": 512.0,
+            "y1": 364.25,
+            "y2": 408.25
+          },
+          "class_id": 8,
+          "class_name": "corn",
+          "confidence": 0.91162109375
+        }
+      ],
+      "image_path": "/root/autodl-tmp/visagent/datasets/food12_grouped/test/images/DSC_5694_JPG_jpg.rf.095040ca51bb126d164a8c35db60d335.jpg"
+    },
+    {
+      "case": "multi_ingredient",
+      "detections": [
+        {
+          "bbox": {
+            "x1": 199.5,
+            "x2": 280.0,
+            "y1": 74.25,
+            "y2": 157.25
+          },
+          "class_id": 0,
+          "class_name": "sugar",
+          "confidence": 0.9423828125
+        },
+        {
+          "bbox": {
+            "x1": 302.25,
+            "x2": 365.75,
+            "y1": 46.75,
+            "y2": 158.125
+          },
+          "class_id": 5,
+          "class_name": "milk",
+          "confidence": 0.939453125
+        },
+        {
+          "bbox": {
+            "x1": 391.0,
+            "x2": 490.0,
+            "y1": 499.0,
+            "y2": 565.0
+          },
+          "class_id": 7,
+          "class_name": "butter",
+          "confidence": 0.89990234375
+        },
+        {
+          "bbox": {
+            "x1": 439.0,
+            "x2": 509.0,
+            "y1": 319.75,
+            "y2": 399.75
+          },
+          "class_id": 0,
+          "class_name": "sugar",
+          "confidence": 0.8916015625
+        },
+        {
+          "bbox": {
+            "x1": 454.75,
+            "x2": 500.25,
+            "y1": 374.0,
+            "y2": 410.0
+          },
+          "class_id": 8,
+          "class_name": "corn",
+          "confidence": 0.87060546875
+        },
+        {
+          "bbox": {
+            "x1": 301.5,
+            "x2": 414.0,
+            "y1": 531.0,
+            "y2": 597.0
+          },
+          "class_id": 9,
+          "class_name": "banana",
+          "confidence": 0.861328125
+        }
+      ],
+      "image_path": "/root/autodl-tmp/visagent/datasets/food12_grouped/test/images/DSC_5694_JPG_jpg.rf.6ff2ab36c02e73e36b5bdbc877023ddc.jpg"
+    },
+    {
+      "case": "blank",
+      "detections": [],
+      "image_path": "/root/autodl-tmp/visagent/reports/food/final/test/fixed_inputs/blank.png"
+    }
+  ],
+  "latency": {
+    "mean_ms": 8.065726459026337,
+    "p50_ms": 8.138593286275864,
+    "p95_ms": 8.428443223237991,
+    "samples": 100
+  },
+  "overall": {
+    "map50": 0.8736172325093962,
+    "map50_95": 0.6285875240849454,
+    "precision": 0.9749794913863823,
+    "recall": 0.8556515478761699,
+    "speed_ms": {}
+  },
+  "per_class": [
+    {
+      "ap50": 0.9240764284652065,
+      "ap50_95": 0.7298678729408832,
+      "class_id": 0,
+      "precision": 0.9933774834437086,
+      "recall": 0.872093023255814,
+      "source_name": "sugar"
+    },
+    {
+      "ap50": 0.9946837797619047,
+      "ap50_95": 0.6281952644552959,
+      "class_id": 1,
+      "precision": 0.9958333333333333,
+      "recall": 0.93359375,
+      "source_name": "strawberry"
+    },
+    {
+      "ap50": 0.18015284715284716,
+      "ap50_95": 0.046608895137120944,
+      "class_id": 2,
+      "precision": 0.7407407407407407,
+      "recall": 0.5,
+      "source_name": "beef"
+    },
+    {
+      "ap50": 0.9729190374179603,
+      "ap50_95": 0.8064626558081146,
+      "class_id": 3,
+      "precision": 1.0,
+      "recall": 0.9230769230769231,
+      "source_name": "chicken"
+    },
+    {
+      "ap50": 0.9552645147236279,
+      "ap50_95": 0.7312952197553627,
+      "class_id": 4,
+      "precision": 0.9554455445544554,
+      "recall": 0.965,
+      "source_name": "cheese"
+    },
+    {
+      "ap50": 0.9609067269319735,
+      "ap50_95": 0.6775640213475393,
+      "class_id": 5,
+      "precision": 0.9922480620155039,
+      "recall": 0.8888888888888888,
+      "source_name": "milk"
+    },
+    {
+      "ap50": 0.995,
+      "ap50_95": 0.7689800985571572,
+      "class_id": 6,
+      "precision": 1.0,
+      "recall": 0.9959839357429718,
+      "source_name": "tomato"
+    },
+    {
+      "ap50": 0.9277444365852695,
+      "ap50_95": 0.6433016795898941,
+      "class_id": 7,
+      "precision": 0.933579335793358,
+      "recall": 0.9583333333333334,
+      "source_name": "butter"
+    },
+    {
+      "ap50": 0.8829614593365841,
+      "ap50_95": 0.6269372946217946,
+      "class_id": 8,
+      "precision": 0.9893048128342246,
+      "recall": 0.7676348547717843,
+      "source_name": "corn"
+    },
+    {
+      "ap50": 0.9845368582375479,
+      "ap50_95": 0.7307808113894068,
+      "class_id": 9,
+      "precision": 0.9959514170040485,
+      "recall": 0.9609375,
+      "source_name": "banana"
+    },
+    {
+      "ap50": 0.995,
+      "ap50_95": 0.8410569430569431,
+      "class_id": 10,
+      "precision": 0.9411764705882353,
+      "recall": 1.0,
+      "source_name": "egg"
+    },
+    {
+      "ap50": 0.7101607014998346,
+      "ap50_95": 0.311999532359833,
+      "class_id": 11,
+      "precision": 0.95,
+      "recall": 0.5558510638297872,
+      "source_name": "carrot"
+    }
+  ],
+  "split": "test",
+  "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed3407/weights/best.pt"
+}

@@ -1,0 +1,632 @@
+{
+  "conf_threshold": 0.25,
+  "data": "/root/autodl-tmp/visagent/datasets/food30_grouped/data.yaml",
+  "fixed_images": [
+    {
+      "case": "single_or_regular",
+      "detections": [
+        {
+          "bbox": {
+            "x1": 208.75,
+            "x2": 245.25,
+            "y1": 234.125,
+            "y2": 298.0
+          },
+          "class_id": 18,
+          "class_name": "heavy_cream",
+          "confidence": 0.9677734375
+        },
+        {
+          "bbox": {
+            "x1": 262.5,
+            "x2": 401.5,
+            "y1": 261.0,
+            "y2": 315.0
+          },
+          "class_id": 28,
+          "class_name": "sweet_potato",
+          "confidence": 0.955078125
+        },
+        {
+          "bbox": {
+            "x1": 258.0,
+            "x2": 425.0,
+            "y1": 528.0,
+            "y2": 622.0
+          },
+          "class_id": 25,
+          "class_name": "spinach",
+          "confidence": 0.951171875
+        },
+        {
+          "bbox": {
+            "x1": 334.5,
+            "x2": 438.5,
+            "y1": 361.0,
+            "y2": 421.0
+          },
+          "class_id": 29,
+          "class_name": "tomato",
+          "confidence": 0.94091796875
+        },
+        {
+          "bbox": {
+            "x1": 175.625,
+            "x2": 252.625,
+            "y1": 332.0,
+            "y2": 409.0
+          },
+          "class_id": 13,
+          "class_name": "flour",
+          "confidence": 0.93798828125
+        },
+        {
+          "bbox": {
+            "x1": 348.5,
+            "x2": 425.5,
+            "y1": 78.5,
+            "y2": 160.5
+          },
+          "class_id": 27,
+          "class_name": "sugar",
+          "confidence": 0.9365234375
+        },
+        {
+          "bbox": {
+            "x1": 412.0,
+            "x2": 523.0,
+            "y1": 272.0,
+            "y2": 321.5
+          },
+          "class_id": 23,
+          "class_name": "potato",
+          "confidence": 0.9306640625
+        },
+        {
+          "bbox": {
+            "x1": 193.0,
+            "x2": 298.5,
+            "y1": 103.0,
+            "y2": 156.75
+          },
+          "class_id": 26,
+          "class_name": "strawberries",
+          "confidence": 0.92529296875
+        },
+        {
+          "bbox": {
+            "x1": 422.5,
+            "x2": 558.5,
+            "y1": 111.125,
+            "y2": 164.875
+          },
+          "class_id": 8,
+          "class_name": "chicken",
+          "confidence": 0.923828125
+        },
+        {
+          "bbox": {
+            "x1": 382.75,
+            "x2": 478.25,
+            "y1": 501.25,
+            "y2": 557.0
+          },
+          "class_id": 5,
+          "class_name": "butter",
+          "confidence": 0.92236328125
+        },
+        {
+          "bbox": {
+            "x1": 177.25,
+            "x2": 256.75,
+            "y1": 282.5,
+            "y2": 307.5
+          },
+          "class_id": 24,
+          "class_name": "shrimp",
+          "confidence": 0.921875
+        },
+        {
+          "bbox": {
+            "x1": 414.75,
+            "x2": 479.25,
+            "y1": 326.5,
+            "y2": 410.0
+          },
+          "class_id": 27,
+          "class_name": "sugar",
+          "confidence": 0.86083984375
+        },
+        {
+          "bbox": {
+            "x1": 416.5,
+            "x2": 541.0,
+            "y1": 552.0,
+            "y2": 620.0
+          },
+          "class_id": 6,
+          "class_name": "carrot",
+          "confidence": 0.85595703125
+        },
+        {
+          "bbox": {
+            "x1": 175.5,
+            "x2": 293.75,
+            "y1": 530.0,
+            "y2": 598.0
+          },
+          "class_id": 2,
+          "class_name": "beef",
+          "confidence": 0.84765625
+        },
+        {
+          "bbox": {
+            "x1": 247.75,
+            "x2": 334.25,
+            "y1": 347.0,
+            "y2": 412.0
+          },
+          "class_id": 21,
+          "class_name": "mushrooms",
+          "confidence": 0.67822265625
+        },
+        {
+          "bbox": {
+            "x1": 255.5,
+            "x2": 425.5,
+            "y1": 528.5,
+            "y2": 616.5
+          },
+          "class_id": 2,
+          "class_name": "beef",
+          "confidence": 0.48828125
+        },
+        {
+          "bbox": {
+            "x1": 245.5,
+            "x2": 318.5,
+            "y1": 344.75,
+            "y2": 405.25
+          },
+          "class_id": 21,
+          "class_name": "mushrooms",
+          "confidence": 0.27978515625
+        }
+      ],
+      "image_path": "/root/autodl-tmp/visagent/datasets/food30_grouped/val/images/DSC_5687_JPG_jpg.rf.06e281fe1b38d8df300f61100ef1ab7e.jpg"
+    },
+    {
+      "case": "multi_ingredient",
+      "detections": [
+        {
+          "bbox": {
+            "x1": 267.0,
+            "x2": 424.0,
+            "y1": 532.0,
+            "y2": 622.0
+          },
+          "class_id": 25,
+          "class_name": "spinach",
+          "confidence": 0.96435546875
+        },
+        {
+          "bbox": {
+            "x1": 345.5,
+            "x2": 425.5,
+            "y1": 78.625,
+            "y2": 159.625
+          },
+          "class_id": 27,
+          "class_name": "sugar",
+          "confidence": 0.955078125
+        },
+        {
+          "bbox": {
+            "x1": 383.5,
+            "x2": 481.5,
+            "y1": 501.75,
+            "y2": 562.0
+          },
+          "class_id": 5,
+          "class_name": "butter",
+          "confidence": 0.9541015625
+        },
+        {
+          "bbox": {
+            "x1": 261.5,
+            "x2": 399.0,
+            "y1": 262.0,
+            "y2": 315.0
+          },
+          "class_id": 28,
+          "class_name": "sweet_potato",
+          "confidence": 0.95166015625
+        },
+        {
+          "bbox": {
+            "x1": 208.625,
+            "x2": 244.875,
+            "y1": 234.125,
+            "y2": 298.0
+          },
+          "class_id": 18,
+          "class_name": "heavy_cream",
+          "confidence": 0.95068359375
+        },
+        {
+          "bbox": {
+            "x1": 194.5,
+            "x2": 297.5,
+            "y1": 102.25,
+            "y2": 156.0
+          },
+          "class_id": 26,
+          "class_name": "strawberries",
+          "confidence": 0.92529296875
+        },
+        {
+          "bbox": {
+            "x1": 422.5,
+            "x2": 556.5,
+            "y1": 111.3125,
+            "y2": 165.25
+          },
+          "class_id": 8,
+          "class_name": "chicken",
+          "confidence": 0.921875
+        },
+        {
+          "bbox": {
+            "x1": 336.5,
+            "x2": 439.0,
+            "y1": 364.0,
+            "y2": 420.0
+          },
+          "class_id": 29,
+          "class_name": "tomato",
+          "confidence": 0.9208984375
+        },
+        {
+          "bbox": {
+            "x1": 250.375,
+            "x2": 338.5,
+            "y1": 349.5,
+            "y2": 412.5
+          },
+          "class_id": 21,
+          "class_name": "mushrooms",
+          "confidence": 0.916015625
+        },
+        {
+          "bbox": {
+            "x1": 417.0,
+            "x2": 531.5,
+            "y1": 545.5,
+            "y2": 615.5
+          },
+          "class_id": 6,
+          "class_name": "carrot",
+          "confidence": 0.91552734375
+        },
+        {
+          "bbox": {
+            "x1": 176.25,
+            "x2": 253.25,
+            "y1": 334.5,
+            "y2": 408.0
+          },
+          "class_id": 13,
+          "class_name": "flour",
+          "confidence": 0.91357421875
+        },
+        {
+          "bbox": {
+            "x1": 180.0,
+            "x2": 257.5,
+            "y1": 283.0,
+            "y2": 308.5
+          },
+          "class_id": 24,
+          "class_name": "shrimp",
+          "confidence": 0.88720703125
+        },
+        {
+          "bbox": {
+            "x1": 175.0,
+            "x2": 292.0,
+            "y1": 532.5,
+            "y2": 597.5
+          },
+          "class_id": 2,
+          "class_name": "beef",
+          "confidence": 0.87109375
+        },
+        {
+          "bbox": {
+            "x1": 409.75,
+            "x2": 477.25,
+            "y1": 325.0,
+            "y2": 411.0
+          },
+          "class_id": 27,
+          "class_name": "sugar",
+          "confidence": 0.79296875
+        },
+        {
+          "bbox": {
+            "x1": 461.0,
+            "x2": 519.0,
+            "y1": 272.5,
+            "y2": 315.5
+          },
+          "class_id": 11,
+          "class_name": "corn",
+          "confidence": 0.48828125
+        }
+      ],
+      "image_path": "/root/autodl-tmp/visagent/datasets/food30_grouped/val/images/DSC_5687_JPG_jpg.rf.3b992e5fa1ba25f5902f123a560ddbad.jpg"
+    },
+    {
+      "case": "blank",
+      "detections": [],
+      "image_path": "/root/autodl-tmp/visagent/reports/food/baseline/fixed_inputs/blank.png"
+    }
+  ],
+  "latency": {
+    "mean_ms": 7.752130255103111,
+    "p50_ms": 7.907303050160408,
+    "p95_ms": 8.15250538289547,
+    "samples": 100
+  },
+  "overall": {
+    "map50": 0.9561654514916699,
+    "map50_95": 0.6932495629843949,
+    "precision": 0.9516358463726885,
+    "recall": 0.932404181184669,
+    "speed_ms": {}
+  },
+  "per_class": [
+    {
+      "ap50": 0.736296669352824,
+      "ap50_95": 0.5124962076562889,
+      "class_id": 0,
+      "precision": 0.6565656565656566,
+      "recall": 0.7303370786516854,
+      "source_name": "apple"
+    },
+    {
+      "ap50": 0.9875828197226503,
+      "ap50_95": 0.7253318219023209,
+      "class_id": 1,
+      "precision": 0.9942196531791907,
+      "recall": 0.9772727272727273,
+      "source_name": "banana"
+    },
+    {
+      "ap50": 0.9942511574074073,
+      "ap50_95": 0.7918724016062606,
+      "class_id": 2,
+      "precision": 0.9841269841269841,
+      "recall": 0.96875,
+      "source_name": "beef"
+    },
+    {
+      "ap50": 0.9345588235294118,
+      "ap50_95": 0.5997566776180085,
+      "class_id": 3,
+      "precision": 0.9852941176470589,
+      "recall": 0.9305555555555556,
+      "source_name": "blueberries"
+    },
+    {
+      "ap50": 0.995,
+      "ap50_95": 0.8109943234742524,
+      "class_id": 4,
+      "precision": 0.9696969696969697,
+      "recall": 1.0,
+      "source_name": "bread"
+    },
+    {
+      "ap50": 0.995,
+      "ap50_95": 0.7405614524505427,
+      "class_id": 5,
+      "precision": 0.975609756097561,
+      "recall": 0.9950248756218906,
+      "source_name": "butter"
+    },
+    {
+      "ap50": 0.9647252747252747,
+      "ap50_95": 0.7364996882029426,
+      "class_id": 6,
+      "precision": 0.9728260869565217,
+      "recall": 0.9728260869565217,
+      "source_name": "carrot"
+    },
+    {
+      "ap50": 0.9920012867445173,
+      "ap50_95": 0.7444593995370756,
+      "class_id": 7,
+      "precision": 0.9948717948717949,
+      "recall": 0.97,
+      "source_name": "cheese"
+    },
+    {
+      "ap50": 0.9917615520384925,
+      "ap50_95": 0.7582227515978996,
+      "class_id": 8,
+      "precision": 0.9652173913043478,
+      "recall": 0.9910714285714286,
+      "source_name": "chicken"
+    },
+    {
+      "ap50": 0.9948461538461538,
+      "ap50_95": 0.7162932983921692,
+      "class_id": 9,
+      "precision": 0.9545454545454546,
+      "recall": 0.984375,
+      "source_name": "chicken_breast"
+    },
+    {
+      "ap50": 0.985,
+      "ap50_95": 0.7498748586873469,
+      "class_id": 10,
+      "precision": 1.0,
+      "recall": 0.9821428571428571,
+      "source_name": "chocolate"
+    },
+    {
+      "ap50": 0.9831147818035934,
+      "ap50_95": 0.7539395688163888,
+      "class_id": 11,
+      "precision": 0.9868421052631579,
+      "recall": 0.9375,
+      "source_name": "corn"
+    },
+    {
+      "ap50": 0.9759093680681662,
+      "ap50_95": 0.7452869334890945,
+      "class_id": 12,
+      "precision": 0.9710144927536232,
+      "recall": 0.9178082191780822,
+      "source_name": "eggs"
+    },
+    {
+      "ap50": 0.9841296091856928,
+      "ap50_95": 0.7106276000530023,
+      "class_id": 13,
+      "precision": 0.9553072625698324,
+      "recall": 0.9661016949152542,
+      "source_name": "flour"
+    },
+    {
+      "ap50": 0.7537877885331348,
+      "ap50_95": 0.5266450746209956,
+      "class_id": 14,
+      "precision": 0.9868421052631579,
+      "recall": 0.7211538461538461,
+      "source_name": "goat_cheese"
+    },
+    {
+      "ap50": 0.9946904906117505,
+      "ap50_95": 0.7039103478305421,
+      "class_id": 15,
+      "precision": 0.984251968503937,
+      "recall": 0.9765625,
+      "source_name": "green_beans"
+    },
+    {
+      "ap50": 0.9680722252675109,
+      "ap50_95": 0.7101675177475898,
+      "class_id": 16,
+      "precision": 0.82,
+      "recall": 0.9318181818181818,
+      "source_name": "ground_beef"
+    },
+    {
+      "ap50": 0.9772263968447816,
+      "ap50_95": 0.6008253202930598,
+      "class_id": 17,
+      "precision": 0.9922480620155039,
+      "recall": 0.8421052631578947,
+      "source_name": "ham"
+    },
+    {
+      "ap50": 0.9786634603966274,
+      "ap50_95": 0.6859990929904869,
+      "class_id": 18,
+      "precision": 0.9318181818181818,
+      "recall": 0.9704142011834319,
+      "source_name": "heavy_cream"
+    },
+    {
+      "ap50": 0.6562376840584523,
+      "ap50_95": 0.3373654209582758,
+      "class_id": 19,
+      "precision": 0.8290598290598291,
+      "recall": 0.5773809523809523,
+      "source_name": "lime"
+    },
+    {
+      "ap50": 0.9930035747857531,
+      "ap50_95": 0.7511663410739949,
+      "class_id": 20,
+      "precision": 0.9622641509433962,
+      "recall": 0.9807692307692307,
+      "source_name": "milk"
+    },
+    {
+      "ap50": 0.9942215813383697,
+      "ap50_95": 0.6287392637803277,
+      "class_id": 21,
+      "precision": 0.9568345323741008,
+      "recall": 0.9779411764705882,
+      "source_name": "mushrooms"
+    },
+    {
+      "ap50": 0.9372901030831824,
+      "ap50_95": 0.7147166980095019,
+      "class_id": 22,
+      "precision": 0.9548387096774194,
+      "recall": 0.8361581920903954,
+      "source_name": "onion"
+    },
+    {
+      "ap50": 0.9858880161946088,
+      "ap50_95": 0.6573963728294205,
+      "class_id": 23,
+      "precision": 0.84,
+      "recall": 0.9607843137254902,
+      "source_name": "potato"
+    },
+    {
+      "ap50": 0.9920283140449447,
+      "ap50_95": 0.594715910221939,
+      "class_id": 24,
+      "precision": 1.0,
+      "recall": 0.90625,
+      "source_name": "shrimp"
+    },
+    {
+      "ap50": 0.9918852459016392,
+      "ap50_95": 0.6986239747491689,
+      "class_id": 25,
+      "precision": 0.9523809523809523,
+      "recall": 1.0,
+      "source_name": "spinach"
+    },
+    {
+      "ap50": 0.995,
+      "ap50_95": 0.7839883834712503,
+      "class_id": 26,
+      "precision": 0.9940476190476191,
+      "recall": 0.9940476190476191,
+      "source_name": "strawberries"
+    },
+    {
+      "ap50": 0.9849600589479237,
+      "ap50_95": 0.8426085399042427,
+      "class_id": 27,
+      "precision": 0.9818181818181818,
+      "recall": 0.9529411764705882,
+      "source_name": "sugar"
+    },
+    {
+      "ap50": 0.9946874809253494,
+      "ap50_95": 0.719050560312519,
+      "class_id": 28,
+      "precision": 0.8767123287671232,
+      "recall": 1.0,
+      "source_name": "sweet_potato"
+    },
+    {
+      "ap50": 0.973143627391888,
+      "ap50_95": 0.745351087254936,
+      "class_id": 29,
+      "precision": 0.9914163090128756,
+      "recall": 0.9625,
+      "source_name": "tomato"
+    }
+  ],
+  "split": "val",
+  "weights": "/root/autodl-tmp/visagent/reports/food/runs/food30_baseline_yolo11n_seed42_rerun/weights/best.pt"
+}
