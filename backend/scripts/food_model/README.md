@@ -23,8 +23,9 @@ cd "$ROOT/repository/backend/scripts/food_model"
 ```
 
 已验证环境为 RTX 4090 48GB、CUDA、PyTorch 2.3.0+cu121、Ultralytics 8.4.96。
-派生数据和报告保存在 `$ROOT/datasets`、`$ROOT/reports`；权重不进入 Git。最终只复制
-冠军权重到仓库根目录 `models/food/best.pt`，供 Docker 挂载到 `/models/food/best.pt`。
+派生数据和报告保存在 `$ROOT/datasets`、`$ROOT/reports`。为便于后端直接接入，已验收的
+最终冠军权重 `models/food/best.pt` 会随仓库发布，供 Docker 挂载到
+`/models/food/best.pt`；其余预训练权重、训练缓存、派生数据和实验 checkpoint 仍不进入 Git。
 
 ## 本次交付版本与类别顺序
 
@@ -171,8 +172,10 @@ $PY verify_delivery.py --weights "$ROOT/repository/models/food/best.pt" \
   --data "$ROOT/datasets/food12_grouped/data.yaml" --classes classes.yaml
 ```
 
-`best.pt`、运行缓存、派生数据均被 Git 忽略。线上回滚只需将该文件恢复为前一版已验收
-权重，并重新启动持有单例 Provider 的容器；不得改写 classes.yaml 的既有 ID 顺序。
+除 `models/food/best.pt` 这一显式交付例外外，其余 `.pt`、运行缓存和派生数据均被 Git
+忽略。`models/food/manifest.json` 记录最终权重的 SHA-256、字节数、架构和类别顺序；后端
+接线前应先核对它。线上回滚只需成对恢复前一版已验收权重与类别文件，并重新启动持有单例
+Provider 的容器；不得改写 classes.yaml 的既有 ID 顺序。
 
 ## Docker 接线要求
 

@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "artifact": "best.pt",
+  "model_version": "food-yolo-v1",
+  "architecture": "YOLO11s",
+  "size_bytes": 19194771,
+  "sha256": "680accafc8c22854b37e959106c37a44b3e8c42b4d260d7f3c4681021c2a31cd",
+  "classes_path": "backend/scripts/food_model/classes.yaml",
+  "class_names": [
+    "sugar",
+    "strawberry",
+    "beef",
+    "chicken",
+    "cheese",
+    "milk",
+    "tomato",
+    "butter",
+    "corn",
+    "banana",
+    "egg",
+    "carrot"
+  ],
+  "runtime": {
+    "device": 0,
+    "imgsz": 640,
+    "half": true,
+    "default_conf_threshold": 0.25
+  }
+}

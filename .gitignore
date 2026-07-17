@@ -12,6 +12,7 @@
 __pycache__/
 *.py[cod]
 *.pt
+!models/food/best.pt
 *.egg-info/
 .venv/
 .venv.bak/

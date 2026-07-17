@@ -54,15 +54,17 @@ source=image_path, conf=conf_threshold, device=0, imgsz=640, half=True, verbose=
 
 ## 联调验收
 
-1. 容器启动后执行 `python -c "import torch; assert torch.cuda.is_available()"`，并确认
+1. 下载仓库后先运行 `sha256sum models/food/best.pt`，其结果必须与
+   `models/food/manifest.json` 的 `sha256` 一致；随后再构建容器。
+2. 容器启动后执行 `python -c "import torch; assert torch.cuda.is_available()"`，并确认
    `torch.cuda.get_device_name(0)` 可返回 GPU 名称。
-2. 校验 `/models/food/best.pt` 和 V1 classes 路径可读；故意替换错误 classes 文件时启动/
+3. 校验 `/models/food/best.pt` 和 V1 classes 路径可读；故意替换错误 classes 文件时启动/
    首次加载必须失败，而不是输出错误类别。
-3. 用单图、多食材图、空白图调用 Provider：字段仅为 V1 `ModelDetection` 所需的
+4. 用单图、多食材图、空白图调用 Provider：字段仅为 V1 `ModelDetection` 所需的
    `class_name`、`confidence`、原图像素 `bbox`；空白图返回 `[]`；0.25 阈值生效。
-4. 在同一进程连续处理 1 张和多张图片，mock/spying `YOLO` 构造器，断言只加载一次模型，
+5. 在同一进程连续处理 1 张和多张图片，mock/spying `YOLO` 构造器，断言只加载一次模型，
    且 Food Service 以上传顺序聚合逐张结果。
-5. 使用 V2 `acceptance.json` 为 `accepted: true` 的权重进行一轮真实容器推理，记录 GPU
+6. 使用 V2 `acceptance.json` 为 `accepted: true` 的权重进行一轮真实容器推理，记录 GPU
    P50/P95，并将 `best.pt` 与 `classes.yaml` 作为不可拆分版本一同发布与回滚。
 
 ## 回滚
