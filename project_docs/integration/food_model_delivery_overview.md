@@ -18,9 +18,9 @@ recognize(image_path: str, conf_threshold: float = 0.25) -> list[ModelDetection]
 每个结果只包含 `class_name`、`confidence` 和原图像素坐标 `bbox`；没有检测结果时返回
 `[]`。模型不能接收图片数组，也不能写数据库或生成 `candidate_id`。
 
-V1 冠军权重位于仓库 `models/food/best.pt`，并且不会进入 Git；类别映射位于
-`backend/scripts/food_model/classes.yaml`。权重、数据集 `data.yaml` 与类别文件已经过
-ID 顺序一致性校验。
+V1 冠军权重位于仓库 `models/food/best.pt`，会随 GitHub 分支发布；类别映射位于
+`backend/scripts/food_model/classes.yaml`。`models/food/manifest.json` 固化 SHA-256、文件
+大小、架构与类别顺序。权重、数据集 `data.yaml` 与类别文件已经过 ID 顺序一致性校验。
 
 ## 2. V1 模型与数据结论
 
@@ -120,4 +120,5 @@ FOOD_CONF_THRESHOLD=0.25
 - [V1 类别定义](../../backend/scripts/food_model/classes.yaml)
 - [V2 后端与 Docker 接线单](food_model_v2_backend_handoff.md)
 - 外部报告根目录：`/root/autodl-tmp/visagent/reports/food`
-- V1 交付权重：`models/food/best.pt`（Git 忽略）
+- V1 交付权重：`models/food/best.pt`（随 GitHub 发布）
+- 权重校验清单：`models/food/manifest.json`
