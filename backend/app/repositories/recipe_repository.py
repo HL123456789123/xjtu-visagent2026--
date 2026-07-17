@@ -44,6 +44,10 @@ class RecipeRepository:
             self.db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == user_id).first()
         )
 
+    def get_recipe(self, recipe_id: int) -> Recipe | None:
+        """Internal ownership check helper; public services still use the fixed user-scoped API."""
+        return self.db.get(Recipe, recipe_id)
+
     def save_new_recipe_version(
         self,
         recipe_id: int,

@@ -38,6 +38,10 @@ class ChatRepository:
             .first()
         )
 
+    def get_session(self, session_id: int) -> ChatSession | None:
+        """Internal ownership check helper; callers do not write SQLAlchemy queries."""
+        return self.db.get(ChatSession, session_id)
+
     def save_message(self, session_id: int, role: str, content: str) -> ChatMessage:
         message = ChatMessage(session_id=session_id, role=role, content=content)
         session = self.db.get(ChatSession, session_id)
