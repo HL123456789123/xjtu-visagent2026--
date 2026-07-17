@@ -7,9 +7,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getActivePinia } from 'pinia'
 import { useUserStore } from '@/stores/user'
+import { ACCESS_MODES, isManagerPath, normalizeAccessMode } from '@/utils/accessMode'
 
 // 路由表
 const routes = [
+  {
+    path: '/entry',
+    name: 'Entry',
+    component: () => import('@/views/EntryPage.vue'),
+    meta: { title: '选择入口', requiresAuth: false },
+  },
   {
     path: '/login',
     name: 'Login',
@@ -26,14 +33,26 @@ const routes = [
   {
     path: '/',
     component: () => import('@/components/layout/MainLayout.vue'),
-    redirect: '/chat',
+    redirect: '/start',
     meta: { requiresAuth: true },
     children: [
+      {
+        path: 'start',
+        name: 'Start',
+        component: () => import('@/views/StartPage.vue'),
+        meta: { title: '开始', icon: 'Goods' },
+      },
+      {
+        path: 'food-recipes',
+        name: 'FoodRecipe',
+        component: () => import('@/views/FoodRecipePage.vue'),
+        meta: { title: '食物菜谱', icon: 'Goods' },
+      },
       {
         path: 'chat',
         name: 'Chat',
         component: () => import('@/views/ChatPage.vue'),
-        meta: { title: '智能对话', icon: 'ChatDotRound', permission: 'agent:chat' },
+        meta: { title: '智能对话', icon: 'ChatDotRound' },
       },
       {
         path: 'detection',
@@ -45,31 +64,31 @@ const routes = [
         path: 'training',
         name: 'Training',
         component: () => import('@/views/TrainingPage.vue'),
-        meta: { title: '模型训练', icon: 'Cpu', permission: 'training:task:view' },
+        meta: { title: '模型训练', icon: 'Cpu', permission: 'training:task:view', requiresManager: true },
       },
       {
         path: 'datasets',
         name: 'Datasets',
         component: () => import('@/views/DatasetPage.vue'),
-        meta: { title: '数据集', icon: 'FolderOpened', permission: 'dataset:view' },
+        meta: { title: '数据集', icon: 'FolderOpened', permission: 'dataset:view', requiresManager: true },
       },
       {
         path: 'models',
         name: 'Models',
         component: () => import('@/views/ModelPage.vue'),
-        meta: { title: '模型管理', icon: 'Goods', permission: 'model:view' },
+        meta: { title: '模型管理', icon: 'Goods', permission: 'model:view', requiresManager: true },
       },
       {
         path: 'history',
         name: 'History',
         component: () => import('@/views/HistoryPage.vue'),
-        meta: { title: '历史记录', icon: 'Clock', permission: 'detection:task:view' },
+        meta: { title: '历史记录', icon: 'Clock' },
       },
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/DashboardPage.vue'),
-        meta: { title: '仪表盘', icon: 'DataAnalysis', permission: 'system:dashboard' },
+        meta: { title: '数据看板', icon: 'DataAnalysis', permission: 'system:dashboard', requiresManager: true },
       },
       {
         path: 'profile',
@@ -82,13 +101,13 @@ const routes = [
         path: 'admin/users',
         name: 'UserManage',
         component: () => import('@/views/admin/UserManagePage.vue'),
-        meta: { title: '用户管理', icon: 'UserFilled', permission: 'user:list' },
+        meta: { title: '用户管理', icon: 'UserFilled', permission: 'user:list', requiresManager: true },
       },
       {
         path: 'admin/roles',
         name: 'RoleManage',
         component: () => import('@/views/admin/RoleManagePage.vue'),
-        meta: { title: '角色管理', icon: 'Key', permission: 'role:list' },
+        meta: { title: '角色管理', icon: 'Key', permission: 'role:list', requiresManager: true },
       },
       // 404 页面（已登录用户在 MainLayout 主内容区内显示）
       {
@@ -117,6 +136,23 @@ function getVerified() {
 
 function setVerified(val) {
   sessionStorage.setItem(VERIFIED_KEY, val ? 'true' : 'false')
+}
+
+function getQueryValue(value) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function getDefaultAuthedPath(userStore) {
+  return userStore.isAdminMode ? '/dashboard' : '/start'
+}
+
+function getLoginRedirect(to, mode, userStore) {
+  const redirect = getQueryValue(to.query.redirect)
+  if (mode === ACCESS_MODES.ADMIN && userStore.canUseAdminMode) {
+    return redirect || '/dashboard'
+  }
+  if (redirect && !isManagerPath(redirect)) return redirect
+  return '/start'
 }
 
 router.beforeEach(async (to, from, next) => {
@@ -148,7 +184,7 @@ router.beforeEach(async (to, from, next) => {
       setVerified(false)
       userStore.user = null
       // 用户状态已失效，直接跳转登录页，避免后续权限检查误判为 404
-      next({ path: '/login', query: { redirect: to.fullPath } })
+      next({ path: '/entry', query: { redirect: to.fullPath } })
       return
     }
   }
@@ -159,22 +195,48 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (requiresAuth && !userStore.isLoggedIn) {
-    // 未登录，跳转到登录页
-    next({ path: '/login', query: { redirect: to.fullPath } })
-  } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
-    // 已登录则跳转到首页
-    next('/')
-  } else if (to.meta.permission) {
+    // 未登录，先进入入口选择页
+    next({ path: '/entry', query: { redirect: to.fullPath } })
+    return
+  }
+
+  if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
+    // 已登录则按照当前入口模式跳转
+    const mode = normalizeAccessMode(to.query.mode || userStore.accessMode)
+    userStore.setAccessMode(mode === ACCESS_MODES.ADMIN && !userStore.canUseAdminMode ? ACCESS_MODES.USER : mode)
+    next(getLoginRedirect(to, mode, userStore))
+    return
+  }
+
+  if (to.path === '/entry' && userStore.isLoggedIn && from.path === '/login') {
+    next(getDefaultAuthedPath(userStore))
+    return
+  }
+
+  if (to.matched.some((record) => record.meta.requiresManager)) {
+    // 管理端页面需要入口权限，并且当前处于管理端入口模式
+    if (!userStore.canUseAdminMode) {
+      next({ name: 'NotFound' })
+      return
+    } else if (userStore.accessMode !== ACCESS_MODES.ADMIN) {
+      next({ path: '/entry', query: { redirect: to.fullPath } })
+      return
+    }
+  }
+
+  if (to.meta.permission) {
     // 需要特定权限的路由，使用细粒度权限判断
     const hasPerm = userStore.hasPermission(to.meta.permission)
     if (!hasPerm) {
       next({ name: 'NotFound' })
+      return
     } else {
       next()
+      return
     }
-  } else {
-    next()
   }
+
+  next()
 })
 
 export default router

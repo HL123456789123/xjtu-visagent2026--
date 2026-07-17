@@ -4,7 +4,6 @@
 import pytest
 from fastapi import HTTPException
 from app.services.user_service import user_service
-from app.entity.db_models import User
 
 
 class TestUserRegister:
@@ -73,11 +72,11 @@ class TestUserLogin:
 class TestUserRoles:
     """用户角色管理测试"""
 
-    def test_new_user_has_no_roles(self, db):
-        """新注册用户默认无角色"""
-        user = user_service.register(db, "norole", "norole@example.com", "password123")
+    def test_new_user_has_user_role(self, db, seed_rbac):
+        """新注册用户只能被分配普通用户角色"""
+        user = user_service.register(db, "normal", "normal@example.com", "password123")
         roles = user_service.get_user_roles(db, user)
-        assert roles == []
+        assert roles == ["user"]
 
     def test_get_user_by_id(self, db):
         """根据 ID 获取用户"""

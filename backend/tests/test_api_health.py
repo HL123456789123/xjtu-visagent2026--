@@ -1,6 +1,7 @@
 """
 健康检查 & 根路由 API 测试
 """
+
 from fastapi.testclient import TestClient
 from main import app
 
@@ -30,28 +31,41 @@ class TestHealth:
         response = client.get("/api/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["status"] == "healthy"
+        assert data["app_name"] == "VisAgent"
+        assert data["version"] == "0.1.0"
 
     def test_database_health(self):
         """GET /api/health/database 返回数据库状态"""
         response = client.get("/api/health/database")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
+        assert data["status"] == "healthy"
+        assert "数据库连接正常" in data["message"]
 
     def test_redis_health(self):
-        """GET /api/health/redis 返回 Redis 状态"""
+        """GET /api/health/redis 真实反映 Redis 在线或离线状态。"""
         response = client.get("/api/health/redis")
-        assert response.status_code == 200
+        assert response.status_code in {200, 503}
         data = response.json()
-        assert data["status"] == "ok"
+        if response.status_code == 200:
+            assert data["status"] == "healthy"
+            assert "Redis 连接正常" in data["message"]
+        else:
+            assert data == {"code": 503, "message": "Redis 连接失败", "data": None}
 
     def test_minio_health(self):
-        """GET /api/health/minio 返回 MinIO 状态"""
+        """GET /api/health/minio 真实反映 MinIO 在线或离线状态。"""
         response = client.get("/api/health/minio")
-        assert response.status_code == 200
+        assert response.status_code in {200, 503}
         data = response.json()
-        assert data["status"] == "ok"
+        if response.status_code == 200:
+            assert data["status"] == "healthy"
+            assert "MinIO 连接正常" in data["message"]
+        else:
+            assert data["code"] == 503
+            assert "MinIO 连接失败" in data["message"]
+            assert data["data"] is None
 
 
 class TestDocs:

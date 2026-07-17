@@ -17,7 +17,7 @@ from app.config.settings import settings
 from app.database.session import get_db
 from app.core.tz import now_cst
 
-# super_admin 状态缓存，避免修改 SQLAlchemy 模型实例
+# 管理员状态缓存，保留旧名称以兼容现有调用
 # 使用 WeakKeyDictionary，user 对象被 GC 时自动清理
 _super_admin_cache: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
@@ -123,7 +123,8 @@ async def get_current_user(
     user = user_service.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
-    # 预计算 super_admin 状态并缓存，避免后续重复查库
+    # 预计算超级管理员状态并缓存，避免后续重复查库。
+    # super_admin 角色为主，users.is_superuser 仅兼容历史数据。
     from app.entity.db_models import UserRole, Role
     _has_super_admin_role = (
         db.query(UserRole)
@@ -134,7 +135,7 @@ async def get_current_user(
         )
         .first()
     ) is not None
-    _super_admin_cache[user] = _has_super_admin_role
+    _super_admin_cache[user] = bool(_has_super_admin_role or user.is_superuser)
     return user
 
 
@@ -143,7 +144,7 @@ async def get_current_user(
 
 def is_super_admin(user, db: Session) -> bool:
     """
-    判断用户是否为超级管理员（拥有 super_admin 角色）
+    判断用户是否为超级管理员（super_admin 角色；兼容旧 is_superuser 标记）
     同一请求内缓存结果，避免重复查库
 
     Args:
@@ -160,7 +161,7 @@ def is_super_admin(user, db: Session) -> bool:
 
     from app.entity.db_models import UserRole, Role
 
-    has_role = (
+    has_super_admin_role = (
         db.query(Role)
         .join(UserRole, UserRole.role_id == Role.id)
         .filter(
@@ -169,7 +170,7 @@ def is_super_admin(user, db: Session) -> bool:
         )
         .first()
     )
-    result = has_role is not None
+    result = bool(has_super_admin_role or user.is_superuser)
     _super_admin_cache[user] = result
     return result
 
@@ -185,7 +186,7 @@ class RequirePermission:
         @router.delete("/models/{id}", dependencies=[Depends(RequirePermission("model:delete"))])
 
     校验逻辑：
-        1. 超级管理员（拥有 super_admin 角色）直接放行
+        1. 超级管理员直接放行
         2. 查询用户关联角色拥有的权限编码，匹配则放行
     """
 

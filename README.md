@@ -92,6 +92,28 @@ bun run dev
 
 前端默认运行在 `http://localhost:3000`，自动代理 `/api` 请求到后端。
 
+### Docker 代理网络下构建
+
+前端镜像默认通过 `https://registry.npmmirror.com` 安装依赖，并在下载包校验失败时清理缓存后重试。通常直接执行即可：
+
+```bash
+docker compose build frontend
+```
+
+如果当前网络更适合 npm 官方源，可以临时覆盖 Registry；代理不稳定时还可以继续降低并发数：
+
+```bash
+BUN_REGISTRY=https://registry.npmjs.org BUN_NETWORK_CONCURRENCY=8 docker compose build frontend
+```
+
+PowerShell 对应写法：
+
+```powershell
+$env:BUN_REGISTRY = "https://registry.npmjs.org"
+$env:BUN_NETWORK_CONCURRENCY = "8"
+docker compose build frontend
+```
+
 ## 开发指南
 
 ### 后端开发
@@ -176,17 +198,18 @@ visagent/
 └── AGENTS.md                   # AI Agent 开发指南
 ```
 
-## 默认测试账号
+## 默认管理员账号
 
-系统启动时会自动创建以下默认用户，密码规则为：**用户名首字母大写 + @2026**
+系统启动时会幂等创建默认普通管理员。公开注册或由管理员新增的账号只能成为普通用户。普通管理员可以升级普通用户，但不能降级、禁用或删除其他管理员；只有 `super_admin` 身份可以执行这些管理员级操作。
 
 | 用户名 | 密码 | 邮箱 | 角色 |
 |--------|------|------|------|
-| super | Super@2026 | super@visagent.com | 超级管理员 |
-| admin | Admin@2026 | admin@visagent.com | 管理员 |
-| operator | Operator@2026 | operator@visagent.com | 操作员 |
-| user | User@2026 | user@visagent.com | 普通用户 |
-| viewer | Viewer@2026 | viewer@visagent.com | 访客 |
+| admin | admin2026 | admin@visagent.com | 管理员 |
+
+管理端“系统管理”包含：
+
+- 用户管理：新增、搜索、编辑、启停和删除用户。
+- 角色管理：按用户名或邮箱搜索用户，并在普通用户与管理员之间调整身份。
 
 ## 许可证
 

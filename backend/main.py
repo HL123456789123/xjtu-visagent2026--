@@ -2,11 +2,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 from app.config.settings import settings
-from app.core.rate_limiter import limiter
 from app.api.auth import router as auth_router
+from app.api.admin import router as admin_router
 from app.api.health import router as health_router
 from app.api.training import router as training_router
 from app.api.detection import router as detection_router
@@ -16,8 +14,8 @@ from app.api.dashboard import router as dashboard_router
 from app.api.camera import router as camera_router
 from app.api.knowledge import router as knowledge_router
 from app.api.model import router as model_router
-from app.api.admin import router as admin_router
 from app.api.dataset import router as dataset_router
+from app.api.food import file_router, router as food_router
 from app.core.logger import setup_logger
 from app.core.exceptions import (
     AppException,
@@ -53,11 +51,13 @@ def init_redis():
 
 def init_seed():
     """初始化种子数据（检测场景等）"""
-    from app.database.session import SessionLocal
+    from app.database.session import SessionLocal, Base, engine
     from app.database.seed import seed_scenes
 
-    # 数据库表结构由 Alembic 迁移管理，不再使用 create_all
-    # 启动前请确保已执行: alembic upgrade head
+    # 创建所有数据库表（如果不存在）
+    logger.info('正在创建数据库表...')
+    Base.metadata.create_all(bind=engine)
+    logger.info('数据库表创建完成')
 
     db = SessionLocal()
     try:
@@ -66,15 +66,6 @@ def init_seed():
         logger.error(f"种子数据初始化失败: {e}")
     finally:
         db.close()
-
-
-def _recover_training_tasks():
-    """恢复因进程重启而中断的训练任务状态"""
-    try:
-        from app.services.training_service import training_service
-        training_service._recover_interrupted_tasks()
-    except Exception as e:
-        logger.error(f"训练任务恢复失败: {e}")
 
 
 @asynccontextmanager
@@ -86,11 +77,8 @@ async def lifespan(_app: FastAPI):
     init_minio()
     init_redis()
     init_seed()
-    # 在种子数据初始化完成后，恢复中断的训练任务
-    _recover_training_tasks()
     yield
-    # 关闭时执行：优雅清理资源
-    logger.info("正在关闭服务...")
+    # 关闭时执行
     await _shutdown_cleanup()
     logger.info("服务已关闭")
 
@@ -184,15 +172,11 @@ async def _shutdown_cleanup():
 app = FastAPI(
     title="VisAgent",
     version="0.1.0",
-    description="基于 YOLO26 的目标检测智能体平台 API",
+    description="基于 YOLOv11 的目标检测智能体平台 API",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
-
-# ── API 限流配置 ─────────────────────────────────
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── 注册异常处理器 ──────────────────────────────────
 app.add_exception_handler(AppException, app_exception_handler)
@@ -210,13 +194,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
-    expose_headers=["X-Request-Id"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── 注册路由 ─────────────────────────────────────────
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(health_router)
 app.include_router(training_router)
 app.include_router(detection_router)
@@ -226,8 +210,9 @@ app.include_router(dashboard_router)
 app.include_router(camera_router)
 app.include_router(knowledge_router)
 app.include_router(model_router)
-app.include_router(admin_router)
 app.include_router(dataset_router)
+app.include_router(food_router)
+app.include_router(file_router)
 
 @app.get("/")
 def root():
@@ -239,11 +224,6 @@ def root():
     }
 
 
-def startup():
-    import uvicorn
-    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8888)
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8888)
+    uvicorn.run("main:app", host="0.0.0.0", port=8888, reload=True)

@@ -1,390 +1,188 @@
 <template>
   <div class="role-manage-page">
     <div class="page-header">
-      <h2>角色管理</h2>
-      <el-button type="primary" @click="openCreateDialog">
-        <el-icon><Plus /></el-icon>新建角色
-      </el-button>
+      <div>
+        <h2>角色管理</h2>
+        <p>管理员可以升级普通用户；只有超级管理员可以降级管理员。</p>
+      </div>
+      <div class="search-actions">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索用户名或邮箱"
+          clearable
+          style="width: 260px"
+          @clear="searchUsers"
+          @keyup.enter="searchUsers"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <el-button type="primary" @click="searchUsers">
+          <el-icon><Search /></el-icon>搜索
+        </el-button>
+      </div>
     </div>
 
-    <!-- 角色列表表格 -->
-    <el-table :data="roles" v-loading="loading" stripe border style="width: 100%">
-      <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="name" label="角色标识" width="120" />
-      <el-table-column prop="display_name" label="显示名称" width="120" />
-      <el-table-column prop="description" label="描述" min-width="180">
+    <el-alert
+      title="权限规则"
+      type="info"
+      :closable="false"
+      show-icon
+      class="permission-alert"
+    >
+      <template #default>
+        普通管理员可以将普通用户升级为管理员，但不能降级、禁用或删除管理员；超级管理员
+        可以管理其他管理员，但不能修改自身身份。
+      </template>
+    </el-alert>
+
+    <el-table :data="users" v-loading="loading" stripe border style="width: 100%">
+      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column prop="username" label="用户名" width="160" />
+      <el-table-column prop="email" label="邮箱" min-width="220" />
+      <el-table-column label="当前身份" width="140">
         <template #default="{ row }">
-          {{ row.description || '-' }}
+          <el-tag :type="getRoleTagType(getUserRole(row))">
+            {{ getRoleDisplayName(getUserRole(row)) }}
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="系统角色" width="90">
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">
-          <el-tag v-if="row.is_system" type="info" size="small">系统内置</el-tag>
-          <span v-else>-</span>
+          <el-tag :type="row.is_active ? 'success' : 'danger'" size="small">
+            {{ row.is_active ? '启用' : '禁用' }}
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="权限数" width="80">
+      <el-table-column label="操作" width="210" fixed="right">
         <template #default="{ row }">
-          {{ row.permissions?.length || 0 }}
-        </template>
-      </el-table-column>
-      <el-table-column label="用户数" width="80">
-        <template #default="{ row }">
-          {{ row.user_count || 0 }}
-        </template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="160">
-        <template #default="{ row }">
-          {{ formatTime(row.created_at) }}
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button size="small" text @click="openEditDialog(row)">编辑</el-button>
-          <el-button size="small" text @click="openPermissionDialog(row)">分配权限</el-button>
           <el-button
+            v-if="!isAdminUser(row)"
             size="small"
-            text
-            type="danger"
-            :disabled="row.is_system"
-            @click="deleteRole(row)"
+            type="primary"
+            plain
+            @click="changeRole(row, 'admin')"
           >
-            删除
+            升级为管理员
           </el-button>
+          <el-button
+          v-else-if="isAdminUser(row) && !isSuperAdminUser(row)"
+            size="small"
+            type="warning"
+            plain
+            :disabled="!canDemote(row)"
+            @click="changeRole(row, 'user')"
+          >
+            降为普通用户
+          </el-button>
+          <span v-else class="protected-text">超级管理员不可调整</span>
         </template>
       </el-table-column>
     </el-table>
 
-    <!-- 创建/编辑角色弹窗 -->
-    <el-dialog
-      v-model="showFormDialog"
-      :title="isEditing ? '编辑角色' : '新建角色'"
-      width="500px"
-    >
-      <el-form :model="roleForm" :rules="formRules" ref="formRef" label-width="100px">
-        <el-form-item label="角色标识" prop="name">
-          <el-input
-            v-model="roleForm.name"
-            placeholder="如：editor"
-            :disabled="isEditing"
-          />
-        </el-form-item>
-        <el-form-item label="显示名称" prop="display_name">
-          <el-input v-model="roleForm.display_name" placeholder="如：编辑者" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input
-            v-model="roleForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="角色描述（可选）"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showFormDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitRoleForm" :loading="submitting">
-          {{ isEditing ? '保存' : '创建' }}
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 权限分配弹窗 -->
-    <el-dialog v-model="showPermissionDialog" title="分配权限" width="600px">
-      <div class="permission-assign-info">
-        <p>为角色 <strong>{{ currentRole?.display_name }}</strong> 分配权限：</p>
-      </div>
-      <div v-loading="loadingPermissions" class="permission-groups">
-        <div v-for="group in permissionGroups" :key="group.module" class="permission-group">
-          <div class="group-header">
-            <el-checkbox
-              :model-value="isModuleAllSelected(group.module)"
-              :indeterminate="isModuleIndeterminate(group.module)"
-              @change="(val) => toggleModuleAll(group.module, val)"
-            >
-              <strong>{{ getModuleName(group.module) }}</strong>
-            </el-checkbox>
-          </div>
-          <div class="group-items">
-            <el-checkbox-group v-model="selectedPermissionCodes">
-              <el-checkbox
-                v-for="perm in group.permissions"
-                :key="perm.code"
-                :value="perm.code"
-              >
-                {{ perm.name }}
-              </el-checkbox>
-            </el-checkbox-group>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="showPermissionDialog = false">取消</el-button>
-        <el-button type="primary" @click="submitPermissionAssign" :loading="submitting">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
+    <div class="pagination-wrapper">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        :total="total"
+        layout="total, sizes, prev, pager, next, jumper"
+        @size-change="loadUsers"
+        @current-change="loadUsers"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
-import {
-  getRoleListApi,
-  createRoleApi,
-  updateRoleApi,
-  deleteRoleApi,
-  assignRolePermissionsApi,
-  getPermissionListApi,
-} from '@/api/admin'
+import { Search } from '@element-plus/icons-vue'
+import { getUserListApi, updateUserRoleApi } from '@/api/admin'
+import { useUserStore } from '@/stores/user'
 
-// 角色列表
-const roles = ref([])
+const userStore = useUserStore()
+const users = ref([])
 const loading = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const searchKeyword = ref('')
 
-// 表单弹窗
-const showFormDialog = ref(false)
-const isEditing = ref(false)
-const formRef = ref(null)
-const roleForm = ref({
-  id: null,
-  name: '',
-  display_name: '',
-  description: '',
-})
-const formRules = {
-  name: [
-    { required: true, message: '请输入角色标识', trigger: 'blur' },
-    { min: 2, max: 50, message: '长度在 2 到 50 个字符', trigger: 'blur' },
-    { pattern: /^[a-z_]+$/, message: '只能包含小写字母和下划线', trigger: 'blur' },
-  ],
-  display_name: [
-    { required: true, message: '请输入显示名称', trigger: 'blur' },
-  ],
+function isAdminUser(user) {
+  return Boolean(user.is_superuser)
+    || user.roles?.some((role) => role === 'admin' || role === 'super_admin')
 }
 
-// 权限分配弹窗
-const showPermissionDialog = ref(false)
-const currentRole = ref(null)
-const permissionGroups = ref([])
-const selectedPermissionCodes = ref([])
-const loadingPermissions = ref(false)
-const submitting = ref(false)
-
-// 模块显示名映射
-const moduleNames = {
-  auth: '用户与权限',
-  detection: '检测模块',
-  training: '训练模块',
-  model: '模型管理',
-  agent: '智能对话',
-  knowledge: '知识库',
-  system: '系统管理',
+function isSuperAdminUser(user) {
+  return Boolean(user.is_superuser) || user.roles?.includes('super_admin')
 }
 
-// 获取模块显示名
-function getModuleName(module) {
-  return moduleNames[module] || module
+function getUserRole(user) {
+  if (isSuperAdminUser(user)) return 'super_admin'
+  return isAdminUser(user) ? 'admin' : 'user'
 }
 
-// 格式化时间
-function formatTime(timeStr) {
-  if (!timeStr) return '-'
-  const date = new Date(timeStr)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function getRoleDisplayName(role) {
+  return {
+    super_admin: '超级管理员',
+    admin: '管理员',
+    user: '普通用户',
+  }[role]
 }
 
-// 加载角色列表
-async function loadRoles() {
+function getRoleTagType(role) {
+  return { super_admin: 'danger', admin: 'warning', user: 'info' }[role] || 'info'
+}
+
+function canDemote(user) {
+  return userStore.isSuperAdmin
+    && user.id !== userStore.user?.id
+    && !isSuperAdminUser(user)
+}
+
+async function loadUsers() {
   loading.value = true
   try {
-    const res = await getRoleListApi()
-    roles.value = res.data || []
+    const params = { page: currentPage.value, page_size: pageSize.value }
+    if (searchKeyword.value.trim()) params.keyword = searchKeyword.value.trim()
+    const response = await getUserListApi(params)
+    users.value = response.data?.items || []
+    total.value = response.data?.total || 0
   } catch (error) {
-    console.error('加载角色列表失败:', error)
-    ElMessage.error('加载角色列表失败')
+    console.error('加载用户角色失败:', error)
+    ElMessage.error('加载用户角色失败')
   } finally {
     loading.value = false
   }
 }
 
-// 加载权限列表
-async function loadPermissions() {
-  loadingPermissions.value = true
+function searchUsers() {
+  currentPage.value = 1
+  loadUsers()
+}
+
+async function changeRole(user, role) {
+  const action = role === 'admin' ? '升级为管理员' : '降为普通用户'
   try {
-    const res = await getPermissionListApi()
-    permissionGroups.value = res.data || []
-  } catch (error) {
-    console.error('加载权限列表失败:', error)
-    ElMessage.error('加载权限列表失败')
-  } finally {
-    loadingPermissions.value = false
-  }
-}
-
-// 打开创建弹窗
-function openCreateDialog() {
-  isEditing.value = false
-  roleForm.value = {
-    id: null,
-    name: '',
-    display_name: '',
-    description: '',
-  }
-  showFormDialog.value = true
-}
-
-// 打开编辑弹窗
-function openEditDialog(role) {
-  isEditing.value = true
-  roleForm.value = {
-    id: role.id,
-    name: role.name,
-    display_name: role.display_name,
-    description: role.description || '',
-  }
-  showFormDialog.value = true
-}
-
-// 提交角色表单
-async function submitRoleForm() {
-  const form = formRef.value
-  if (form) {
-    try {
-      await form.validate()
-    } catch {
-      return
-    }
-  }
-
-  submitting.value = true
-  try {
-    if (isEditing.value) {
-      await updateRoleApi(roleForm.value.id, {
-        display_name: roleForm.value.display_name,
-        description: roleForm.value.description,
-      })
-      ElMessage.success('角色更新成功')
-    } else {
-      await createRoleApi({
-        name: roleForm.value.name,
-        display_name: roleForm.value.display_name,
-        description: roleForm.value.description,
-      })
-      ElMessage.success('角色创建成功')
-    }
-    showFormDialog.value = false
-    loadRoles()
-  } catch (error) {
-    console.error('保存角色失败:', error)
-    ElMessage.error(error.response?.data?.detail || '保存角色失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 打开权限分配弹窗
-function openPermissionDialog(role) {
-  currentRole.value = role
-  selectedPermissionCodes.value = [...(role.permissions || [])]
-  showPermissionDialog.value = true
-  if (permissionGroups.value.length === 0) {
-    loadPermissions()
-  }
-}
-
-// 判断模块是否全选
-function isModuleAllSelected(module) {
-  const group = permissionGroups.value.find((g) => g.module === module)
-  if (!group) return false
-  return group.permissions.every((p) => selectedPermissionCodes.value.includes(p.code))
-}
-
-// 判断模块是否半选
-function isModuleIndeterminate(module) {
-  const group = permissionGroups.value.find((g) => g.module === module)
-  if (!group) return false
-  const selectedCount = group.permissions.filter((p) =>
-    selectedPermissionCodes.value.includes(p.code)
-  ).length
-  return selectedCount > 0 && selectedCount < group.permissions.length
-}
-
-// 切换模块全选
-function toggleModuleAll(module, checked) {
-  const group = permissionGroups.value.find((g) => g.module === module)
-  if (!group) return
-  const moduleCodes = group.permissions.map((p) => p.code)
-  if (checked) {
-    // 添加模块所有权限
-    const newCodes = [...new Set([...selectedPermissionCodes.value, ...moduleCodes])]
-    selectedPermissionCodes.value = newCodes
-  } else {
-    // 移除模块所有权限
-    selectedPermissionCodes.value = selectedPermissionCodes.value.filter(
-      (code) => !moduleCodes.includes(code)
-    )
-  }
-}
-
-// 提交权限分配
-async function submitPermissionAssign() {
-  submitting.value = true
-  try {
-    await assignRolePermissionsApi(currentRole.value.id, {
-      permission_codes: selectedPermissionCodes.value,
+    await ElMessageBox.confirm(`确定将“${user.username}”${action}吗？`, '确认身份变更', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: role === 'admin' ? 'warning' : 'error',
     })
-    ElMessage.success('权限分配成功')
-    showPermissionDialog.value = false
-    loadRoles()
-  } catch (error) {
-    console.error('分配权限失败:', error)
-    ElMessage.error(error.response?.data?.detail || '分配权限失败')
-  } finally {
-    submitting.value = false
-  }
-}
-
-// 删除角色
-async function deleteRole(role) {
-  if (role.is_system) {
-    ElMessage.warning('系统内置角色不可删除')
-    return
-  }
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除角色 "${role.display_name}" 吗？此操作不可恢复！`,
-      '确认删除',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'error',
-      }
-    )
-    await deleteRoleApi(role.id)
-    ElMessage.success('角色已删除')
-    loadRoles()
+    await updateUserRoleApi(user.id, { role })
+    ElMessage.success(`已将“${user.username}”${action}`)
+    loadUsers()
   } catch (error) {
     if (error !== 'cancel') {
-      console.error('删除角色失败:', error)
-      ElMessage.error(error.response?.data?.detail || '删除角色失败')
+      console.error('更新用户身份失败:', error)
+      ElMessage.error(error.response?.data?.message || '更新用户身份失败')
     }
   }
 }
 
-// 初始化
-onMounted(() => {
-  loadRoles()
-})
+onMounted(loadUsers)
 </script>
 
 <style scoped>
@@ -397,47 +195,46 @@ onMounted(() => {
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 16px;
 }
 
 .page-header h2 {
   margin: 0;
-  font-size: 20px;
   color: #303133;
+  font-size: 20px;
 }
 
-.permission-assign-info {
-  margin-bottom: 16px;
-  color: #606266;
+.page-header p {
+  margin: 8px 0 0;
+  color: #909399;
+  font-size: 13px;
 }
 
-.permission-groups {
-  max-height: 400px;
-  overflow-y: auto;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 12px;
-}
-
-.permission-group {
-  margin-bottom: 16px;
-}
-
-.permission-group:last-child {
-  margin-bottom: 0;
-}
-
-.group-header {
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.group-items {
+.search-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding-left: 24px;
+  gap: 12px;
+}
+
+.permission-alert {
+  margin-bottom: 20px;
+}
+
+.protected-text {
+  color: #909399;
+  font-size: 13px;
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+@media (max-width: 760px) {
+  .page-header {
+    flex-direction: column;
+  }
 }
 </style>

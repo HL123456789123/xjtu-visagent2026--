@@ -9,7 +9,7 @@ Pydantic 请求/响应模型
 """
 
 from datetime import datetime
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, EmailStr
 
 
@@ -42,6 +42,7 @@ class UserBrief(BaseModel):
     username: str
     email: str
     avatar: Optional[str] = None
+    is_superuser: bool = False
     roles: list[str] = []
     permissions: list[str] = []
 
@@ -68,6 +69,7 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     avatar: Optional[str] = None
     is_active: bool
+    is_superuser: bool = False
     roles: list[str] = []
     permissions: list[str] = []
     last_login_at: Optional[datetime] = None
@@ -154,6 +156,14 @@ class PermissionGroupResponse(BaseModel):
 # --- 管理员用户管理 ---
 
 
+class UserAdminCreate(BaseModel):
+    """管理员创建普通用户"""
+
+    username: str = Field(..., min_length=3, max_length=50, description="用户名")
+    email: EmailStr = Field(..., description="邮箱")
+    password: str = Field(..., min_length=6, max_length=100, description="初始密码")
+
+
 class UserAdminUpdate(BaseModel):
     """管理员修改用户信息"""
 
@@ -166,6 +176,12 @@ class UserRoleAssign(BaseModel):
     """分配用户角色"""
 
     role_ids: list[int] = Field(..., description="角色 ID 列表")
+
+
+class UserRoleUpdate(BaseModel):
+    """设置用户身份（管理员或普通用户）"""
+
+    role: Literal["admin", "user"] = Field(..., description="用户身份")
 
 
 class UserStatusUpdate(BaseModel):

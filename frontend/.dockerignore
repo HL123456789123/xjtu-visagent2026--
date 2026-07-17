@@ -1,0 +1,17 @@
+# 本地依赖和构建产物由镜像构建阶段生成，不能作为 Docker 上下文上传。
+node_modules/
+dist/
+.vite/
+
+# 本地配置和密钥由 Compose 环境变量注入。
+.env
+.env.*
+!.env.example
+
+# 测试、覆盖率、日志及开发工具文件不参与生产镜像构建。
+coverage/
+*.log
+src/**/__tests__/
+.git/
+.idea/
+.vscode/

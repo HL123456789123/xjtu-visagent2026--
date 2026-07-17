@@ -3,11 +3,12 @@
 表结构总览：
 用户权限：users, roles, permissions, user_roles, role_permissions
 检测业务：detection_scenes, detection_tasks, detection_results
-模型体系：models, model_versions, scene_models, training_tasks, training_metrics
-智能体：  chat_sessions, chat_messages
+模型管理：training_tasks, training_metrics, model_versions
+智能体：  recipes, chat_sessions, chat_messages
 系统运维：operation_logs
 """
 
+from datetime import datetime
 from sqlalchemy import (
     Column,
     Integer,
@@ -19,10 +20,10 @@ from sqlalchemy import (
     Text,
     Boolean,
     BigInteger,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from app.database.session import Base
-from app.core.tz import now_cst
 
 
 # ══════════════════════════════════════════════════════════════
@@ -41,15 +42,18 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False, comment="加密密码")
     phone = Column(String(20), nullable=True, comment="手机号")
     avatar = Column(String(500), nullable=True, comment="头像 URL")
-    is_active = Column(Boolean, default=True, server_default='true', comment="是否启用")
+    is_active = Column(Boolean, default=True, comment="是否启用")
+    is_superuser = Column(Boolean, default=False, comment="是否超级管理员")
     last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
     # 关联
     user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     detection_tasks = relationship("DetectionTask", back_populates="user")
     training_tasks = relationship("TrainingTask", back_populates="user")
+    food_recognition_tasks = relationship("FoodRecognitionTask", back_populates="user")
+    recipes = relationship("Recipe", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
     operation_logs = relationship("OperationLog", back_populates="user")
     models = relationship("Model", back_populates="creator")
@@ -68,7 +72,7 @@ class Role(Base):
     display_name = Column(String(100), nullable=False, comment="角色显示名，如 管理员/操作员/访客")
     description = Column(String(500), nullable=True, comment="角色描述")
     is_system = Column(Boolean, default=False, comment="是否系统内置角色（不可删除）")
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
 
     # 关联
     user_roles = relationship("UserRole", back_populates="role", cascade="all, delete-orphan")
@@ -106,7 +110,7 @@ class UserRole(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False, index=True)
-    created_at = Column(DateTime, default=now_cst)
+    created_at = Column(DateTime, default=datetime.now)
 
     user = relationship("User", back_populates="user_roles")
     role = relationship("Role", back_populates="user_roles")
@@ -151,8 +155,8 @@ class DetectionScene(Base):
     class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
     is_active = Column(Boolean, default=True, comment="是否启用")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
-    created_at = Column(DateTime, default=now_cst)
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # 关联
     detection_tasks = relationship("DetectionTask", back_populates="scene")
@@ -183,10 +187,7 @@ class DetectionTask(Base):
         String(20), nullable=False, comment="检测类型：single/batch/folder/video/camera"
     )
     status = Column(
-        String(20),
-        default="pending",
-        index=True,
-        comment="状态：pending/processing/completed/failed",
+        String(20), default="pending", comment="状态：pending/processing/completed/failed"
     )
 
     # 检测统计
@@ -208,7 +209,7 @@ class DetectionTask(Base):
     risk_level = Column(String(20), nullable=True, comment="风险等级：low/medium/high/critical")
     analyzed_at = Column(DateTime, nullable=True, comment="分析完成时间")
 
-    created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.now, index=True, comment="创建时间")
     completed_at = Column(DateTime, nullable=True, comment="完成时间")
 
     # 关联
@@ -245,7 +246,7 @@ class DetectionResult(Base):
     inference_time = Column(Float, nullable=True, comment="该图推理耗时（ms）")
     image_width = Column(Integer, nullable=True, comment="图像宽度")
     image_height = Column(Integer, nullable=True, comment="图像高度")
-    created_at = Column(DateTime, default=now_cst)
+    created_at = Column(DateTime, default=datetime.now)
 
     # 关联
     task = relationship("DetectionTask", back_populates="results")
@@ -262,23 +263,24 @@ class Model(Base):
     __tablename__ = "models"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), unique=True, nullable=False, comment="模型名称，如 遥感飞机检测模型")
+    name = Column(String(100), unique=True, nullable=False, comment="模型名称")
     description = Column(Text, nullable=True, comment="模型描述")
     base_architecture = Column(String(50), default="yolo26n", comment="基础架构：yolo26n/s/m/l/x")
-    category = Column(
-        String(50),
-        nullable=False,
-        comment="模型分类：general/remote_sensing/medical/industrial/agriculture",
-    )
-    class_names = Column(JSON, nullable=False, comment='类别列表，如 ["airplane","helicopter"]')
-    class_names_cn = Column(JSON, nullable=True, comment='类别中文名映射，如 {"airplane":"飞机"}')
+    category = Column(String(50), nullable=False, comment="模型分类")
+    class_names = Column(JSON, nullable=False, comment="类别列表")
+    class_names_cn = Column(JSON, nullable=True, comment="类别中文名映射")
     status = Column(String(20), default="active", comment="状态：active/archived")
-    is_enabled = Column(Boolean, default=True, server_default='true', nullable=False, comment="是否启用：启用后才可用于检测")
+    is_enabled = Column(
+        Boolean,
+        default=True,
+        server_default="true",
+        nullable=False,
+        comment="是否启用：启用后才可用于检测",
+    )
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, comment="创建人")
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
-    # 关联
     creator = relationship("User", back_populates="models")
     versions = relationship("ModelVersion", back_populates="model", cascade="all, delete-orphan")
     training_tasks = relationship("TrainingTask", back_populates="model")
@@ -289,24 +291,24 @@ class SceneModel(Base):
     """场景-模型关联表 — N:M 关系，支持一个场景关联多个模型"""
 
     __tablename__ = "scene_models"
+    __table_args__ = (UniqueConstraint("scene_id", "model_id", name="uq_scene_models_pair"),)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     scene_id = Column(
-        Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="场景ID"
+        Integer, ForeignKey("detection_scenes.id"), nullable=False, index=True, comment="场景 ID"
     )
     model_id = Column(
-        Integer, ForeignKey("models.id"), nullable=False, index=True, comment="模型ID"
+        Integer, ForeignKey("models.id"), nullable=False, index=True, comment="模型 ID"
     )
     is_default = Column(Boolean, default=False, comment="是否为该场景的默认模型")
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
 
-    # 关联
     scene = relationship("DetectionScene", back_populates="scene_models")
     model = relationship("Model", back_populates="scene_models")
 
 
 class ModelVersion(Base):
-    """模型版本表 — 每个版本对应一个具体的 .pt 权重文件"""
+    """模型版本表 — 每个版本对应一个具体的权重文件"""
 
     __tablename__ = "model_versions"
 
@@ -328,7 +330,7 @@ class ModelVersion(Base):
     model_path = Column(String(500), nullable=False, comment="本地模型文件路径")
     minio_url = Column(String(500), nullable=True, comment="MinIO 存储 URL")
 
-    # 评估指标（训练完成或评估后写入）
+    # 评估指标（训练完成后写入）
     map50 = Column(Float, nullable=True, comment="mAP@0.50")
     map50_95 = Column(Float, nullable=True, comment="mAP@0.50:0.95")
     precision = Column(Float, nullable=True, comment="精确率")
@@ -341,9 +343,8 @@ class ModelVersion(Base):
     description = Column(Text, nullable=True, comment="版本描述/变更说明")
     file_size = Column(BigInteger, nullable=True, comment="模型文件大小（字节）")
     is_default = Column(Boolean, default=False, comment="是否为该模型的默认版本")
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
 
-    # 关联
     model = relationship("Model", back_populates="versions")
     training_task = relationship("TrainingTask", back_populates="model_versions")
     detection_tasks = relationship("DetectionTask", back_populates="model_version")
@@ -373,13 +374,10 @@ class Dataset(Base):
         index=True,
         comment="关联检测场景",
     )
-    status = Column(
-        String(20), default="active", index=True, comment="状态：active/invalid"
-    )
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
+    status = Column(String(20), default="active", index=True, comment="状态：active/invalid")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
-    # 关联
     user = relationship("User", back_populates="datasets")
     scene = relationship("DetectionScene", back_populates="datasets")
     training_tasks = relationship("TrainingTask", back_populates="dataset")
@@ -395,7 +393,11 @@ class TrainingTask(Base):
         Integer, ForeignKey("users.id"), nullable=False, index=True, comment="操作用户"
     )
     model_id = Column(
-        Integer, ForeignKey("models.id"), nullable=True, index=True, comment="关联模型（可选，训练成功后自动创建新模型）"
+        Integer,
+        ForeignKey("models.id"),
+        nullable=True,
+        index=True,
+        comment="关联模型（可选，训练成功后自动创建新模型）",
     )
     task_uuid = Column(String(100), unique=True, nullable=False, index=True, comment="任务唯一标识")
     status = Column(
@@ -405,7 +407,6 @@ class TrainingTask(Base):
         comment="状态：pending/running/paused/completed/failed/cancelled",
     )
 
-    # 训练配置
     base_architecture = Column(String(50), default="yolo26n", comment="基础架构：yolo26n/s/m/l/x")
     epochs = Column(Integer, default=100, comment="训练轮数")
     img_size = Column(Integer, default=640, comment="图像尺寸")
@@ -415,34 +416,25 @@ class TrainingTask(Base):
     lr0 = Column(Float, default=0.01, comment="初始学习率")
     augment_config = Column(JSON, nullable=True, comment="数据增强配置")
 
-    # 训练进度
     current_epoch = Column(Integer, default=0, comment="当前轮数")
     progress = Column(Integer, default=0, comment="进度百分比 0~100")
-
-    # Checkpoint（暂停/恢复/断电恢复）
     checkpoint_path = Column(String(500), nullable=True, comment="checkpoint 文件路径（last.pt）")
     last_checkpoint_epoch = Column(Integer, default=0, comment="最后保存 checkpoint 的 epoch")
 
-    # 数据集信息
     dataset_id = Column(
         Integer, ForeignKey("datasets.id"), nullable=True, index=True, comment="关联数据集"
     )
     dataset_path = Column(String(500), nullable=True, comment="数据集路径")
     dataset_size = Column(Integer, nullable=True, comment="数据集图像数量")
     data_yaml = Column(String(500), nullable=True, comment="data.yaml 路径")
-
-    # 训练完成后是否自动设为默认版本
     set_as_default = Column(Boolean, default=False, comment="训练完成后是否自动设为模型默认版本")
 
-    # 错误信息
     error_message = Column(Text, nullable=True, comment="失败错误信息")
-
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, comment="更新时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
     started_at = Column(DateTime, nullable=True, comment="开始训练时间")
     completed_at = Column(DateTime, nullable=True, comment="训练完成时间")
 
-    # 关联
     user = relationship("User", back_populates="training_tasks")
     model = relationship("Model", back_populates="training_tasks")
     dataset = relationship("Dataset", back_populates="training_tasks")
@@ -460,28 +452,85 @@ class TrainingMetric(Base):
         Integer, ForeignKey("training_tasks.id"), nullable=False, index=True, comment="所属训练任务"
     )
     epoch = Column(Integer, nullable=False, comment="当前轮数")
-
-    # 损失值
     box_loss = Column(Float, nullable=True, comment="边界框损失")
     cls_loss = Column(Float, nullable=True, comment="分类损失")
     dfl_loss = Column(Float, nullable=True, comment="DFL 损失")
-
-    # 评估指标
     precision = Column(Float, nullable=True, comment="精确率")
     recall = Column(Float, nullable=True, comment="召回率")
     map50 = Column(Float, nullable=True, comment="mAP@0.50")
     map50_95 = Column(Float, nullable=True, comment="mAP@0.50:0.95")
-
-    # 学习率
     lr = Column(Float, nullable=True, comment="当前学习率")
-    created_at = Column(DateTime, default=now_cst)
+    created_at = Column(DateTime, default=datetime.now)
 
-    # 关联
     task = relationship("TrainingTask", back_populates="metrics")
 
 
 # ══════════════════════════════════════════════════════════════
-# 四、智能体对话
+# 四、食物识别与菜谱
+# ══════════════════════════════════════════════════════════════
+
+
+class FoodRecognitionTask(Base):
+    """一次同步食物识别任务，保存模型原始结果和用户确认快照。"""
+
+    __tablename__ = "food_recognition_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
+    )
+    image_object_names = Column(
+        JSON, nullable=False, default=list, comment="按上传顺序保存的 MinIO 对象名"
+    )
+    status = Column(String(20), nullable=False, default="completed", index=True, comment="识别状态")
+    provider = Column(String(20), nullable=False, comment="食品识别模型提供方")
+    model_version = Column(String(100), nullable=False, comment="模型版本")
+    raw_detections = Column(
+        JSON, nullable=False, default=list, comment="按图片分组的 ModelDetection 列表"
+    )
+    confirmed_ingredients = Column(
+        JSON, nullable=False, default=list, comment="ConfirmedIngredient 列表"
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, index=True)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    user = relationship("User", back_populates="food_recognition_tasks")
+    recipes = relationship("Recipe", back_populates="recognition")
+
+
+class Recipe(Base):
+    """V1 MVP 菜谱实体，完整的菜谱内容保存为 JSON。"""
+
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
+    )
+    recognition_id = Column(
+        Integer,
+        ForeignKey("food_recognition_tasks.id"),
+        nullable=False,
+        index=True,
+        comment="来源识别任务",
+    )
+    version = Column(Integer, nullable=False, default=1, comment="菜谱版本")
+    recipe_data = Column(JSON, nullable=False, comment="完整 Recipe JSON")
+    generator = Column(JSON, nullable=False, comment="生成器元信息")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.now, onupdate=datetime.now
+    )
+
+    user = relationship("User", back_populates="recipes")
+    recognition = relationship("FoodRecognitionTask", back_populates="recipes")
+    chat_sessions = relationship("ChatSession", back_populates="recipe")
+
+
+# ══════════════════════════════════════════════════════════════
+# 五、智能体对话
 # ══════════════════════════════════════════════════════════════
 
 
@@ -503,52 +552,19 @@ class ChatSession(Base):
     title = Column(String(200), nullable=True, comment="会话标题（取第一条消息摘要）")
     status = Column(String(20), default="active", comment="状态：active/archived")
     message_count = Column(Integer, default=0, comment="消息数量")
-    last_message_at = Column(DateTime, nullable=True, index=True, comment="最后消息时间")
-    created_at = Column(DateTime, default=now_cst, comment="创建时间")
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst)
+    last_message_at = Column(DateTime, nullable=True, comment="最后消息时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     # 关联
     user = relationship("User", back_populates="chat_sessions")
+    recipe = relationship("Recipe", back_populates="chat_sessions")
     messages = relationship(
         "ChatMessage",
         back_populates="session",
         cascade="all, delete-orphan",
         order_by="ChatMessage.created_at",
     )
-
-
-class FoodRecognitionTask(Base):
-    """食材识别任务；目标检测模块按 V1 契约写入确认食材。"""
-
-    __tablename__ = "food_recognition_tasks"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    image_object_names = Column(JSON, nullable=False)
-    status = Column(String(20), nullable=False, default="pending")
-    provider = Column(String(20), nullable=False)
-    model_version = Column(String(100), nullable=True)
-    raw_detections = Column(JSON, nullable=True)
-    confirmed_ingredients = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=now_cst, nullable=False)
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, nullable=False)
-
-
-class Recipe(Base):
-    """V1 菜谱，以 JSON 保存完整结构。"""
-
-    __tablename__ = "recipes"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    recognition_id = Column(
-        Integer, ForeignKey("food_recognition_tasks.id"), nullable=False, index=True
-    )
-    version = Column(Integer, nullable=False, default=1)
-    recipe_data = Column(JSON, nullable=False)
-    generator = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=now_cst, nullable=False)
-    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, nullable=False)
 
 
 class ChatMessage(Base):
@@ -575,14 +591,14 @@ class ChatMessage(Base):
     # 元信息
     tokens_used = Column(Integer, nullable=True, comment="Token 消耗量")
     latency_ms = Column(Integer, nullable=True, comment="响应耗时（毫秒）")
-    created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.now, index=True, comment="创建时间")
 
     # 关联
     session = relationship("ChatSession", back_populates="messages")
 
 
 # ══════════════════════════════════════════════════════════════
-# 五、系统运维
+# 六、系统运维
 # ══════════════════════════════════════════════════════════════
 
 
@@ -621,7 +637,7 @@ class OperationLog(Base):
     # 结果
     status = Column(String(20), default="success", comment="操作结果：success/failure")
     error_message = Column(Text, nullable=True, comment="失败时的错误信息")
-    created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
+    created_at = Column(DateTime, default=datetime.now, index=True, comment="创建时间")
 
     # 关联
     user = relationship("User", back_populates="operation_logs")

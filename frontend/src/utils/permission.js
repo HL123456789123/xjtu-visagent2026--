@@ -48,7 +48,7 @@ export function hasRole(user, roleName) {
  * @returns {boolean}
  */
 export function isAdmin(user) {
-  return hasRole(user, 'admin') || hasRole(user, 'super_admin')
+  return isSuperAdmin(user) || hasRole(user, 'admin')
 }
 
 /**
@@ -57,5 +57,5 @@ export function isAdmin(user) {
  * @returns {boolean}
  */
 export function isSuperAdmin(user) {
-  return hasRole(user, 'super_admin')
+  return Boolean(user?.is_superuser) || hasRole(user, 'super_admin')
 }

@@ -1,0 +1,38 @@
+{
+  "code": 201,
+  "message": "识别完成",
+  "data": {
+    "recognition_id": 12,
+    "status": "completed",
+    "provider": "yolo",
+    "model_version": "food-yolo-v1",
+    "image_url": "/api/files/food/12",
+    "images": [
+      {
+        "image_index": 0,
+        "image_url": "/api/files/food/12",
+        "ingredients": [
+          {
+            "candidate_id": "det-1",
+            "class_name": "tomato",
+            "display_name": "番茄",
+            "confidence": 0.9321,
+            "bbox": {"x1": 120.4, "y1": 80.2, "x2": 310.7, "y2": 265.1},
+            "source": "model"
+          }
+        ]
+      }
+    ],
+    "ingredients": [
+      {
+        "candidate_id": "det-1",
+        "class_name": "tomato",
+        "display_name": "番茄",
+        "confidence": 0.9321,
+        "bbox": {"x1": 120.4, "y1": 80.2, "x2": 310.7, "y2": 265.1},
+        "source": "model"
+      }
+    ],
+    "created_at": "2026-07-14T21:30:00+08:00"
+  }
+}

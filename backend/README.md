@@ -1,16 +1,32 @@
 # VisAgent 后端
 
-## 默认测试账号
+## 默认管理员账号
 
-系统启动时会自动创建以下默认用户，密码规则为：**用户名首字母大写 + @2026**
+系统启动时会幂等创建默认普通管理员。公开注册接口和管理员新增接口固定分配 `user` 身份。普通管理员可以将普通用户升级为管理员；只有 `super_admin` 身份可以降级、禁用或删除其他管理员。
 
 | 用户名 | 密码 | 邮箱 | 角色 |
 |--------|------|------|------|
-| super | Super@2026 | super@visagent.com | 超级管理员 |
-| admin | Admin@2026 | admin@visagent.com | 管理员 |
-| operator | Operator@2026 | operator@visagent.com | 操作员 |
-| user | User@2026 | user@visagent.com | 普通用户 |
-| viewer | Viewer@2026 | viewer@visagent.com | 访客 |
+| admin | admin2026 | admin@visagent.com | 管理员 |
+
+### 用户与角色管理接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/users` | 分页查询用户，`keyword` 支持按用户名或邮箱搜索 |
+| POST | `/api/admin/users` | 管理员新增普通用户 |
+| DELETE | `/api/admin/users/{user_id}` | 删除用户，普通管理员不能删除管理员 |
+| PUT | `/api/admin/users/{user_id}/role` | 升级或降级身份，降级管理员仅限 `super_admin` |
+
+---
+
+## 管理者入口权限
+
+前端管理者入口由独立权限控制：`system:manager_access`（进入管理者入口）。
+
+- 默认拥有者：`admin`
+- 普通用户需要由管理员在用户管理中提升为管理员后，才可进入管理者入口
+- 拥有该权限的用户仍可选择用户入口，进入普通用户界面
+- 进入管理端后，模型训练、数据看板等功能仍继续受各自细分权限控制
 
 ---
 

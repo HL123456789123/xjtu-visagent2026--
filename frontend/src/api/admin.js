@@ -17,6 +17,14 @@ export function getUserListApi(params) {
 }
 
 /**
+ * 管理员创建普通用户
+ * @param {Object} data - { username, email, password }
+ */
+export function createUserApi(data) {
+  return request.post('/admin/users', data)
+}
+
+/**
  * 获取用户详情
  * @param {number} userId
  */
@@ -40,6 +48,15 @@ export function updateUserApi(userId, data) {
  */
 export function assignUserRolesApi(userId, data) {
   return request.put(`/admin/users/${userId}/roles`, data)
+}
+
+/**
+ * 设置用户身份
+ * @param {number} userId
+ * @param {Object} data - { role: 'admin' | 'user' }
+ */
+export function updateUserRoleApi(userId, data) {
+  return request.put(`/admin/users/${userId}/role`, data)
 }
 
 /**

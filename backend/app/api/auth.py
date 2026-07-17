@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.core.security import get_current_user, is_super_admin
+from app.core.security import get_current_user
 from app.core.rate_limiter import limiter
 from app.database.session import get_db
 from app.entity.schemas import TokenResponse, UserLogin, UserRegister, UserResponse
@@ -78,6 +78,7 @@ async def login(request: Request, body: UserLogin, db: Session = Depends(get_db)
             "username": user.username,
             "email": user.email,
             "avatar": user.avatar,
+            "is_superuser": bool(user.is_superuser),
             "roles": roles,
             "permissions": permissions,
         },
@@ -129,7 +130,7 @@ async def get_current_user_info(
         "phone": current_user.phone,
         "avatar": current_user.avatar,
         "is_active": current_user.is_active,
-        "is_superuser": is_super_admin(current_user, db),
+        "is_superuser": bool(current_user.is_superuser),
         "roles": roles,
         "permissions": permissions,
         "last_login_at": current_user.last_login_at,
