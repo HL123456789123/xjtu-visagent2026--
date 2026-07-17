@@ -28,7 +28,6 @@ from app.repositories.food_repository import FoodRepository
 from app.repositories.recipe_repository import RecipeRepository
 from app.services.food_recognition_provider import (
     FoodModelUnavailableError,
-    MockFoodRecognitionProvider,
     YoloFoodRecognitionProvider,
     build_food_recognition_provider,
 )
@@ -78,7 +77,10 @@ class FakeStorage:
         return self.objects[object_name]
 
 
-class RecordingProvider(MockFoodRecognitionProvider):
+class RecordingProvider:
+    provider_name = "yolo"
+    model_version = "food-yolo-v1"
+
     def __init__(self, *, empty: bool = False):
         self.empty = empty
         self.paths: list[str] = []
@@ -87,13 +89,26 @@ class RecordingProvider(MockFoodRecognitionProvider):
         self.paths.append(image_path)
         if self.empty:
             return []
-        return [
-            ModelDetection.model_validate(item)
-            for item in super().recognize(image_path, conf_threshold)
+        detections = [
+            ModelDetection(
+                class_name="tomato",
+                confidence=0.9321,
+                bbox={"x1": 120.4, "y1": 80.2, "x2": 310.7, "y2": 265.1},
+            ),
+            ModelDetection(
+                class_name="egg",
+                confidence=0.8812,
+                bbox={"x1": 350.0, "y1": 100.0, "x2": 470.0, "y2": 230.0},
+            ),
         ]
+        return [item for item in detections if item.confidence >= conf_threshold]
+
+    @staticmethod
+    def get_display_name(class_name: str) -> str:
+        return {"tomato": "番茄", "egg": "鸡蛋"}.get(class_name, class_name)
 
 
-class UnavailableProvider(MockFoodRecognitionProvider):
+class UnavailableProvider(RecordingProvider):
     provider_name = "yolo"
     model_version = "food-yolo-v1"
 
@@ -104,10 +119,10 @@ class UnavailableProvider(MockFoodRecognitionProvider):
 
 class SecondImageUnavailableProvider(RecordingProvider):
     def recognize(self, image_path: str, conf_threshold: float = 0.25) -> list[ModelDetection]:
-        self.paths.append(image_path)
-        if len(self.paths) == 2:
+        if len(self.paths) == 1:
+            self.paths.append(image_path)
             raise FoodModelUnavailableError("第二张图片推理失败")
-        return MockFoodRecognitionProvider.recognize(self, image_path, conf_threshold)
+        return super().recognize(image_path, conf_threshold)
 
 
 def make_service(db, *, provider=None, storage=None) -> tuple[FoodRecognitionService, FakeStorage]:
@@ -292,7 +307,7 @@ class TestFoodRecognitionService:
 
         assert response.recognition_id > 0
         assert response.status == "completed"
-        assert response.provider == "mock"
+        assert response.provider == "yolo"
         assert response.image_url == f"/api/files/food/{response.recognition_id}"
         assert [item.class_name for item in response.ingredients] == ["tomato", "egg"]
         assert all(item.source == "model" for item in response.ingredients)
@@ -597,10 +612,16 @@ class TestFoodApi:
 
 
 class TestProviders:
-    def test_mock_provider_follows_frozen_model_interface(self):
-        result = MockFoodRecognitionProvider().recognize("/tmp/example.jpg", 0.25)
-        assert all(isinstance(item, ModelDetection) for item in result)
-        assert result[0].class_name == "tomato"
+    def test_default_provider_uses_delivered_yolo_model(self):
+        provider = build_food_recognition_provider()
+
+        assert isinstance(provider, YoloFoodRecognitionProvider)
+        assert provider.model_path.is_file()
+        assert provider.classes_path.is_file()
+        assert provider.provider_name == "yolo"
+        assert provider.model_version == "food-yolo-v1"
+        assert provider.get_display_name("sugar") == "糖"
+        assert build_food_recognition_provider() is provider
 
     def test_yolo_provider_reports_unavailable_without_weights(self, tmp_path):
         classes_path = Path(__file__).parents[1] / "scripts" / "food_model" / "classes.yaml"
@@ -615,7 +636,6 @@ class TestProviders:
     async def test_configured_yolo_without_files_maps_to_api_503(self, db, monkeypatch, tmp_path):
         user = create_user(db, "configuredyolo")
         classes_path = Path(__file__).parents[1] / "scripts" / "food_model" / "classes.yaml"
-        monkeypatch.setattr(settings, "FOOD_PROVIDER", "yolo")
         monkeypatch.setattr(settings, "FOOD_MODEL_PATH", str(tmp_path / "missing.pt"))
         monkeypatch.setattr(settings, "FOOD_CLASSES_PATH", str(classes_path))
         provider = build_food_recognition_provider()

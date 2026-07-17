@@ -4,8 +4,8 @@
   "data": {
     "recognition_id": 13,
     "status": "completed",
-    "provider": "mock",
-    "model_version": "food-mock-v1",
+    "provider": "yolo",
+    "model_version": "food-yolo-v1",
     "image_url": "/api/files/food/13",
     "images": [
       {
