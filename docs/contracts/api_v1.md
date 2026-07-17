@@ -1,7 +1,19 @@
-# 食物识别菜谱平台：API 与模块接口冻结完整版（V1）
+# 食物识别菜谱平台：API 与模块接口冻结完整版（V1.1）
 
 > 本文档是五天开发期间的唯一接口标准。其他计划、个人任务、代码注释或群聊内容与本文冲突时，一律以本文为准。  
 > 适用分支：`develop` 及全部个人功能分支。
+> 契约修订号：`V1.1`
+> 变更日期：`2026-07-16`
+> 主要变更：Food 识别从单图上传升级为每批 1～5 张图片；一批只创建一个 `recognition_id`。
+> 受影响模块：Food 前端、Food API、Food Service、Food Repository/ORM、canonical Food fixtures 与契约测试。
+> 迁移说明：公开 multipart 字段统一为 `images`；已有单图内部实现通过 Service Adapter 逐张调用，不长期保留 `image` 公开字段。Recipe 只读取最终 `confirmed_ingredients`，Recipe、Chat 和 SSE 契约不变。
+
+## 修订记录
+
+| 修订号 | 日期 | 变更 |
+| --- | --- | --- |
+| V1.0 | 2026-07-14 | 每次上传 1 张图片，建立 Food → Recipe → Chat 基线契约。 |
+| V1.1 | 2026-07-16 | Food API 改为每批上传 1～5 张图片；增加逐图标识、批次大小、原子失败、聚合和存储规则。Recipe、Chat、SSE 不变。 |
 
 ---
 
@@ -11,7 +23,7 @@
 
 ```text
 登录
-→ 上传 JPG/PNG 图片
+→ 一次上传 1～5 张 JPG/PNG 图片
 → YOLO 检测图片中的多种原材料
 → 返回候选食材
 → 用户增删改并确认食材
@@ -140,9 +152,13 @@ message_id
 
 ```text
 格式：JPG、JPEG、PNG
-最大：10 MB
-每次：1 张
+单张图片最大：10 MB
+每批图片数量：1～5 张
+每批总大小最大：50 MB
+唯一上传字段：images
 ```
+
+每张文件的扩展名、Content-Type 和实际解码结果都必须是 JPG/JPEG/PNG；只改扩展名不视为有效图片。同一次请求上传的所有图片归属于同一个 `recognition_id`。`images` 即使只上传 1 张也必须使用；公开 API 不再接受 `image` 别名。后端按照上传顺序保存图片，并逐张调用模型完成识别，最后汇总为一组候选食材。
 
 ## 8. 默认值
 
@@ -195,7 +211,8 @@ LLM timeout = 60 秒
 
 ```json
 {
-  "candidate_id": "det-1",
+  "candidate_id": "img-0-det-1",
+  "image_index": 0,
   "class_name": "tomato",
   "display_name": "番茄",
   "confidence": 0.9321,
@@ -208,6 +225,8 @@ LLM timeout = 60 秒
   "source": "model"
 }
 ```
+
+`image_index` 从 `0` 开始，必须指向同一响应 `images` 数组中的对应图片。模型 Provider 不生成 `image_index`；Food Service 在逐图调用后补充它。`candidate_id` 在一个 `recognition_id` 内必须唯一，客户端将其视为不透明字符串。
 
 `source` 只能是：
 
@@ -275,6 +294,8 @@ class FoodRecognitionProvider:
     ) -> list[ModelDetection]:
         ...
 ```
+
+V1.1 继续保持 Provider 单图接口不变。Food Service 负责校验整批文件、按上传顺序循环调用 `recognize(image_path, conf_threshold)`、补充 `image_index`，再汇总 API 响应。Provider 不接收图片数组，不负责批次、数据库或跨图聚合。
 
 ## 2. 输入
 
@@ -386,9 +407,11 @@ Content-Type: multipart/form-data
 表单：
 
 ```text
-image：必填
+images：必填，可重复 multipart 字段，按上传顺序携带 1～5 张 JPG/JPEG/PNG 图片
 conf_threshold：选填，默认 0.25
 ```
+
+多图识别仍同步返回一个 `recognition_id` 和一组汇总候选食材，不要求前端轮询。单张图片最大 10 MB，整批总大小最大 50 MB。即使只有一张图片也使用 `images`，不得继续发送公开字段 `image`。
 
 响应：
 
@@ -401,10 +424,20 @@ conf_threshold：选填，默认 0.25
     "status": "completed",
     "provider": "yolo",
     "model_version": "food-yolo-v1",
-    "image_url": "/api/files/food/12",
+    "images": [
+      {
+        "image_index": 0,
+        "image_url": "/api/files/food/12/0"
+      },
+      {
+        "image_index": 1,
+        "image_url": "/api/files/food/12/1"
+      }
+    ],
     "ingredients": [
       {
-        "candidate_id": "det-1",
+        "candidate_id": "img-0-det-1",
+        "image_index": 0,
         "class_name": "tomato",
         "display_name": "番茄",
         "confidence": 0.9321,
@@ -429,7 +462,21 @@ mock
 yolo
 ```
 
-接口采用同步实现，不要求前端轮询。
+接口采用同步实现，不要求前端轮询。`images` 必须按上传顺序返回每张图片的 `image_index` 和 `image_url`；不得只返回第一张图片，也不得暴露内部 `image_object_name`。
+
+### 多图聚合与失败规则
+
+```text
+1. 一批图片只创建一个整数 recognition_id。
+2. Food Service 按上传顺序调用单图 Provider；每个检测框通过 image_index 关联具体图片。
+3. ingredients 是各图片候选的顺序拼接结果：先按 image_index，再按该图片的检测顺序。
+4. V1.1 不自动对相同 class_name 去重，也不根据检测框数量推断最终食材数量。
+5. 用户在统一候选列表中增删改后，通过原 PUT 接口提交最终 confirmed_ingredients；该数组才是 Recipe 的唯一食材输入。
+6. 某张图片识别结果为 [] 属于成功，不影响其他图片；如果全部图片均为 []，仍返回 201、status=completed、ingredients=[]。
+7. 数量、格式、单张大小或整批大小不合格时，整批在模型调用前失败，不创建成功结果。
+8. 任意一张图片保存失败、解码失败或 Provider 执行失败时，整批失败，不返回部分成功的 201 响应；已创建的任务应标记 failed，并由 Service 对临时对象执行尽力清理。
+9. V1.1 不公开 partial、partial_success 或逐图错误状态。
+```
 
 ## 2. 查询识别记录
 
@@ -448,7 +495,16 @@ GET /api/food/recognitions/{recognition_id}
     "status": "completed",
     "provider": "yolo",
     "model_version": "food-yolo-v1",
-    "image_url": "/api/files/food/12",
+    "images": [
+      {
+        "image_index": 0,
+        "image_url": "/api/files/food/12/0"
+      },
+      {
+        "image_index": 1,
+        "image_url": "/api/files/food/12/1"
+      }
+    ],
     "ingredients": [],
     "confirmed_ingredients": [],
     "created_at": "2026-07-14T21:30:00+08:00",
@@ -456,6 +512,8 @@ GET /api/food/recognitions/{recognition_id}
   }
 }
 ```
+
+GET 返回的 `images`、`ingredients` 和 `confirmed_ingredients` 语义与 POST 相同。空识别结果必须保留全部 `images`，并返回 `ingredients: []`。确认食材的 PUT 路径、请求和响应保持 V1.0 不变。
 
 ## 3. 确认最终食材
 
@@ -858,9 +916,20 @@ data: {"code":"LLM_UNAVAILABLE","message":"智能服务暂时不可用"}
 
 ```python
 class FoodRepository:
-    def create_recognition(...): ...
+    def create_recognition(
+        self,
+        user_id: int,
+        image_object_names: list[str],
+        status: str,
+        provider: str,
+        model_version: str | None,
+    ): ...
     def get_recognition_for_user(recognition_id: int, user_id: int): ...
-    def save_raw_detections(recognition_id: int, detections: list[dict]): ...
+    def save_raw_detections(
+        self,
+        recognition_id: int,
+        detections_by_image: list[dict],
+    ): ...
     def replace_confirmed_ingredients(
         recognition_id: int,
         user_id: int,
@@ -902,15 +971,65 @@ class ChatRepository:
 ```text
 id
 user_id
-image_object_name
+image_object_names（JSON 字符串数组）
 status
 provider
 model_version
-raw_detections（JSON）
-confirmed_ingredients（JSON）
+raw_detections（JSON，按图片分组）
+confirmed_ingredients（JSON，所有图片汇总确认后的食材）
 created_at
 updated_at
 ```
+
+字段规则：
+
+```text
+image_object_names：
+- 必须是非空 JSON 字符串数组
+- 按用户上传顺序保存全部图片对象名
+- 数组下标与公开响应 images 中的 image_index 一一对应
+
+raw_detections：
+- 按图片分别保存模型原始检测结果
+- 每一项必须包含 image_index、image_object_name 和 detections
+- image_index 从 0 开始，并与 image_object_names 的数组下标一致
+
+confirmed_ingredients：
+- 保存用户对全部图片识别结果汇总、增删改之后的最终食材
+- 不再区分食材来自哪一张图片
+```
+
+`raw_detections` 示例：
+
+```json
+[
+  {
+    "image_index": 0,
+    "image_object_name": "food/12/image-1.jpg",
+    "detections": [
+      {
+        "class_name": "tomato",
+        "confidence": 0.9321,
+        "bbox": {
+          "x1": 120.4,
+          "y1": 80.2,
+          "x2": 310.7,
+          "y2": 265.1
+        }
+      }
+    ]
+  },
+  {
+    "image_index": 1,
+    "image_object_name": "food/12/image-2.png",
+    "detections": []
+  }
+]
+```
+
+五天 MVP 不单独建立 `food_recognition_images` 子表，统一使用 `image_object_names` 和按图片分组的 `raw_detections` 完成多图存储。
+
+迁移时由绕家辉在唯一 migration 链中把旧 `image_object_name` 转换为只含一个元素的 `image_object_names`，并把旧扁平 `raw_detections` 包装为 `image_index=0` 的分组结构。已有单图业务逻辑通过 Service Adapter 复用，数据库和公开 API 不长期保留两套字段。
 
 ## recipes
 
@@ -944,13 +1063,16 @@ ORM 和 Alembic migration 只由绕家辉修改。
 | HTTP | 业务错误码 | 场景 |
 |---:|---|---|
 | 400 | `BAD_REQUEST` | 普通请求错误 |
+| 400 | `INVALID_IMAGE_COUNT` | `images` 少于 1 张或多于 5 张 |
 | 401 | `UNAUTHORIZED` | 未登录 |
 | 403 | `FORBIDDEN` | 访问他人资源 |
 | 404 | `RECOGNITION_NOT_FOUND` | 识别记录不存在 |
 | 404 | `RECIPE_NOT_FOUND` | 菜谱不存在 |
 | 404 | `SESSION_NOT_FOUND` | 会话不存在 |
 | 413 | `IMAGE_TOO_LARGE` | 图片超过 10 MB |
+| 413 | `IMAGE_BATCH_TOO_LARGE` | 整批图片总大小超过 50 MB |
 | 415 | `UNSUPPORTED_IMAGE_TYPE` | 非 JPG/JPEG/PNG |
+| 422 | `INVALID_IMAGE_CONTENT` | 文件无法解码为有效 JPG/JPEG/PNG 图片 |
 | 422 | `NO_CONFIRMED_INGREDIENTS` | 未确认食材 |
 | 422 | `EMPTY_INGREDIENTS` | 食材为空 |
 | 422 | `INVALID_LLM_OUTPUT` | LLM 输出不合格 |
@@ -1005,6 +1127,16 @@ backend/tests/fixtures/sse_recipe_update.txt
 
 前端 Mock、后端测试和联调测试共用这一套字段。
 
+V1.1 合入后，吴雯负责更新而不是新增第二套 fixture：
+
+```text
+food_recognition_success.json：至少包含 2 张 images；每个候选包含 image_index，且能关联对应 image_url
+food_recognition_empty.json：保留 1～5 张 images，ingredients 必须为 []
+test_food_contract.py：增加 1/5/6 张、单张 10 MB、整批 50 MB、格式、逐图关联和整批失败边界
+recipe_success.json：不变
+sse_recipe_update.txt：不变
+```
+
 ---
 
 # 十四、每个人只需执行的接口任务
@@ -1022,7 +1154,8 @@ backend/tests/fixtures/sse_recipe_update.txt
 ## 刘楚涵
 
 ```text
-按 Food API 完成上传、展示和食材确认
+按 Food API 完成多图选择、预览、删除、上传、逐图展示和食材确认
+对数量、格式、单张大小和整批大小错误给出明确提示
 确认后保存 recognition_id
 不自行改字段
 ```
@@ -1032,6 +1165,7 @@ backend/tests/fixtures/sse_recipe_update.txt
 ```text
 输入严格接收 image_path 和 conf_threshold
 输出严格返回 list[ModelDetection]
+Provider 继续保持单图 recognize，不接收图片数组
 提交 classes.yaml、训练脚本和使用说明
 best.pt 不进 Git
 ```
@@ -1039,10 +1173,10 @@ best.pt 不进 Git
 ## 绕家辉
 
 ```text
-实现 Food API
+实现多图 Food API，由 Service 循环调用单图 Provider
 实现 Provider 适配
-实现 ORM、migration 和 Repository
-把模型输出转换成 IngredientCandidate
+实现 image_object_names、按图 raw_detections、ORM、migration 和 Repository
+把模型输出转换成带 image_index 的 IngredientCandidate，并按上传顺序汇总
 ```
 
 ## 陈煜君
@@ -1053,6 +1187,7 @@ best.pt 不进 Git
 校验并保存菜谱
 实现最小 LangGraph、Recipe API 和 Chat SSE
 不实现复杂多智能体
+V1.1 不改变 Recipe、Chat 和 SSE；当前阶段任务不扩大
 ```
 
 ## 李晨宁
@@ -1066,7 +1201,8 @@ best.pt 不进 Git
 ## 吴雯
 
 ```text
-按本文生成 fixture 和契约测试
+按 V1.1 更新现有 Food canonical fixture 和契约测试
+覆盖图片数量、单张/整批大小、逐图关联、空结果和整批失败
 接口不一致直接判失败
 不写多版本兼容层
 ```
@@ -1111,8 +1247,8 @@ best.pt 不进 Git
 
 ```text
 1. 登录。
-2. 上传一张 JPG/PNG。
-3. 返回多种候选食材。
+2. 通过 multipart `images` 一次上传 2 张 JPG/PNG。
+3. 返回一个整数 recognition_id、两项 images 和带 image_index 的候选食材。
 4. 用户删除误识别项并增加缺失项。
 5. 提交最终食材。
 6. POST /api/recipes 生成菜谱。
@@ -1129,7 +1265,7 @@ best.pt 不进 Git
 
 # 十七、冻结规则
 
-本文为 V1。
+本文当前修订号为 V1.1。V1.0 为单图上传；V1.1 为多图上传。Recipe、Chat 和 SSE 在本次修订中不变。
 
 只有以下情况允许修改：
 
