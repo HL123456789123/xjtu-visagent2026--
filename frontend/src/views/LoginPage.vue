@@ -1,10 +1,20 @@
 <template>
   <div class="login-page">
-    <div class="login-card">
+    <section class="login-visual">
+      <router-link class="login-brand" to="/login">
+        <span aria-hidden="true">🍳</span>
+        <strong>FridgeChef</strong>
+      </router-link>
+      <h1>开始你的专属美食之旅</h1>
+      <p>识别食材、确认清单、生成家常食谱，把每天吃什么变得轻松一点。</p>
+      <img src="/login-hero.jpg" alt="新鲜食材" />
+    </section>
+
+    <section class="login-card">
       <div class="login-header">
-        <img src="/favicon.svg" alt="logo" class="login-logo" />
-        <h2>visagent</h2>
-        <p>基于 YOLO26 的目标检测智能体平台</p>
+        <span class="login-kicker">Welcome back</span>
+        <h2>账号登录</h2>
+        <p>输入用户名和密码即可开始使用。</p>
       </div>
 
       <el-form
@@ -56,7 +66,7 @@
         <span>还没有账号？</span>
         <router-link to="/register">立即注册</router-link>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -118,59 +128,167 @@ async function handleLogin() {
 <style lang="scss" scoped>
 .login-page {
   width: 100%;
-  height: 100vh;
-  display: flex;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  gap: clamp(28px, 5vw, 72px);
+  padding: clamp(28px, 5vw, 70px);
+  padding-right: clamp(28px, 5vw, 100px);
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 10% 12%, rgba(255, 213, 118, 0.42), transparent 28%),
+    radial-gradient(circle at 88% 8%, rgba(137, 169, 79, 0.18), transparent 24%),
+    linear-gradient(180deg, #fff8ea 0%, #fffdf7 48%, #f8efe3 100%);
+  color: #3a2a1d;
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
-.login-card {
-  width: 420px;
-  padding: 40px;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  box-shadow: $shadow-lg;
-}
+.login-visual {
+  min-width: 0;
 
-.login-header {
-  text-align: center;
-  margin-bottom: 32px;
-
-  .login-logo {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 12px;
-  }
-
-  h2 {
-    font-size: 22px;
-    color: $text-primary;
-    margin-bottom: 8px;
+  h1 {
+    max-width: 620px;
+    margin: 34px 0 0;
+    color: #2e2116;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: clamp(38px, 6vw, 70px);
+    font-weight: 500;
+    line-height: 1.04;
+    letter-spacing: -0.055em;
   }
 
   p {
-    font-size: 13px;
-    color: $text-secondary;
+    max-width: 500px;
+    margin: 20px 0 0;
+    color: #76573f;
+    font-size: 16px;
+    line-height: 1.85;
   }
+
+  img {
+    width: min(760px, 100%);
+    height: 300px;
+    margin-top: 30px;
+    border-radius: 34px;
+    object-fit: cover;
+    box-shadow: 0 24px 70px rgba(102, 68, 35, 0.18);
+  }
+}
+
+.login-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #31512f;
+  text-decoration: none;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: #fff3d8;
+    font-size: 20px;
+  }
+
+  strong {
+    font-size: 22px;
+    font-weight: 900;
+  }
+}
+
+.login-card {
+  width: 100%;
+  padding: 36px;
+  box-sizing: border-box;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.14);
+  backdrop-filter: blur(18px);
+}
+
+.login-header {
+  text-align: left;
+  margin-bottom: 28px;
+
+  h2 {
+    margin: 6px 0 0;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 30px;
+    font-weight: 500;
+  }
+
+  p {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: #856449;
+    line-height: 1.7;
+  }
+}
+
+.login-kicker {
+  color: #b56a26;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.login-card :deep(.el-input__wrapper) {
+  min-height: 46px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(121, 82, 45, 0.14) inset;
 }
 
 .login-btn {
   width: 100%;
+  height: 46px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  font-weight: 900;
+  box-shadow: 0 14px 30px rgba(229, 104, 52, 0.24);
 }
 
 .login-footer {
   text-align: center;
   font-size: 13px;
-  color: $text-secondary;
+  color: #856449;
 
   a {
-    color: $primary-color;
+    color: #d76626;
     margin-left: 4px;
+    font-weight: 800;
 
     &:hover {
       text-decoration: underline;
     }
+  }
+}
+
+@media (max-width: 960px) {
+  .login-page {
+    grid-template-columns: 1fr;
+    padding-right: clamp(20px, 5vw, 70px);
+  }
+
+  .login-card {
+    max-width: 520px;
+  }
+}
+
+@media (max-width: 560px) {
+  .login-page {
+    padding: 20px;
+  }
+
+  .login-card {
+    padding: 26px;
   }
 }
 </style>

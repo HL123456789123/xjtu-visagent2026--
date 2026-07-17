@@ -1,9 +1,8 @@
 <template>
   <header class="app-header">
-    <!-- Logo + 标题 -->
     <div class="header-left">
-      <img src="/favicon.svg" alt="logo" class="header-logo" />
-      <span class="header-title">visagent</span>
+      <span class="brand-mark" aria-hidden="true">🍳</span>
+      <span class="brand-title">FridgeChef</span>
     </div>
 
     <!-- 用户信息 + 下拉菜单 -->
@@ -67,13 +66,14 @@ async function handleCommand(command) {
 <style lang="scss" scoped>
 .app-header {
   height: $header-height;
-  background: #fff;
-  border-bottom: 1px solid #ebeef5;
+  background: rgba(255, 253, 248, 0.92);
+  border-bottom: 1px solid rgba(121, 82, 45, 0.12);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 $spacing-lg;
-  box-shadow: $shadow-sm;
+  box-shadow: 0 10px 30px rgba(102, 68, 35, 0.08);
+  backdrop-filter: blur(18px);
   z-index: 100;
 }
 
@@ -83,15 +83,23 @@ async function handleCommand(command) {
   gap: $spacing-sm;
 }
 
-.header-logo {
-  width: 28px;
-  height: 28px;
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: #fff3d8;
+  box-shadow: inset 0 0 0 1px rgba(233, 109, 59, 0.14);
+  font-size: 19px;
 }
 
-.header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
+.brand-title {
+  color: #31512f;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
 }
 
 .header-right {
@@ -105,16 +113,24 @@ async function handleCommand(command) {
   gap: $spacing-sm;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: $border-radius-sm;
+  border-radius: 999px;
   transition: background 0.2s;
 
   &:hover {
-    background: #f5f7fa;
+    background: #fff1d2;
   }
 }
 
 .username {
   font-size: 14px;
-  color: $text-primary;
+  color: #4c3a2c;
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .brand-title,
+  .username {
+    display: none;
+  }
 }
 </style>
