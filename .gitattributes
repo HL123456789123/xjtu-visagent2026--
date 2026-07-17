@@ -1,0 +1,2 @@
+datasets/food/*.tar.gz filter=lfs diff=lfs merge=lfs -text
+assets/food-model-showcase/data_summary/*.csv binary

@@ -1,0 +1,72 @@
+{
+  "all_runs": {
+    "yolo11m": [
+      {
+        "best_val_map50_95": 0.78532,
+        "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11m_seed42",
+        "seed": 42,
+        "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11m_seed42/weights/best.pt"
+      },
+      {
+        "best_val_map50_95": 0.78629,
+        "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11m_seed2026",
+        "seed": 2026,
+        "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11m_seed2026/weights/best.pt"
+      },
+      {
+        "best_val_map50_95": 0.78596,
+        "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11m_seed3407",
+        "seed": 3407,
+        "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11m_seed3407/weights/best.pt"
+      }
+    ],
+    "yolo11s": [
+      {
+        "best_val_map50_95": 0.78004,
+        "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed42",
+        "seed": 42,
+        "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed42/weights/best.pt"
+      },
+      {
+        "best_val_map50_95": 0.77473,
+        "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed2026",
+        "seed": 2026,
+        "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed2026/weights/best.pt"
+      },
+      {
+        "best_val_map50_95": 0.78227,
+        "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed3407",
+        "seed": 3407,
+        "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed3407/weights/best.pt"
+      }
+    ]
+  },
+  "architecture_latency": {
+    "yolo11m": {
+      "p50_ms": 9.577801451086998,
+      "p95_ms": 10.353652760386467,
+      "samples": 100
+    },
+    "yolo11s": {
+      "p50_ms": 8.902600035071373,
+      "p95_ms": 10.14723815023899,
+      "samples": 100
+    }
+  },
+  "chosen_architecture": "yolo11s",
+  "chosen_run": {
+    "best_val_map50_95": 0.78227,
+    "run_directory": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed3407",
+    "seed": 3407,
+    "weights": "/root/autodl-tmp/visagent/reports/food/runs/food12_yolo11s_seed3407/weights/best.pt"
+  },
+  "m_beats_s_by_0_015": false,
+  "m_gain_over_s": 0.006843333333333312,
+  "m_p95_within_50ms": true,
+  "schema_version": 1,
+  "selection_rule": "choose yolo11m only if mean mAP50-95 gain >= 0.015 and m P95 <= 50ms; otherwise yolo11s",
+  "validation_mean_map50_95": {
+    "yolo11m": 0.7858566666666666,
+    "yolo11s": 0.7790133333333333
+  }
+}

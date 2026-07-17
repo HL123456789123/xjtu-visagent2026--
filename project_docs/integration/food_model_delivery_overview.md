@@ -118,6 +118,8 @@ FOOD_CONF_THRESHOLD=0.25
 
 - [训练/评估/数据脚本与命令](../../backend/scripts/food_model/README.md)
 - [V1 类别定义](../../backend/scripts/food_model/classes.yaml)
+- [训练数据发布与重建说明](../../datasets/food/README.md)
+- [GitHub 可浏览展示材料](../../assets/food-model-showcase/README.md)
 - [V2 后端与 Docker 接线单](food_model_v2_backend_handoff.md)
 - 外部报告根目录：`/root/autodl-tmp/visagent/reports/food`
 - V1 交付权重：`models/food/best.pt`（随 GitHub 发布）
