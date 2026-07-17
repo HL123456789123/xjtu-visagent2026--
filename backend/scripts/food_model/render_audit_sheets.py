@@ -8,7 +8,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 
 TILE_WIDTH = 224
