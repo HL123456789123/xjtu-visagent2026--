@@ -491,6 +491,9 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    recipe_id = Column(
+        Integer, ForeignKey("recipes.id"), nullable=True, index=True, comment="关联菜谱 ID"
+    )
     user_id = Column(
         Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
     )
@@ -512,6 +515,40 @@ class ChatSession(Base):
         cascade="all, delete-orphan",
         order_by="ChatMessage.created_at",
     )
+
+
+class FoodRecognitionTask(Base):
+    """食材识别任务；目标检测模块按 V1 契约写入确认食材。"""
+
+    __tablename__ = "food_recognition_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    image_object_names = Column(JSON, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    provider = Column(String(20), nullable=False)
+    model_version = Column(String(100), nullable=True)
+    raw_detections = Column(JSON, nullable=True)
+    confirmed_ingredients = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=now_cst, nullable=False)
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, nullable=False)
+
+
+class Recipe(Base):
+    """V1 菜谱，以 JSON 保存完整结构。"""
+
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    recognition_id = Column(
+        Integer, ForeignKey("food_recognition_tasks.id"), nullable=False, index=True
+    )
+    version = Column(Integer, nullable=False, default=1)
+    recipe_data = Column(JSON, nullable=False)
+    generator = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=now_cst, nullable=False)
+    updated_at = Column(DateTime, default=now_cst, onupdate=now_cst, nullable=False)
 
 
 class ChatMessage(Base):

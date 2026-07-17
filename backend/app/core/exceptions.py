@@ -108,3 +108,24 @@ async def general_exception_handler(request: Request, exc: Exception):
             "detail": detail,
         },
     )
+
+class RecipeGenerationError(AppException):
+    """菜谱生成失败异常"""
+
+    def __init__(self, message: str = "菜谱生成失败", code: str = "INTERNAL_ERROR"):
+        self.error_code = code
+        super().__init__(code=422, message=message)
+
+
+class RecipeNotFoundError(AppException):
+    """菜谱不存在异常"""
+
+    def __init__(self, message: str = "菜谱不存在"):
+        super().__init__(code=404, message=message)
+
+
+class PermissionDeniedError(AppException):
+    """权限不足异常"""
+
+    def __init__(self, message: str = "无权访问"):
+        super().__init__(code=403, message=message)
