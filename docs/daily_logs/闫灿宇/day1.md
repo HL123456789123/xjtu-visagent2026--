@@ -127,3 +127,42 @@ git grep -Il <高置信度密钥模式> -- .
 4. 复核现有 `/api/detection/*` 是否只作为内部/旧功能保留，确保 V1 前端不调用第二套公开接口。
 5. 复核 Chat SSE 的四类事件、`recipe_updated` 后重新 GET、Recipe version 规则和 503 行为。
 6. 提交前逐个检查暂存文件，避免把当前工作区已有的 124 项历史差异一并提交。
+
+## 补充记录：吴雯 PR #1 审核与合并
+
+### 完成事项
+
+- 确认 `docs/contracts/api_v1.md` 已进入 `origin/develop`，未在终端打印契约全文。
+- 审核吴雯 PR [#1](https://github.com/HL123456789123/xjtu-visagent2026--/pull/1)，确认方向为 `chore/test-docker` → `develop`。
+- 检查四个 canonical fixture：Food 识别成功、Food 空结果、Recipe 成功和 SSE 菜谱更新。
+- 检查 `recognition_id`、`recipe_id`、`version`、`message_id` 使用严格整数类型校验。
+- 检查 Food 成功 fixture 的 `bbox` 为包含 `x1`、`y1`、`x2`、`y2` 的对象。
+- 检查 SSE fixture 只使用 `token`、`recipe_updated`、`done`，测试允许集合仅为 V1 四类事件 `token`、`recipe_updated`、`done`、`error`。
+- 确认 PR 修改范围仅限 `backend/tests/fixtures/` 和 `backend/tests/`，未修改业务源码，未包含敏感文件或大型文件。
+- 使用既定中文审核意见完成 Approve。
+- 在 PR 仍为 OPEN、MERGEABLE、APPROVED 且无失败必需 Check 后，完成 Squash Merge。
+- 确认 Squash Commit 为 `9fffc2f7e373440b58b1daba1e1ccda0d19d8f25`，远程临时分支 `chore/test-docker` 已删除。
+- 确认四个 canonical fixture 已位于 `origin/develop`。
+- 已准备通知刘楚涵同步最新 `develop`，不 cherry-pick 吴雯旧 Commit。
+
+### 实际执行命令
+
+```powershell
+git fetch origin
+git show origin/develop:docs/contracts/api_v1.md
+gh pr view 1 --json number,title,state,baseRefName,headRefName,author,url,mergeable,reviewDecision
+gh pr diff 1 --name-only
+gh pr checks 1
+gh pr review 1 --approve
+gh pr merge 1 --squash --delete-branch
+gh pr view 1 --json state,mergedAt,mergeCommit,url
+git log origin/develop -5 --oneline
+```
+
+其中 V1 文件检查已抑制正文输出；审核与合并均未使用管理员绕过、rebase、强推或直接修改 `develop`。
+
+### 当前结论
+
+- canonical fixture 与 fixture 契约测试阻塞已解除。
+- 刘楚涵可以从最新 `develop` 同步 Food success/empty fixture 开展前端 Mock。
+- 尚未完成的 Day1 P0：Food API、Recipe API、Chat/SSE、Food 与 Recipe/Chat 前端页面，以及后端和前端共享入口接线。
