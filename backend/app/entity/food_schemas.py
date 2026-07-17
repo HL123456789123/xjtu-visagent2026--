@@ -123,7 +123,7 @@ class ConfirmIngredientsRequest(FoodSchemaBase):
 class FoodRecognitionCreateData(FoodSchemaBase):
     recognition_id: int
     status: Literal["completed"]
-    provider: Literal["mock", "yolo"]
+    provider: Literal["yolo"]
     model_version: str
     image_url: str
     images: list[RecognitionImage] = Field(..., min_length=1)

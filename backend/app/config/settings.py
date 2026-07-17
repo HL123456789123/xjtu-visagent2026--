@@ -4,10 +4,14 @@
 加载优先级：环境变量（系统级别）> .env 文件 > 代码中的默认值
 """
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = BACKEND_ROOT.parent
 
 
 class Settings(BaseSettings):
@@ -69,9 +73,9 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o"
 
     # ── 食物识别配置（V1） ───────────────────────────────
-    FOOD_PROVIDER: Literal["mock", "yolo"] = "mock"
-    FOOD_MODEL_PATH: str = "models/food/best.pt"
-    FOOD_CLASSES_PATH: str = "scripts/food_model/classes.yaml"
+    FOOD_PROVIDER: Literal["yolo"] = "yolo"
+    FOOD_MODEL_PATH: str = str(REPOSITORY_ROOT / "models" / "food" / "best.pt")
+    FOOD_CLASSES_PATH: str = str(BACKEND_ROOT / "scripts" / "food_model" / "classes.yaml")
     FOOD_CONF_THRESHOLD: float = 0.25
     FOOD_MODEL_VERSION: str = "food-yolo-v1"
 

@@ -1,8 +1,10 @@
-"""黄小石模型接口的 V1 适配层，以及可关闭的本地 Mock Provider。"""
+"""食品识别 YOLO 模型的 V1 适配层。"""
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 from typing import Protocol, runtime_checkable
 
 from app.config.settings import settings
@@ -31,51 +33,6 @@ class FoodRecognitionProvider(Protocol):
         """将冻结的英文类别名映射为展示名称。"""
 
 
-DEFAULT_DISPLAY_NAMES = {
-    "apple": "苹果",
-    "beef": "牛肉",
-    "carrot": "胡萝卜",
-    "chicken": "鸡肉",
-    "cucumber": "黄瓜",
-    "egg": "鸡蛋",
-    "onion": "洋葱",
-    "pork": "猪肉",
-    "potato": "土豆",
-    "rice": "大米",
-    "tomato": "番茄",
-}
-
-
-class MockFoodRecognitionProvider:
-    """Day 3 可运行的固定 Mock Provider，默认仅用于开发和测试。"""
-
-    provider_name = "mock"
-    model_version = "food-mock-v1"
-
-    def recognize(
-        self,
-        image_path: str,
-        conf_threshold: float = 0.25,
-    ) -> list[ModelDetection]:
-        del image_path
-        detections = [
-            ModelDetection(
-                class_name="tomato",
-                confidence=0.9321,
-                bbox=BoundingBox(x1=120.4, y1=80.2, x2=310.7, y2=265.1),
-            ),
-            ModelDetection(
-                class_name="egg",
-                confidence=0.8812,
-                bbox=BoundingBox(x1=350.0, y1=100.0, x2=470.0, y2=230.0),
-            ),
-        ]
-        return [item for item in detections if item.confidence >= conf_threshold]
-
-    def get_display_name(self, class_name: str) -> str:
-        return DEFAULT_DISPLAY_NAMES.get(class_name, class_name)
-
-
 class UnavailableFoodRecognitionProvider:
     """延迟报告初始化失败，确保 API 仍能按 V1 返回 HTTP 503。"""
 
@@ -94,7 +51,7 @@ class UnavailableFoodRecognitionProvider:
         raise self.error
 
     def get_display_name(self, class_name: str) -> str:
-        return DEFAULT_DISPLAY_NAMES.get(class_name, class_name)
+        return class_name
 
 
 class YoloFoodRecognitionProvider:
@@ -112,6 +69,7 @@ class YoloFoodRecognitionProvider:
         self.classes_path = Path(classes_path or settings.FOOD_CLASSES_PATH)
         self.model_version = model_version or settings.FOOD_MODEL_VERSION
         self._model = None
+        self._model_lock = Lock()
         self._class_definitions = self._load_classes()
 
     def _load_classes(self) -> dict[int, tuple[str, str]]:
@@ -145,15 +103,18 @@ class YoloFoodRecognitionProvider:
     def _get_model(self):
         if self._model is not None:
             return self._model
-        if not self.model_path.is_file():
-            raise FoodModelUnavailableError(f"模型权重不存在: {self.model_path}")
-        try:
-            from ultralytics import YOLO
+        with self._model_lock:
+            if self._model is not None:
+                return self._model
+            if not self.model_path.is_file():
+                raise FoodModelUnavailableError(f"模型权重不存在: {self.model_path}")
+            try:
+                from ultralytics import YOLO
 
-            self._model = YOLO(str(self.model_path))
-            return self._model
-        except Exception as exc:
-            raise FoodModelUnavailableError("食物识别模型加载失败") from exc
+                self._model = YOLO(str(self.model_path))
+                return self._model
+            except Exception as exc:
+                raise FoodModelUnavailableError("食物识别模型加载失败") from exc
 
     def recognize(
         self,
@@ -198,16 +159,26 @@ class YoloFoodRecognitionProvider:
         for configured_name, display_name in self._class_definitions.values():
             if configured_name == class_name:
                 return display_name
-        return DEFAULT_DISPLAY_NAMES.get(class_name, class_name)
+        return class_name
+
+
+@lru_cache(maxsize=1)
+def _get_yolo_provider(
+    model_path: str,
+    classes_path: str,
+    model_version: str,
+) -> YoloFoodRecognitionProvider:
+    """在同一进程内复用唯一的真实 YOLO Provider。"""
+    return YoloFoodRecognitionProvider(model_path, classes_path, model_version)
 
 
 def build_food_recognition_provider() -> FoodRecognitionProvider:
-    """根据 V1 环境变量构建唯一的 Provider，不在真实模式自动降级。"""
-    if settings.FOOD_PROVIDER == "mock":
-        return MockFoodRecognitionProvider()
-    if settings.FOOD_PROVIDER == "yolo":
-        try:
-            return YoloFoodRecognitionProvider()
-        except FoodModelUnavailableError as exc:
-            return UnavailableFoodRecognitionProvider(exc)
-    raise FoodModelUnavailableError("未配置有效的食物识别 Provider")
+    """按当前配置复用真实 YOLO Provider；初始化失败时延迟映射为 API 503。"""
+    try:
+        return _get_yolo_provider(
+            settings.FOOD_MODEL_PATH,
+            settings.FOOD_CLASSES_PATH,
+            settings.FOOD_MODEL_VERSION,
+        )
+    except FoodModelUnavailableError as exc:
+        return UnavailableFoodRecognitionProvider(exc)

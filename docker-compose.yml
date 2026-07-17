@@ -70,7 +70,7 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
-      FOOD_PROVIDER: ${FOOD_PROVIDER:-mock}
+      FOOD_PROVIDER: yolo
       FOOD_MODEL_PATH: /models/food/best.pt
       FOOD_CLASSES_PATH: /app/scripts/food_model/classes.yaml
       FOOD_CONF_THRESHOLD: "0.25"

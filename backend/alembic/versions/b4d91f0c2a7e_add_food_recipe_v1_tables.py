@@ -26,7 +26,7 @@ def upgrade() -> None:
             "image_object_name", sa.String(length=500), nullable=False, comment="MinIO 对象名"
         ),
         sa.Column("status", sa.String(length=20), nullable=False, comment="识别状态"),
-        sa.Column("provider", sa.String(length=20), nullable=False, comment="mock 或 yolo"),
+        sa.Column("provider", sa.String(length=20), nullable=False, comment="食品识别模型提供方"),
         sa.Column("model_version", sa.String(length=100), nullable=False, comment="模型版本"),
         sa.Column("raw_detections", sa.JSON(), nullable=False, comment="IngredientCandidate 列表"),
         sa.Column(

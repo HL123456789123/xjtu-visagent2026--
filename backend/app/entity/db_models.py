@@ -483,7 +483,7 @@ class FoodRecognitionTask(Base):
         JSON, nullable=False, default=list, comment="按上传顺序保存的 MinIO 对象名"
     )
     status = Column(String(20), nullable=False, default="completed", index=True, comment="识别状态")
-    provider = Column(String(20), nullable=False, comment="mock 或 yolo")
+    provider = Column(String(20), nullable=False, comment="食品识别模型提供方")
     model_version = Column(String(100), nullable=False, comment="模型版本")
     raw_detections = Column(
         JSON, nullable=False, default=list, comment="按图片分组的 ModelDetection 列表"
