@@ -1,8 +1,10 @@
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 NUTRITION_DISCLAIMER = "营养数据由模型估算，仅供参考，不构成医疗或营养建议。"
 
@@ -78,5 +80,61 @@ def assert_recipe_payload(payload: dict) -> None:
     assert isinstance(data["generator"]["is_mock"], bool)
 
 
+def read_backend_file(relative_path: str) -> str:
+    path = BACKEND_DIR / relative_path
+    assert path.exists(), f"V1 requires backend/{relative_path}, but it is missing"
+    return path.read_text(encoding="utf-8")
+
+
+def assert_regex(text: str, pattern: str, message: str) -> None:
+    assert re.search(pattern, text, flags=re.MULTILINE | re.DOTALL), message
+
+
 def test_recipe_success_fixture_matches_v1_contract():
     assert_recipe_payload(load_fixture("recipe_success.json"))
+
+
+def test_v1_recipe_api_exposes_generate_and_get_routes():
+    source = read_backend_file("app/api/recipes.py")
+
+    assert 'APIRouter(prefix="/api/recipes"' in source or "APIRouter(prefix='/api/recipes'" in source
+    assert_regex(
+        source,
+        r"@router\.post\(\s*['\"]/?['\"]",
+        "Recipe API must expose POST /api/recipes",
+    )
+    assert_regex(
+        source,
+        r"@router\.get\(\s*['\"]/?\{recipe_id\}['\"]",
+        "Recipe API must expose GET /api/recipes/{recipe_id}",
+    )
+
+
+def test_v1_recipe_api_request_and_error_contract():
+    source = read_backend_file("app/api/recipes.py")
+    schemas = read_backend_file("app/entity/schemas.py")
+
+    assert "recognition_id" in source + schemas
+    assert "preferences" in source + schemas
+    assert "servings" in source + schemas
+    assert "taste" in source + schemas
+    assert "NO_CONFIRMED_INGREDIENTS" in source or "未确认" in source
+    assert "菜谱生成成功" in source
+
+
+def test_v1_recipe_api_requires_login_and_user_isolation():
+    source = read_backend_file("app/api/recipes.py")
+
+    assert "get_current_user" in source
+    assert "current_user" in source
+    assert (
+        "get_recipe_for_user" in source
+        or "get_recognition_for_user" in source
+        or "current_user.id" in source
+    ), "Recipe API must scope recognition and recipe access to current_user"
+
+
+def test_v1_recipe_router_is_registered_in_main():
+    source = read_backend_file("main.py")
+
+    assert "recipes" in source.lower(), "backend/main.py must import and include the V1 recipes router"
