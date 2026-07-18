@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import tempfile
 import uuid
 from dataclasses import asdict
@@ -17,6 +16,7 @@ import yaml
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from app.config.settings import Settings
 from app.core.exceptions import AppException
 from app.entity.db_models import FoodRecognitionTask
 from app.entity.food_schemas import (
@@ -167,7 +167,8 @@ def _read_display_names(classes_path: Path) -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def build_default_food_provider() -> tuple[FoodRecognitionProvider, str, str, dict[str, str]]:
-    mode = os.getenv("FOOD_PROVIDER", "yolo").strip().lower()
+    runtime_settings = Settings()
+    mode = runtime_settings.FOOD_PROVIDER
     if mode == "mock":
         return MockFoodRecognitionProvider(), "mock", "food-mock-v1", {}
     if mode != "yolo":
@@ -175,9 +176,9 @@ def build_default_food_provider() -> tuple[FoodRecognitionProvider, str, str, di
         return UnavailableFoodRecognitionProvider(error), "yolo", "food-yolo-v1", {}
 
     backend_dir = Path(__file__).resolve().parents[2]
-    model_path = os.getenv("FOOD_MODEL_PATH", "/models/food/best.pt")
-    classes_path = os.getenv(
-        "FOOD_CLASSES_PATH", str(backend_dir / "scripts" / "food_model" / "classes.yaml")
+    model_path = runtime_settings.FOOD_MODEL_PATH
+    classes_path = runtime_settings.FOOD_CLASSES_PATH or str(
+        backend_dir / "scripts" / "food_model" / "classes.yaml"
     )
     try:
         display_names = _read_display_names(Path(classes_path))
