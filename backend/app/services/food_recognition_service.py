@@ -354,10 +354,10 @@ class FoodRecognitionService:
 
     @classmethod
     def _validate_batch_sizes(cls, sizes: list[int]) -> None:
-        if sum(sizes) > cls.MAX_BATCH_BYTES:
-            raise ImageBatchTooLargeError()
         if any(size > cls.MAX_SINGLE_IMAGE_BYTES for size in sizes):
             raise ImageTooLargeError()
+        if sum(sizes) > cls.MAX_BATCH_BYTES:
+            raise ImageBatchTooLargeError()
 
     async def _read_image(self, upload: UploadFile) -> tuple[bytes, str]:
         extension = Path(upload.filename or "").suffix.lower()

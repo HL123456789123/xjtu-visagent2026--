@@ -104,6 +104,8 @@ def assert_valid_single_image_size(size_bytes: int) -> None:
 
 
 def assert_valid_batch_total_size(image_sizes: list[int]) -> None:
+    if any(size > MAX_SINGLE_IMAGE_BYTES for size in image_sizes):
+        raise ValueError("IMAGE_TOO_LARGE")
     if sum(image_sizes) > MAX_IMAGE_BATCH_BYTES:
         raise ValueError("IMAGE_BATCH_TOO_LARGE")
 
@@ -180,7 +182,14 @@ def test_v1_1_food_batch_total_size_accepts_50_mb():
 
 def test_v1_1_food_batch_total_size_rejects_more_than_50_mb():
     with pytest.raises(ValueError, match="IMAGE_BATCH_TOO_LARGE"):
-        assert_valid_batch_total_size([MAX_IMAGE_BATCH_BYTES + 1])
+        # This defensive-size test bypasses the public image-count rule. A valid
+        # request has at most five 10 MiB files and therefore cannot exceed 50 MiB.
+        assert_valid_batch_total_size([MAX_SINGLE_IMAGE_BYTES] * MAX_IMAGES_PER_BATCH + [1])
+
+
+def test_v1_1_food_single_image_error_has_priority_over_batch_error():
+    with pytest.raises(ValueError, match="IMAGE_TOO_LARGE"):
+        assert_valid_batch_total_size([MAX_SINGLE_IMAGE_BYTES + 1] * MAX_IMAGES_PER_BATCH)
 
 
 def test_v1_1_food_ingredients_reference_input_images_by_index():

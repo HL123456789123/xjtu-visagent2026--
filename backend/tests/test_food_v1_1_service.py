@@ -136,6 +136,16 @@ def make_service(*, provider: RecordingProvider | None = None):
     return service, repository, storage, provider
 
 
+def make_food_api(service: FoodRecognitionService) -> FastAPI:
+    app = FastAPI()
+    app.add_exception_handler(AppException, app_exception_handler)
+    app.include_router(router)
+    app.include_router(file_router)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+    app.dependency_overrides[get_food_recognition_service] = lambda: service
+    return app
+
+
 @pytest.mark.asyncio
 async def test_multi_image_service_keeps_order_and_assigns_image_index():
     service, repository, storage, provider = make_service()
@@ -187,14 +197,19 @@ def test_size_boundaries_distinguish_single_and_batch_errors():
     FoodRecognitionService._validate_batch_sizes(
         [FoodRecognitionService.MAX_SINGLE_IMAGE_BYTES] * 5
     )
-    with pytest.raises(ImageTooLargeError):
+    with pytest.raises(ImageTooLargeError) as single_error:
         FoodRecognitionService._validate_batch_sizes(
             [FoodRecognitionService.MAX_SINGLE_IMAGE_BYTES + 1]
         )
-    with pytest.raises(ImageBatchTooLargeError):
+    assert single_error.value.error_code == "IMAGE_TOO_LARGE"
+
+    # The defensive batch guard remains useful even though the public 1..5 and
+    # 10 MiB rules make this combination unreachable through a valid request.
+    with pytest.raises(ImageBatchTooLargeError) as batch_error:
         FoodRecognitionService._validate_batch_sizes(
-            [FoodRecognitionService.MAX_SINGLE_IMAGE_BYTES + 1] * 5
+            [FoodRecognitionService.MAX_SINGLE_IMAGE_BYTES] * 5 + [1]
         )
+    assert batch_error.value.error_code == "IMAGE_BATCH_TOO_LARGE"
 
 
 @pytest.mark.asyncio
@@ -317,12 +332,7 @@ def test_v1_1_orm_and_repositories_share_one_database_model():
 
 def test_api_accepts_only_repeated_images_field():
     service, _, _, _ = make_service()
-    app = FastAPI()
-    app.add_exception_handler(AppException, app_exception_handler)
-    app.include_router(router)
-    app.include_router(file_router)
-    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
-    app.dependency_overrides[get_food_recognition_service] = lambda: service
+    app = make_food_api(service)
 
     with TestClient(app) as client:
         response = client.post(
@@ -341,3 +351,74 @@ def test_api_accepts_only_repeated_images_field():
     assert [item["image_index"] for item in response.json()["data"]["images"]] == [0, 1]
     assert legacy.status_code == 400
     assert legacy.json()["detail"] == "INVALID_IMAGE_COUNT"
+
+
+@pytest.mark.parametrize("image_count", [1, 5])
+def test_api_accepts_v1_1_image_count_boundaries(image_count: int):
+    service, _, _, _ = make_service()
+    files = [
+        ("images", (f"image-{index}.png", image_bytes("PNG"), "image/png"))
+        for index in range(image_count)
+    ]
+
+    with TestClient(make_food_api(service)) as client:
+        response = client.post("/api/food/recognitions", files=files)
+
+    assert response.status_code == 201
+    assert response.json()["code"] == 201
+    assert len(response.json()["data"]["images"]) == image_count
+
+
+@pytest.mark.parametrize(
+    ("request_kwargs", "case"),
+    [
+        ({}, "missing-images-field"),
+        (
+            {
+                "content": b"--empty-images--\r\n",
+                "headers": {"content-type": "multipart/form-data; boundary=empty-images"},
+            },
+            "empty-multipart",
+        ),
+    ],
+)
+def test_api_zero_images_returns_v1_invalid_image_count(request_kwargs, case: str):
+    service, _, _, _ = make_service()
+
+    with TestClient(make_food_api(service)) as client:
+        response = client.post("/api/food/recognitions", **request_kwargs)
+
+    assert case
+    assert response.status_code == 400
+    assert response.json() == {
+        "code": 400,
+        "message": "图片数量必须为 1 至 5 张",
+        "detail": "INVALID_IMAGE_COUNT",
+    }
+
+
+def test_api_six_images_returns_v1_invalid_image_count():
+    service, _, _, _ = make_service()
+    files = [
+        ("images", (f"image-{index}.png", image_bytes("PNG"), "image/png"))
+        for index in range(6)
+    ]
+
+    with TestClient(make_food_api(service)) as client:
+        response = client.post("/api/food/recognitions", files=files)
+
+    assert response.status_code == 400
+    assert response.json()["code"] == 400
+    assert response.json()["detail"] == "INVALID_IMAGE_COUNT"
+
+
+def test_food_upload_openapi_keeps_the_only_public_images_field():
+    service, _, _, _ = make_service()
+
+    with TestClient(make_food_api(service)) as client:
+        schema = client.get("/openapi.json").json()
+
+    properties = schema["paths"]["/api/food/recognitions"]["post"]["requestBody"]["content"][
+        "multipart/form-data"
+    ]["schema"]["properties"]
+    assert set(properties) == {"images", "conf_threshold"}
