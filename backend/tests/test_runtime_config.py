@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,16 @@ def _v1_runtime_values() -> list[str]:
     ]
 
 
-def test_settings_loads_all_v1_runtime_values_from_env_file(tmp_path: Path):
+def _clear_v1_runtime_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in tuple(os.environ):
+        if name.startswith(("FOOD_", "LLM_")):
+            monkeypatch.delenv(name, raising=False)
+
+
+def test_settings_loads_all_v1_runtime_values_from_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _clear_v1_runtime_environment(monkeypatch)
     settings = Settings(_env_file=_write_env(tmp_path, _v1_runtime_values()))
 
     assert settings.FOOD_PROVIDER == "mock"
