@@ -43,9 +43,9 @@ try {
     if (-not (Test-Path -LiteralPath $archive -PathType Leaf) -or -not (Test-Path -LiteralPath $sums -PathType Leaf)) {
         throw "Release is missing the model archive or SHA256SUMS.txt."
     }
-    $sumLine = Get-Content -LiteralPath $sums | Where-Object { $_ -match ("(?:\\*|\\s)" + [regex]::Escape($AssetName) + "$") } | Select-Object -First 1
+    $sumLine = Get-Content -LiteralPath $sums | Where-Object { $_ -match ("(?:\*|\s)" + [regex]::Escape($AssetName) + "$") } | Select-Object -First 1
     if (-not $sumLine) { throw "SHA256SUMS.txt has no entry for $AssetName." }
-    $expectedArchiveHash = ($sumLine -split "\\s+")[0].ToLowerInvariant()
+    $expectedArchiveHash = ($sumLine -split "\s+")[0].ToLowerInvariant()
     if ((Get-Sha256 $archive) -ne $expectedArchiveHash) { throw "Release archive SHA-256 mismatch." }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
