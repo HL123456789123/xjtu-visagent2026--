@@ -1,0 +1,2 @@
+# Keep the paired class map byte-stable across Windows and Linux checkouts.
+backend/scripts/food_model/classes.yaml text eol=lf

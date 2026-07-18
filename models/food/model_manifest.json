@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "release_tag": "food-model-v1.0",
+  "release_asset": "visagent-food-model-v1-yolo11s.zip",
+  "model_version": "food-yolo-v1",
+  "architecture": "YOLO11s",
+  "seed": 3407,
+  "input_size": 640,
+  "confidence_threshold": 0.25,
+  "weights": {
+    "filename": "best.pt",
+    "size_bytes": 19194771,
+    "sha256": "680accafc8c22854b37e959106c37a44b3e8c42b4d260d7f3c4681021c2a31cd"
+  },
+  "classes": {
+    "filename": "classes.yaml",
+    "repository_path": "backend/scripts/food_model/classes.yaml",
+    "size_bytes": 640,
+    "sha256": "8bd06c89afe18fbb6bf7d64d44b51f84f8199a80678e63123f35c09fd6c9913b"
+  },
+  "delivery_environment": {
+    "ultralytics": "8.4.96",
+    "torch": "2.3.0+cu121",
+    "cuda": "12.1"
+  },
+  "class_order": [
+    "sugar",
+    "strawberry",
+    "beef",
+    "chicken",
+    "cheese",
+    "milk",
+    "tomato",
+    "butter",
+    "corn",
+    "banana",
+    "egg",
+    "carrot"
+  ],
+  "frozen_test_metrics": {
+    "map50_95": 0.62859,
+    "precision": 0.97498,
+    "recall": 0.85565,
+    "single_image_p50_ms": 8.14,
+    "single_image_p95_ms": 8.43
+  },
+  "demo": {
+    "image_filename": "demo_multi_food.jpg",
+    "cpu_result_filename": "demo_prediction_cpu.json",
+    "expected_detection_count_at_confidence_0_25": 6,
+    "expected_class_counts": {
+      "milk": 1,
+      "sugar": 2,
+      "butter": 1,
+      "banana": 1,
+      "corn": 1
+    }
+  }
+}
