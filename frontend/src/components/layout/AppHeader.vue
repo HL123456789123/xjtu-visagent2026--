@@ -1,13 +1,36 @@
 <template>
   <header class="app-header">
-    <div class="header-left">
+    <router-link class="header-brand" to="/home" aria-label="FridgeChef 首页">
       <span class="brand-mark" aria-hidden="true">🍳</span>
       <span class="brand-title">FridgeChef</span>
-    </div>
+    </router-link>
 
-    <!-- 用户信息 + 下拉菜单 -->
+    <button
+      class="nav-toggle"
+      type="button"
+      aria-label="展开导航菜单"
+      :aria-expanded="menuOpen"
+      data-testid="topnav-toggle"
+      @click="menuOpen = !menuOpen"
+    >
+      <el-icon><Menu /></el-icon>
+    </button>
+
+    <nav :class="['top-nav', { 'top-nav--open': menuOpen }]" aria-label="主导航" data-testid="top-nav">
+      <button
+        v-for="item in visibleNavItems"
+        :key="item.path"
+        type="button"
+        :class="['top-nav__item', { 'top-nav__item--active': isNavActive(item) }]"
+        :data-testid="`nav-${item.id}`"
+        @click="goTo(item.path)"
+      >
+        {{ item.label }}
+      </button>
+    </nav>
+
     <div class="header-right">
-      <el-dropdown trigger="click" @command="handleCommand">
+      <el-dropdown trigger="click" data-testid="user-menu" @command="handleCommand">
         <div class="user-info">
           <el-avatar :size="32" :src="userStore.avatar || undefined">
             {{ userStore.username?.charAt(0)?.toUpperCase() }}
@@ -32,15 +55,51 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
-import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowDown, Menu, User, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
+const menuOpen = ref(false)
 
-/** 处理下拉菜单命令 */
+const navItems = [
+  { id: 'home', label: '首页', path: '/home' },
+  { id: 'food', label: '食物识别', path: '/food-recipes' },
+  { id: 'chat', label: '菜谱对话', path: '/chat' },
+  { id: 'history', label: '历史记录', path: '/history', permission: 'detection:task:view' },
+  { id: 'training', label: '模型训练', path: '/training', permission: 'training:task:view' },
+  { id: 'dashboard', label: '数据看板', path: '/dashboard', permission: 'system:dashboard' },
+  { id: 'profile', label: '个人中心', path: '/profile' },
+]
+
+const visibleNavItems = computed(() => {
+  const items = navItems.filter((item) => !item.permission || userStore.hasPermission(item.permission))
+
+  if (userStore.hasPermission('user:list')) {
+    items.push({ id: 'admin', label: '管理后台', path: '/admin/users' })
+  } else if (userStore.hasPermission('role:list')) {
+    items.push({ id: 'admin', label: '管理后台', path: '/admin/roles' })
+  }
+
+  return items
+})
+
+function isNavActive(item) {
+  if (item.id === 'chat') {
+    return route.path === '/chat' || route.path.startsWith('/recipe-chat/')
+  }
+  return route.path === item.path || route.path.startsWith(`${item.path}/`)
+}
+
+function goTo(path) {
+  menuOpen.value = false
+  router.push(path)
+}
+
 async function handleCommand(command) {
   switch (command) {
     case 'profile':
@@ -56,7 +115,7 @@ async function handleCommand(command) {
         await userStore.logout()
         router.push('/login')
       } catch {
-        // 用户取消确认框或 logout 出错，不做处理
+        // 用户取消确认或退出接口失败时保持当前页面。
       }
       break
   }
@@ -65,22 +124,25 @@ async function handleCommand(command) {
 
 <style lang="scss" scoped>
 .app-header {
-  height: $header-height;
-  background: rgba(255, 253, 248, 0.92);
-  border-bottom: 1px solid rgba(121, 82, 45, 0.12);
+  min-height: $header-height;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: $spacing-lg;
   padding: 0 $spacing-lg;
+  background: rgba(255, 253, 248, 0.92);
+  border-bottom: 1px solid rgba(121, 82, 45, 0.12);
   box-shadow: 0 10px 30px rgba(102, 68, 35, 0.08);
   backdrop-filter: blur(18px);
   z-index: 100;
 }
 
-.header-left {
+.header-brand {
   display: flex;
   align-items: center;
   gap: $spacing-sm;
+  color: inherit;
+  flex-shrink: 0;
+  text-decoration: none;
 }
 
 .brand-mark {
@@ -102,18 +164,46 @@ async function handleCommand(command) {
   letter-spacing: -0.03em;
 }
 
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.top-nav__item {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #76573f;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  padding: 8px 11px;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover,
+  &--active {
+    background: #fff1d2;
+    color: #c85b2b;
+  }
+}
+
 .header-right {
   display: flex;
   align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .user-info {
   display: flex;
   align-items: center;
   gap: $spacing-sm;
-  cursor: pointer;
   padding: 4px 8px;
   border-radius: 999px;
+  cursor: pointer;
   transition: background 0.2s;
 
   &:hover {
@@ -122,9 +212,45 @@ async function handleCommand(command) {
 }
 
 .username {
-  font-size: 14px;
   color: #4c3a2c;
+  font-size: 14px;
   font-weight: 700;
+}
+
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: #fff3d8;
+  color: #76573f;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 6px;
+}
+
+@media (max-width: 920px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+    padding: 10px $spacing-md;
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+  }
+
+  .top-nav {
+    display: none;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    order: 4;
+  }
+
+  .top-nav--open {
+    display: flex;
+  }
 }
 
 @media (max-width: 560px) {
