@@ -52,7 +52,7 @@ def _user_with_role(db, role_name: str, permission_codes: set[str]) -> User:
     username = _unique("rbac")
     user = User(
         username=username,
-        email=f"{username}@example.test",
+        email=f"{username}@example.com",
         hashed_password=hash_password(secrets.token_urlsafe(24)),
         is_active=True,
     )
@@ -78,7 +78,7 @@ def test_registration_ignores_submitted_admin_role_and_assigns_only_viewer(db, c
         "/api/auth/register",
         json={
             "username": username,
-            "email": f"{username}@example.test",
+            "email": f"{username}@example.com",
             "password": secrets.token_urlsafe(24),
             "roles": ["admin"],
             "is_superuser": True,
