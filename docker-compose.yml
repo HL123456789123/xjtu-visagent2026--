@@ -1,9 +1,4 @@
-# ============================================================
-#           VisAgent 应用服务编排
-# ============================================================
-
 services:
-  # 基础设施
   postgres:
     image: pgvector/pgvector:pg15
     container_name: visagent-postgres
@@ -12,15 +7,15 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: ${DB_USER:-visagent}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?请在 .env 中配置 DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env before starting Compose}
       POSTGRES_DB: ${DB_NAME:-visagent}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U visagent -d visagent"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -34,18 +29,18 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   minio:
     image: minio/minio:latest
     container_name: visagent-minio
     restart: unless-stopped
     ports:
-      - "9000:9000"   # API 端口
-      - "9001:9001"   # Web 控制台端口
+      - "9000:9000"
+      - "9001:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?请在 .env 中配置 MINIO_SECRET_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env before starting Compose}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -53,7 +48,78 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: visagent-backend
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      DEBUG: ${DEBUG:-true}
+      DATABASE_URL: postgresql://${DB_USER:-visagent}:${DB_PASSWORD:?Set DB_PASSWORD in .env before starting Compose}@postgres:5432/${DB_NAME:-visagent}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-visagent}
+      DB_USER: ${DB_USER:-visagent}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env before starting Compose}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # The current Settings class derives its connection from REDIS_HOST/PORT.
+      # Keep REDIS_URL visible for Compose diagnostics; it is not yet consumed.
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in .env before starting Compose}
+      MINIO_BUCKET: ${MINIO_BUCKET:-visagent-images}
+      MINIO_SECURE: "false"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env before starting Compose}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      COOKIE_SECURE: "false"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      FOOD_PROVIDER: ${FOOD_PROVIDER:-mock}
+      FOOD_MODEL_PATH: ${FOOD_MODEL_PATH:-/models/food/best.pt}
+      FOOD_CLASSES_PATH: ${FOOD_CLASSES_PATH:-/app/backend/scripts/food_model/classes.yaml}
+      # V1.1 declares this setting. The current API still accepts the effective
+      # threshold as a request field, so this value is documented but unused.
+      FOOD_CONF_THRESHOLD: ${FOOD_CONF_THRESHOLD:-0.25}
+      LLM_MODE: ${LLM_MODE:-fake}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://example.invalid/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-replace_me}
+      LLM_MODEL: ${LLM_MODEL:-replace_me}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+    volumes:
+      # Optional real-model input; Mock mode remains usable when it is empty.
+      - ./models/food:/models/food:ro
+    command: >-
+      sh -c "uv run --no-sync alembic upgrade head && exec uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8888"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8888/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 45s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: visagent-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:
