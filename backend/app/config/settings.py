@@ -4,6 +4,8 @@
 加载优先级：环境变量（系统级别）> .env 文件 > 代码中的默认值
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict, model_validator, field_validator
 import warnings
@@ -67,6 +69,21 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o"
 
+    # V1.1 Food runtime configuration. These names are explicit so a typo in
+    # backend/.env fails validation instead of being silently ignored.
+    FOOD_PROVIDER: str = "yolo"
+    FOOD_MODEL_PATH: str = "/models/food/best.pt"
+    FOOD_CLASSES_PATH: str = ""
+    FOOD_CONF_THRESHOLD: float = 0.25
+
+    # Recipe and Chat use the explicit V1.1 LLM_* names below. OPENAI_* stays
+    # available for legacy application configuration only.
+    LLM_MODE: str = "real"
+    LLM_BASE_URL: str = ""
+    LLM_API_KEY: str = ""
+    LLM_MODEL: str = ""
+    LLM_TIMEOUT_SECONDS: float = 60.0
+
     # ── LangChain 配置 ────────────────────────────────
     LANGCHAIN_TRACING_V2: bool = False
     LANGCHAIN_API_KEY: str = ""
@@ -93,7 +110,11 @@ class Settings(BaseSettings):
         """将 CORS 配置字符串转为列表"""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
 
-    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = ConfigDict(
+        env_file=Path(__file__).resolve().parents[2] / ".env",
+        env_file_encoding="utf-8",
+        extra="forbid",
+    )
 
     @field_validator('DB_PORT')
     @classmethod
@@ -109,6 +130,44 @@ class Settings(BaseSettings):
         """验证 Redis 端口范围"""
         if not (1 <= v <= 65535):
             raise ValueError('Redis 端口必须在 1-65535 之间')
+        return v
+
+    @field_validator('FOOD_PROVIDER')
+    @classmethod
+    def validate_food_provider(cls, v: str) -> str:
+        provider = v.strip().lower()
+        if provider not in {"mock", "yolo"}:
+            raise ValueError("FOOD_PROVIDER must be mock or yolo")
+        return provider
+
+    @field_validator('FOOD_CONF_THRESHOLD')
+    @classmethod
+    def validate_food_conf_threshold(cls, v: float) -> float:
+        if not 0 <= v <= 1:
+            raise ValueError("FOOD_CONF_THRESHOLD must be between 0 and 1")
+        return v
+
+    @field_validator('LLM_MODE')
+    @classmethod
+    def validate_llm_mode(cls, v: str) -> str:
+        mode = v.strip().lower()
+        if mode not in {"fake", "real"}:
+            raise ValueError("LLM_MODE must be fake or real")
+        return mode
+
+    @field_validator('LLM_BASE_URL')
+    @classmethod
+    def validate_llm_base_url(cls, v: str) -> str:
+        url = v.strip()
+        if url and not url.startswith(('http://', 'https://')):
+            raise ValueError('LLM_BASE_URL must start with http:// or https://')
+        return url
+
+    @field_validator('LLM_TIMEOUT_SECONDS')
+    @classmethod
+    def validate_llm_timeout(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError('LLM_TIMEOUT_SECONDS must be greater than 0')
         return v
 
     @field_validator('ACCESS_TOKEN_EXPIRE_MINUTES')
