@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 from copy import deepcopy
 from functools import lru_cache
 
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 
+from app.config.settings import Settings
 from app.entity.recipe_schemas import ChatLLMResult, RecipeGenerateResult
 
 
@@ -23,8 +23,9 @@ class InvalidLLMOutputError(ValueError):
 
 class LLMGateway:
     def __init__(self) -> None:
-        self.mode = os.getenv("LLM_MODE", "real").strip().lower()
-        self.model = os.getenv("LLM_MODEL", "").strip()
+        runtime_settings = Settings()
+        self.mode = runtime_settings.LLM_MODE
+        self.model = runtime_settings.LLM_MODEL.strip()
         self.client: AsyncOpenAI | None = None
         if self.mode == "fake":
             self.model = "fixture-v1"
@@ -32,12 +33,12 @@ class LLMGateway:
         if self.mode != "real":
             raise LLMUnavailableError("LLM_MODE must be real or fake")
 
-        api_key = os.getenv("LLM_API_KEY", "").strip()
-        base_url = os.getenv("LLM_BASE_URL", "").strip()
+        api_key = runtime_settings.LLM_API_KEY.strip()
+        base_url = runtime_settings.LLM_BASE_URL
         if not api_key or not base_url or not self.model:
             raise LLMUnavailableError("real LLM configuration is incomplete")
         try:
-            timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
+            timeout = runtime_settings.LLM_TIMEOUT_SECONDS
             self.client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url,
