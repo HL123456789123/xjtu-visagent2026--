@@ -1,23 +1,14 @@
 <template>
   <div class="main-layout">
-    <!-- 顶部导航 -->
     <AppHeader />
-
-    <!-- 侧边栏 + 内容区 -->
-    <div class="layout-body">
-      <AppSidebar />
-
-      <!-- 主内容区 -->
-      <main class="layout-content">
-        <router-view />
-      </main>
-    </div>
+    <main class="layout-content">
+      <router-view />
+    </main>
   </div>
 </template>
 
 <script setup>
 import AppHeader from './AppHeader.vue'
-import AppSidebar from './AppSidebar.vue'
 </script>
 
 <style lang="scss" scoped>
@@ -31,16 +22,16 @@ import AppSidebar from './AppSidebar.vue'
     linear-gradient(180deg, #fff8ea 0%, #fffdf7 46%, #f8efe3 100%);
 }
 
-.layout-body {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
 .layout-content {
   flex: 1;
-  background: transparent;
+  min-height: 0;
   overflow-y: auto;
   padding: $spacing-lg;
+}
+
+@media (max-width: 720px) {
+  .layout-content {
+    padding: $spacing-md;
+  }
 }
 </style>
