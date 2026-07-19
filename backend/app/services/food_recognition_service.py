@@ -375,7 +375,11 @@ class FoodRecognitionService:
             with Image.open(BytesIO(content)) as image:
                 actual_format = image.format
                 image.verify()
-        except (OSError, UnidentifiedImageError, ValueError) as exc:
+            # verify() checks container integrity, while load() forces pixel decoding.
+            # Reopen because Pillow invalidates the image object after verify().
+            with Image.open(BytesIO(content)) as image:
+                image.load()
+        except (OSError, UnidentifiedImageError, SyntaxError, ValueError) as exc:
             raise InvalidImageContentError() from exc
         if actual_format != cls._PIL_FORMATS[extension]:
             raise InvalidImageContentError()

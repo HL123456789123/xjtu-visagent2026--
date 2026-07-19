@@ -106,6 +106,7 @@ def test_llm_gateway_uses_explicit_v1_settings(tmp_path: Path, monkeypatch: pyte
 def test_real_llm_gateway_disables_sdk_retries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    _clear_v1_runtime_environment(monkeypatch)
     env_file = _write_env(tmp_path, _v1_runtime_values())
     calls: dict[str, object] = {}
 
@@ -127,6 +128,7 @@ def test_real_llm_gateway_disables_sdk_retries(
 async def test_real_llm_json_completion_disables_thinking(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    _clear_v1_runtime_environment(monkeypatch)
     env_file = _write_env(tmp_path, _v1_runtime_values())
     calls: dict[str, object] = {}
 

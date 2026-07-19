@@ -230,6 +230,41 @@ async def test_invalid_type_and_invalid_content_use_different_v1_errors():
 
 
 @pytest.mark.asyncio
+async def test_truncated_png_is_rejected_before_storage_or_yolo():
+    service, repository, storage, provider = make_service()
+
+    with pytest.raises(InvalidImageContentError) as exc_info:
+        await service.create_recognition(
+            user_id=1,
+            images=[make_upload("broken.png", image_bytes("PNG")[:-8], "image/png")],
+            conf_threshold=0.25,
+        )
+
+    assert exc_info.value.error_code == "INVALID_IMAGE_CONTENT"
+    assert repository.tasks == {}
+    assert storage.objects == {}
+    assert provider.paths == []
+
+
+def test_api_returns_422_for_truncated_png():
+    service, _, _, provider = make_service()
+
+    with TestClient(make_food_api(service)) as client:
+        response = client.post(
+            "/api/food/recognitions",
+            files={"images": ("broken.png", image_bytes("PNG")[:-8], "image/png")},
+        )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "code": 422,
+        "message": "图片内容无法解码",
+        "detail": "INVALID_IMAGE_CONTENT",
+    }
+    assert provider.paths == []
+
+
+@pytest.mark.asyncio
 async def test_provider_failure_is_atomic_for_storage_and_repository():
     service, repository, storage, _ = make_service(
         provider=RecordingProvider(fail_on_call=2)

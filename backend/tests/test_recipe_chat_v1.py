@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -150,10 +151,15 @@ async def test_real_llm_configuration_failure_does_not_fall_back_to_fake(
 ):
     _, user, food_repository, recipe_repository, _ = repositories
     recognition = create_recognition(food_repository, user.id)
-    monkeypatch.setenv("LLM_MODE", "real")
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.delenv("LLM_BASE_URL", raising=False)
-    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.setattr(
+        "app.services.llm_gateway.Settings",
+        lambda: SimpleNamespace(
+            LLM_MODE="real",
+            LLM_API_KEY="",
+            LLM_BASE_URL="",
+            LLM_MODEL="",
+        ),
+    )
     get_llm_gateway.cache_clear()
     service = RecipeService(food_repository, recipe_repository)
 
