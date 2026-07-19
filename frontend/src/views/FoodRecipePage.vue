@@ -551,8 +551,11 @@ async function restoreRecipe(recipeId) {
       provider: recognition.provider,
       modelVersion: recognition.model_version,
     }
-    recognizedIngredients.value = mapCandidatesToEditableIngredients(recognition.ingredients || [])
-    confirmedIngredients.value = recognition.confirmed_ingredients || []
+    const restoredConfirmedIngredients = recognition.confirmed_ingredients || []
+    recognizedIngredients.value = mapCandidatesToEditableIngredients(
+      restoredConfirmedIngredients.length ? restoredConfirmedIngredients : recognition.ingredients || []
+    )
+    confirmedIngredients.value = restoredConfirmedIngredients
     recognizedImageCount.value = recognition.images?.length || 0
     selectedFiles.value = []
     generatedRecipe.value = recipe

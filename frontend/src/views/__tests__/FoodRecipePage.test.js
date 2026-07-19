@@ -1,5 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetFoodApiClient, setFoodApiClient } from '@/api/food'
+import { resetRecipeApiClient, setRecipeApiClient } from '@/api/recipe'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
 import FoodRecipePage from '../FoodRecipePage.vue'
 
@@ -20,6 +22,61 @@ describe('FoodRecipePage', () => {
       createObjectURL: vi.fn((file) => `blob:${file.name}`),
       revokeObjectURL: vi.fn(),
     })
+  })
+
+  afterEach(() => {
+    resetFoodApiClient()
+    resetRecipeApiClient()
+  })
+
+  it('restores confirmed ingredients instead of raw empty candidates for a saved recipe', async () => {
+    setRecipeApiClient({
+      get: vi.fn().mockResolvedValue({
+        data: {
+          recipe_id: 101,
+          recognition_id: 12,
+          version: 2,
+          title: '恢复菜谱',
+          summary: '用于历史恢复验证。',
+          servings: 3,
+          cooking_time_minutes: 20,
+          difficulty: '简单',
+          ingredients: [],
+          steps: [],
+          nutrition: {
+            basis: 'per_serving',
+            calories_kcal: 0,
+            protein_g: 0,
+            fat_g: 0,
+            carbohydrates_g: 0,
+          },
+          nutrition_disclaimer: '仅供参考。',
+          generator: { provider: 'fake', model: 'fixture-v1', is_mock: true },
+        },
+      }),
+    })
+    setFoodApiClient({
+      get: vi.fn().mockResolvedValue({
+        data: {
+          recognition_id: 12,
+          provider: 'mock',
+          model_version: 'food-mock-v1',
+          images: [{ image_index: 0, image_url: '/food/12/0' }],
+          ingredients: [],
+          confirmed_ingredients: [
+            { name: 'egg', class_name: null, quantity: 1, unit: 'piece', source: 'manual' },
+          ],
+        },
+      }),
+    })
+
+    const wrapper = mount(FoodRecipePage, { props: { recipeId: 101 } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
+    expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="ingredient-name"]').element.value).toBe('egg')
+    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('1 项')
   })
 
   it('runs the success mock flow and emits the recipe contract after confirmation', async () => {
