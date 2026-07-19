@@ -43,6 +43,7 @@ class LLMGateway:
                 api_key=api_key,
                 base_url=base_url,
                 timeout=timeout,
+                max_retries=0,
             )
         except (TypeError, ValueError) as exc:
             raise LLMUnavailableError("real LLM configuration is invalid") from exc
@@ -65,6 +66,8 @@ class LLMGateway:
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.2,
+                max_tokens=2048,
+                extra_body={"thinking": {"type": "disabled"}},
             )
             content = response.choices[0].message.content
         except Exception as exc:

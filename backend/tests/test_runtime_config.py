@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -100,6 +101,54 @@ def test_llm_gateway_uses_explicit_v1_settings(tmp_path: Path, monkeypatch: pyte
         "model": "fixture-v1",
         "is_mock": True,
     }
+
+
+def test_real_llm_gateway_disables_sdk_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    env_file = _write_env(tmp_path, _v1_runtime_values())
+    calls: dict[str, object] = {}
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **kwargs):
+            calls.update(kwargs)
+
+    monkeypatch.setattr(llm_gateway, "Settings", lambda: Settings(_env_file=env_file))
+    monkeypatch.setattr(llm_gateway, "AsyncOpenAI", FakeAsyncOpenAI)
+
+    gateway = llm_gateway.LLMGateway()
+
+    assert gateway.generator["is_mock"] is False
+    assert calls["timeout"] == 17.5
+    assert calls["max_retries"] == 0
+
+
+@pytest.mark.asyncio
+async def test_real_llm_json_completion_disables_thinking(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    env_file = _write_env(tmp_path, _v1_runtime_values())
+    calls: dict[str, object] = {}
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            calls.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))]
+            )
+
+    class FakeAsyncOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr(llm_gateway, "Settings", lambda: Settings(_env_file=env_file))
+    monkeypatch.setattr(llm_gateway, "AsyncOpenAI", FakeAsyncOpenAI)
+
+    gateway = llm_gateway.LLMGateway()
+
+    assert await gateway._json_completion("system", "user") == {"ok": True}
+    assert calls["max_tokens"] == 2048
+    assert calls["extra_body"] == {"thinking": {"type": "disabled"}}
 
 
 def test_food_provider_uses_explicit_v1_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -13,6 +13,8 @@ export const RECIPE_PATHS = Object.freeze({
   history: '/recipes/history',
 })
 
+export const RECIPE_GENERATION_TIMEOUT_MS = 90_000
+
 let injectedClient = null
 
 export function setRecipeApiClient(client) {
@@ -76,7 +78,7 @@ export function createRecipe(data, options = {}) {
       max_time_minutes: 30,
       avoid_ingredients: [],
     },
-  })
+  }, { timeout: RECIPE_GENERATION_TIMEOUT_MS })
 }
 
 /**

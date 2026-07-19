@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import request from '@/utils/request'
 import {
   RECIPE_PATHS,
+  RECIPE_GENERATION_TIMEOUT_MS,
   createRecipe,
   getRecipe,
   unwrapRecipeApiData,
@@ -56,9 +57,10 @@ describe('recipe api contract', () => {
     )
 
     expect(postSpy).toHaveBeenCalledOnce()
-    const [path, body] = postSpy.mock.calls[0]
+    const [path, body, config] = postSpy.mock.calls[0]
 
     expect(path).toBe(RECIPE_PATHS.create)
+    expect(config).toEqual({ timeout: RECIPE_GENERATION_TIMEOUT_MS })
     expect(body).toEqual({
       recognition_id: 12,
       preferences: { servings: 3, taste: '清淡' },
