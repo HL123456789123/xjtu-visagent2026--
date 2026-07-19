@@ -6,6 +6,9 @@ Dashboard 数据统计 API 路由
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from collections import Counter
+from datetime import datetime
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -21,12 +24,123 @@ from app.entity.db_models import (
     TrainingTask,
     Model,
     ChatSession,
+    FoodRecognitionTask,
+    Recipe,
 )
 from app.entity.schemas import ApiResponse
 
 logger = get_logger("dashboard_api")
 
 router = APIRouter(prefix="/api/dashboard", tags=["数据看板"])
+
+
+def _food_item_count(task: FoodRecognitionTask) -> int:
+    return sum(
+        len(group.get("detections", []))
+        for group in (task.raw_detections or [])
+        if isinstance(group, dict)
+    )
+
+
+def _food_ingredient_counts(tasks: list[FoodRecognitionTask]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for task in tasks:
+        for ingredient in task.confirmed_ingredients or []:
+            if not isinstance(ingredient, dict):
+                continue
+            name = str(ingredient.get("name") or ingredient.get("class_name") or "").strip()
+            if name:
+                counts[name] += 1
+    return counts
+
+
+@router.get("/food-stats", response_model=ApiResponse)
+async def get_food_dashboard_stats(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """User-scoped Food/Recipe/Chat statistics for the presentation dashboard."""
+    try:
+        user_filter = None if is_super_admin(current_user, db) else current_user.id
+        recognition_query = db.query(FoodRecognitionTask)
+        recipe_query = db.query(Recipe)
+        session_query = db.query(ChatSession)
+        if user_filter is not None:
+            recognition_query = recognition_query.filter(FoodRecognitionTask.user_id == user_filter)
+            recipe_query = recipe_query.filter(Recipe.user_id == user_filter)
+            session_query = session_query.filter(ChatSession.user_id == user_filter)
+
+        recognitions = recognition_query.order_by(FoodRecognitionTask.created_at.desc()).all()
+        recipes = recipe_query.order_by(Recipe.updated_at.desc()).all()
+        sessions = session_query.order_by(ChatSession.last_message_at.desc()).all()
+        ingredients = _food_ingredient_counts(recognitions)
+        seven_days_ago = now_cst() - timedelta(days=6)
+        trend_counts: Counter[str] = Counter(
+            task.created_at.strftime("%Y-%m-%d")
+            for task in recognitions
+            if task.created_at and task.created_at >= seven_days_ago
+        )
+        trend = [
+            {
+                "date": (now_cst() - timedelta(days=6 - offset)).strftime("%Y-%m-%d"),
+                "count": trend_counts[(now_cst() - timedelta(days=6 - offset)).strftime("%Y-%m-%d")],
+            }
+            for offset in range(7)
+        ]
+        activity = []
+        for task in recognitions[:5]:
+            activity.append(
+                {
+                    "type": "recognition",
+                    "title": f"完成 {len(task.image_object_names or [])} 张图片的食材识别",
+                    "created_at": task.created_at.isoformat() if task.created_at else None,
+                }
+            )
+        for recipe in recipes[:5]:
+            activity.append(
+                {
+                    "type": "recipe",
+                    "title": f"菜谱《{recipe.recipe_data.get('title', '未命名菜谱')}》v{recipe.version}",
+                    "created_at": recipe.updated_at.isoformat() if recipe.updated_at else None,
+                }
+            )
+        for session in sessions[:5]:
+            if session.message_count:
+                activity.append(
+                    {
+                        "type": "chat",
+                        "title": session.title or "菜谱对话",
+                        "created_at": (
+                            session.last_message_at.isoformat()
+                            if session.last_message_at
+                            else session.created_at.isoformat()
+                        ),
+                    }
+                )
+        activity.sort(
+            key=lambda item: item["created_at"] or datetime.min.isoformat(), reverse=True
+        )
+        return ApiResponse(
+            code=200,
+            message="success",
+            data={
+                "overview": {
+                    "recognitions": len(recognitions),
+                    "detected_items": sum(_food_item_count(task) for task in recognitions),
+                    "confirmed_ingredients": sum(ingredients.values()),
+                    "recipes": len(recipes),
+                    "chat_sessions": len(sessions),
+                },
+                "trend": trend,
+                "ingredient_distribution": [
+                    {"name": name, "count": count}
+                    for name, count in ingredients.most_common(10)
+                ],
+                "recent_activity": activity[:8],
+            },
+        )
+    except Exception as exc:
+        logger.error("获取食材数据看板失败: %s", exc)
+        raise HTTPException(status_code=500, detail="获取食材数据看板失败") from exc
 
 
 @router.get("/stats", response_model=ApiResponse, dependencies=[Depends(RequirePermission("system:dashboard"))])

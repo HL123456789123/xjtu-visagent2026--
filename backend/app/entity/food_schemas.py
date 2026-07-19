@@ -97,3 +97,16 @@ class ConfirmIngredientsData(FoodSchemaBase):
     recognition_id: int = Field(strict=True)
     confirmed_ingredients: list[ConfirmedIngredient]
     confirmed_at: datetime
+
+
+class FoodModelClass(FoodSchemaBase):
+    class_name: str = Field(min_length=1, max_length=100)
+    display_name: str = Field(min_length=1, max_length=100)
+
+
+class FoodModelStatusData(FoodSchemaBase):
+    provider: Literal["mock", "yolo"]
+    model_version: str
+    available: bool
+    class_count: int = Field(strict=True, ge=0)
+    classes: list[FoodModelClass]

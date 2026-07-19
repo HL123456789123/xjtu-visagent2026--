@@ -7,7 +7,15 @@ from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 
 from app.core.exceptions import AppException
-from app.entity.recipe_schemas import RecipeCreateRequest, RecipeGenerateResult, RecipeResponse
+from app.entity.recipe_schemas import (
+    ChatSessionSummary,
+    RecipeCreateRequest,
+    RecipeGenerateResult,
+    RecipeHistoryItem,
+    RecipeHistoryPage,
+    RecipeResponse,
+)
+from app.repositories.chat_repository import ChatRepository
 from app.repositories.food_repository import FoodRepository
 from app.repositories.recipe_repository import RecipeRepository
 from app.services.agent_graph import generate_recipe_graph
@@ -68,9 +76,11 @@ class RecipeService:
         self,
         food_repository: FoodRepository,
         recipe_repository: RecipeRepository,
+        chat_repository: ChatRepository | None = None,
     ) -> None:
         self.food_repository = food_repository
         self.recipe_repository = recipe_repository
+        self.chat_repository = chat_repository
 
     @staticmethod
     def _to_response(record) -> RecipeResponse:
@@ -128,6 +138,54 @@ class RecipeService:
         if record.user_id != user_id:
             raise RecipePermissionDeniedError()
         return self._to_response(record)
+
+    async def list_history(
+        self, user_id: int, *, page: int, page_size: int
+    ) -> RecipeHistoryPage:
+        records, total = self.recipe_repository.list_recipes_for_user(
+            user_id, page=page, page_size=page_size
+        )
+        items: list[RecipeHistoryItem] = []
+        for record in records:
+            recognition = self.food_repository.get_recognition_for_user(
+                record.recognition_id, user_id
+            )
+            if recognition is None:
+                continue
+            latest_session = (
+                self.chat_repository.get_latest_session_for_recipe(user_id, record.id)
+                if self.chat_repository is not None
+                else None
+            )
+            session_summary = None
+            if latest_session is not None:
+                session_summary = ChatSessionSummary(
+                    session_id=latest_session.id,
+                    recipe_id=latest_session.recipe_id,
+                    title=latest_session.title,
+                    message_count=latest_session.message_count or 0,
+                    last_message_at=(
+                        to_china_time(latest_session.last_message_at)
+                        if latest_session.last_message_at
+                        else None
+                    ),
+                    created_at=to_china_time(latest_session.created_at),
+                )
+            items.append(
+                RecipeHistoryItem(
+                    recipe_id=record.id,
+                    recognition_id=record.recognition_id,
+                    title=str(record.recipe_data.get("title", "未命名菜谱")),
+                    version=record.version,
+                    provider=recognition.provider,
+                    model_version=recognition.model_version,
+                    image_count=len(recognition.image_object_names or []),
+                    confirmed_ingredients=list(recognition.confirmed_ingredients or []),
+                    updated_at=to_china_time(record.updated_at),
+                    latest_session=session_summary,
+                )
+            )
+        return RecipeHistoryPage(items=items, total=total, page=page, page_size=page_size)
 
     async def update_recipe(
         self, recipe_id: int, user_id: int, new_recipe_data: dict

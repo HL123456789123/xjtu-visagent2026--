@@ -102,3 +102,39 @@ class CreateChatSessionRequest(StrictSchema):
 
 class SendChatMessageRequest(StrictSchema):
     content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatSessionSummary(StrictSchema):
+    session_id: int = Field(strict=True)
+    recipe_id: int = Field(strict=True)
+    title: str | None = None
+    message_count: int = Field(strict=True, ge=0)
+    last_message_at: datetime | None = None
+    created_at: datetime
+
+
+class ChatMessageResponse(StrictSchema):
+    message_id: int = Field(strict=True)
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
+
+
+class RecipeHistoryItem(StrictSchema):
+    recipe_id: int = Field(strict=True)
+    recognition_id: int = Field(strict=True)
+    title: str
+    version: int = Field(strict=True, ge=1)
+    provider: str
+    model_version: str
+    image_count: int = Field(strict=True, ge=0)
+    confirmed_ingredients: list[dict]
+    updated_at: datetime
+    latest_session: ChatSessionSummary | None = None
+
+
+class RecipeHistoryPage(StrictSchema):
+    items: list[RecipeHistoryItem]
+    total: int = Field(strict=True, ge=0)
+    page: int = Field(strict=True, ge=1)
+    page_size: int = Field(strict=True, ge=1)

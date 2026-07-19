@@ -42,6 +42,30 @@ class ChatRepository:
         """Internal ownership check helper; callers do not write SQLAlchemy queries."""
         return self.db.get(ChatSession, session_id)
 
+    def list_sessions_for_recipe(self, user_id: int, recipe_id: int) -> list[ChatSession]:
+        return (
+            self.db.query(ChatSession)
+            .filter(
+                ChatSession.user_id == user_id,
+                ChatSession.recipe_id == recipe_id,
+                ChatSession.status == "active",
+            )
+            .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
+            .all()
+        )
+
+    def get_latest_session_for_recipe(self, user_id: int, recipe_id: int) -> ChatSession | None:
+        sessions = self.list_sessions_for_recipe(user_id, recipe_id)
+        return sessions[0] if sessions else None
+
+    def list_messages_for_session(self, session_id: int) -> list[ChatMessage]:
+        return (
+            self.db.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+            .all()
+        )
+
     def save_message(self, session_id: int, role: str, content: str) -> ChatMessage:
         message = ChatMessage(session_id=session_id, role=role, content=content)
         session = self.db.get(ChatSession, session_id)

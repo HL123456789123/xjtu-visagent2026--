@@ -10,10 +10,14 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.database.session import get_db
 from app.entity.db_models import User
-from app.entity.food_schemas import ConfirmIngredientsRequest
+from app.entity.food_schemas import ConfirmIngredientsRequest, FoodModelStatusData
 from app.entity.schemas import ApiResponse
 from app.repositories.food_repository import FoodRepository
-from app.services.food_recognition_service import FoodRecognitionService
+from app.services.food_recognition_service import (
+    FoodRecognitionService,
+    UnavailableFoodRecognitionProvider,
+    build_default_food_provider,
+)
 
 router = APIRouter(prefix="/api/food", tags=["食物识别"])
 file_router = APIRouter(prefix="/api/files", tags=["文件"])
@@ -63,6 +67,25 @@ FOOD_UPLOAD_OPENAPI = {
 
 def get_food_recognition_service(db: Session = Depends(get_db)) -> FoodRecognitionService:
     return FoodRecognitionService(repository=FoodRepository(db))
+
+
+@router.get("/model-status", response_model=ApiResponse)
+async def get_food_model_status(current_user: User = Depends(get_current_user)):
+    """Return safe runtime model metadata without exposing paths or secrets."""
+    del current_user
+    provider, provider_name, model_version, display_names = build_default_food_provider()
+    classes = [
+        {"class_name": class_name, "display_name": display_name}
+        for class_name, display_name in display_names.items()
+    ]
+    status = FoodModelStatusData(
+        provider=provider_name,
+        model_version=model_version,
+        available=not isinstance(provider, UnavailableFoodRecognitionProvider),
+        class_count=len(classes),
+        classes=classes,
+    )
+    return ApiResponse(code=200, message="success", data=status.model_dump(mode="json"))
 
 
 def _is_empty_multipart_body(content_type: str, body: bytes) -> bool:

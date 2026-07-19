@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.entity.db_models import Recipe
@@ -47,6 +48,19 @@ class RecipeRepository:
     def get_recipe(self, recipe_id: int) -> Recipe | None:
         """Internal ownership check helper; public services still use the fixed user-scoped API."""
         return self.db.get(Recipe, recipe_id)
+
+    def list_recipes_for_user(
+        self, user_id: int, *, page: int, page_size: int
+    ) -> tuple[list[Recipe], int]:
+        query = self.db.query(Recipe).filter(Recipe.user_id == user_id)
+        total = query.with_entities(func.count(Recipe.id)).scalar() or 0
+        records = (
+            query.order_by(Recipe.updated_at.desc(), Recipe.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+        return records, total
 
     def save_new_recipe_version(
         self,

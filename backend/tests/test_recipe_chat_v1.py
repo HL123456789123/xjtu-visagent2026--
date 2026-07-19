@@ -29,6 +29,7 @@ from app.services.llm_gateway import get_llm_gateway
 from app.services.recipe_service import (
     NoConfirmedIngredientsError,
     RecipeLLMUnavailableError,
+    RecipePermissionDeniedError,
     RecipeService,
 )
 
@@ -239,6 +240,47 @@ async def test_missing_session_uses_session_not_found_sse(repositories):
     ]
     assert event_names(chunks) == ["error"]
     assert event_data(chunks[0])["code"] == "SESSION_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_recipe_and_chat_history_are_restored_only_for_the_owner(repositories):
+    db, user, food_repository, recipe_repository, chat_repository = repositories
+    recognition = create_recognition(food_repository, user.id)
+    recipes = RecipeService(food_repository, recipe_repository, chat_repository)
+    recipe = await recipes.create_recipe(
+        RecipeCreateRequest(recognition_id=recognition.id), user.id
+    )
+    chat = ChatService(chat_repository, recipes)
+    session = await chat.create_session(user.id, recipe.recipe_id)
+    chat_repository.save_message(session.id, "user", "请保留这个会话")
+    chat_repository.save_message(session.id, "assistant", "历史会话已保存")
+
+    other_user = User(username="other_user", email="other@example.com", hashed_password="x")
+    db.add(other_user)
+    db.commit()
+    db.refresh(other_user)
+
+    history = await recipes.list_history(user.id, page=1, page_size=20)
+    assert history.total == 1
+    assert history.items[0].recipe_id == recipe.recipe_id
+    assert history.items[0].recognition_id == recognition.id
+    assert history.items[0].confirmed_ingredients[0]["name"]
+    assert history.items[0].latest_session is not None
+    assert history.items[0].latest_session.session_id == session.id
+
+    sessions = await chat.list_sessions(user.id, recipe.recipe_id)
+    messages = chat.list_messages(session.id, user.id)
+    assert [item.session_id for item in sessions] == [session.id]
+    assert [(item.role, item.content) for item in messages] == [
+        ("user", "请保留这个会话"),
+        ("assistant", "历史会话已保存"),
+    ]
+
+    assert (await recipes.list_history(other_user.id, page=1, page_size=20)).items == []
+    with pytest.raises(RecipePermissionDeniedError):
+        await chat.list_sessions(other_user.id, recipe.recipe_id)
+    with pytest.raises(RecipePermissionDeniedError):
+        chat.list_messages(session.id, other_user.id)
 
 
 def test_request_and_llm_schemas_forbid_extra_or_backend_owned_fields():

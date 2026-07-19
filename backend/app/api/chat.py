@@ -41,6 +41,34 @@ async def create_chat_session(
     )
 
 
+@router.get("/sessions", response_model=ApiResponse)
+async def list_chat_sessions(
+    recipe_id: int,
+    current_user: User = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+):
+    sessions = await service.list_sessions(current_user.id, recipe_id)
+    return ApiResponse(
+        code=200,
+        message="success",
+        data=[session.model_dump(mode="json") for session in sessions],
+    )
+
+
+@router.get("/sessions/{session_id}/messages", response_model=ApiResponse)
+async def list_chat_messages(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    service: ChatService = Depends(get_chat_service),
+):
+    messages = service.list_messages(session_id, current_user.id)
+    return ApiResponse(
+        code=200,
+        message="success",
+        data=[message.model_dump(mode="json") for message in messages],
+    )
+
+
 @router.post("/sessions/{session_id}/messages")
 async def send_chat_message(
     session_id: int,

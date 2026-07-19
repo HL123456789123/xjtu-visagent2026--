@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncGenerator
 
+from app.entity.recipe_schemas import ChatMessageResponse, ChatSessionSummary
 from app.repositories.chat_repository import ChatRepository
 from app.services.agent_graph import chat_recipe_graph
 from app.services.agent_prompts import (
@@ -44,6 +45,22 @@ class ChatService:
         await self.recipes.get_recipe(recipe_id, user_id)
         return self.repository.create_session(user_id, recipe_id)
 
+    async def list_sessions(self, user_id: int, recipe_id: int) -> list[ChatSessionSummary]:
+        await self.recipes.get_recipe(recipe_id, user_id)
+        return [self._to_session_summary(session) for session in self.repository.list_sessions_for_recipe(user_id, recipe_id)]
+
+    def list_messages(self, session_id: int, user_id: int) -> list[ChatMessageResponse]:
+        self.get_session(session_id, user_id)
+        return [
+            ChatMessageResponse(
+                message_id=message.id,
+                role=message.role,
+                content=message.content,
+                created_at=message.created_at,
+            )
+            for message in self.repository.list_messages_for_session(session_id)
+        ]
+
     def get_session(self, session_id: int, user_id: int):
         session = self.repository.get_session(session_id)
         if session is None:
@@ -51,6 +68,17 @@ class ChatService:
         if session.user_id != user_id:
             raise RecipePermissionDeniedError()
         return session
+
+    @staticmethod
+    def _to_session_summary(session) -> ChatSessionSummary:
+        return ChatSessionSummary(
+            session_id=session.id,
+            recipe_id=session.recipe_id,
+            title=session.title,
+            message_count=session.message_count or 0,
+            last_message_at=session.last_message_at,
+            created_at=session.created_at,
+        )
 
     async def send_message_stream(
         self, session_id: int, user_id: int, content: str
