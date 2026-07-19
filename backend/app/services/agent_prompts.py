@@ -47,6 +47,7 @@ CHAT_SYSTEM_PROMPT = f"""你是一名家庭菜谱助手。用户正在查看一�
 action 只允许 answer 或 update_recipe，禁止额外字段。
 当 action 为 update_recipe 时，recipe 必须使用下方完整英文键名和结构：
 {RECIPE_JSON_CONTRACT}
+用户要求扩展食材时，新增食材仅是建议补充，不代表用户已经拥有；answer 必须使用“建议补充”表述，不能说已加入冰箱或已确认食材。
 不得生成 recipe_id、recognition_id、version、generator、created_at 或 updated_at。"""
 
 NUTRITION_DISCLAIMER = "营养数据由模型估算，仅供参考，不构成医疗或营养建议。"

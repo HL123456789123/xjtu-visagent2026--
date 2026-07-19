@@ -189,6 +189,35 @@
               :show-actions="false"
               @retry="generateRecipeFromRecognition"
             />
+            <section
+              v-if="suggestedIngredients.length"
+              class="food-recipe-page__suggestions"
+              data-testid="recipe-suggestions"
+            >
+              <header>
+                <span>Recipe Update</span>
+                <h3>建议补充食材</h3>
+              </header>
+              <p>这些食材来自当前菜谱建议，不会自动视为你已拥有的食材。</p>
+              <ul>
+                <li v-for="ingredient in suggestedIngredients" :key="ingredient.name">
+                  <div>
+                    <strong>{{ ingredient.name }}</strong>
+                    <small>{{ ingredient.amount }} {{ ingredient.unit }}</small>
+                  </div>
+                  <button
+                    type="button"
+                    :disabled="suggestionSavingName === ingredient.name"
+                    @click="acceptSuggestedIngredient(ingredient)"
+                  >
+                    {{ suggestionSavingName === ingredient.name ? '正在加入…' : '纳入本次食材' }}
+                  </button>
+                </li>
+              </ul>
+              <p v-if="suggestionError" class="food-recipe-page__suggestions-error">
+                {{ suggestionError }}
+              </p>
+            </section>
             <ChatPage
               v-if="generatedRecipe?.recipe_id"
               :recipe-id="generatedRecipe.recipe_id"
@@ -239,6 +268,8 @@ const validationMessage = ref('')
 const generatedRecipe = ref(null)
 const recipeLoading = ref(false)
 const recipeError = ref(null)
+const suggestionSavingName = ref('')
+const suggestionError = ref('')
 const avoidIngredientsText = ref('')
 const recipePreferences = ref({
   servings: 2,
@@ -303,6 +334,15 @@ const selectedImageNames = computed(() => selectedFiles.value.map((file) => file
 const showRecipeFlow = computed(
   () => workflowState.value === 'confirmed' || recipeLoading.value || generatedRecipe.value || recipeError.value
 )
+const confirmedIngredientNames = computed(
+  () => new Set(confirmedIngredients.value.map((ingredient) => normalizeIngredientName(ingredient.name)))
+)
+const suggestedIngredients = computed(() =>
+  (generatedRecipe.value?.ingredients || []).filter((ingredient) => {
+    const name = normalizeIngredientName(ingredient.name)
+    return name && !confirmedIngredientNames.value.has(name)
+  })
+)
 const selectedImageText = computed(() => {
   const count = selectedFiles.value.length
   if (count <= 1) return '图片'
@@ -313,6 +353,48 @@ function resetRecipeFlow() {
   generatedRecipe.value = null
   recipeError.value = null
   recipeLoading.value = false
+  suggestionSavingName.value = ''
+  suggestionError.value = ''
+}
+
+function normalizeIngredientName(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+async function acceptSuggestedIngredient(ingredient) {
+  const name = String(ingredient?.name || '').trim()
+  if (!name || !recognitionId.value || suggestionSavingName.value) return
+
+  suggestionSavingName.value = name
+  suggestionError.value = ''
+  const nextIngredients = [
+    ...confirmedIngredients.value,
+    {
+      name,
+      class_name: null,
+      quantity: Number(ingredient.amount) > 0 ? Number(ingredient.amount) : 1,
+      unit: String(ingredient.unit || '份').trim() || '份',
+      source: 'manual',
+    },
+  ]
+
+  try {
+    const response = await confirmFoodIngredients(recognitionId.value, nextIngredients, {
+      mockScenario: mockScenario.value,
+    })
+    const payload = unwrapFoodApiData(response)
+    const updatedIngredients = payload.confirmed_ingredients || nextIngredients
+    confirmedIngredients.value = updatedIngredients
+    recognizedIngredients.value = mapCandidatesToEditableIngredients(updatedIngredients)
+    emit('confirmed', {
+      recognition_id: normalizeRecognitionId(payload.recognition_id) || recognitionId.value,
+      confirmed_ingredients: updatedIngredients,
+    })
+  } catch (error) {
+    suggestionError.value = normalizeRecipeError(error).message
+  } finally {
+    suggestionSavingName.value = ''
+  }
 }
 
 function handleFileSelected() {
@@ -952,6 +1034,96 @@ onMounted(() => {
   margin-top: 6px;
   border-top: 1px solid rgba(121, 82, 45, 0.12);
   padding-top: 24px;
+}
+
+.food-recipe-page__suggestions {
+  display: grid;
+  gap: 10px;
+  border-left: 3px solid #89a94f;
+  background: rgba(239, 248, 214, 0.48);
+  padding: 14px 16px;
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  header span {
+    color: #718336;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h3 {
+    color: #3a2a1d;
+    font-size: 17px;
+  }
+
+  p {
+    color: #6f654e;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  ul {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-top: 1px solid rgba(113, 131, 54, 0.16);
+    padding-top: 8px;
+  }
+
+  li div {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  li strong {
+    color: #3a2a1d;
+  }
+
+  li small {
+    color: #718336;
+  }
+
+  button {
+    min-height: 32px;
+    border: 1px solid rgba(113, 131, 54, 0.42);
+    border-radius: 6px;
+    background: #fffef7;
+    color: #587020;
+    cursor: pointer;
+    font-weight: 700;
+    padding: 6px 10px;
+
+    &:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
+  }
+}
+
+.food-recipe-page__suggestions-error {
+  color: #c44b37 !important;
 }
 
 .food-recipe-page__recipe-header {
