@@ -2,6 +2,7 @@
  * Axios 请求封装测试
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import request from '../request'
 
 // 使用 vi.hoisted 确保 mock 工厂中引用的对象在 resetModules 后保持稳定
 const { mockInterceptors, mockAxiosInstance, mockCreate } = vi.hoisted(() => {
@@ -43,23 +44,12 @@ vi.mock('@/router', () => ({
 }))
 
 describe('request', () => {
-  beforeEach(() => {
-    // 重置模块缓存，确保每次 import 重新执行 request.js
-    vi.resetModules()
-    // 清除 mock 调用记录
-    vi.clearAllMocks()
-  })
-
-  it('应该创建 axios 实例', async () => {
-    const { default: request } = await import('../request')
-
+  it('应该创建 axios 实例', () => {
     expect(mockCreate).toHaveBeenCalled()
     expect(request).toBeDefined()
   })
 
-  it('应该配置正确的 baseURL', async () => {
-    await import('../request')
-
+  it('应该配置正确的 baseURL', () => {
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         baseURL: '/api',
@@ -68,16 +58,12 @@ describe('request', () => {
     )
   })
 
-  it('应该配置请求拦截器', async () => {
-    await import('../request')
-
+  it('应该配置请求拦截器', () => {
     // 验证请求拦截器被注册
     expect(mockInterceptors.request.use).toHaveBeenCalled()
   })
 
-  it('应该配置响应拦截器', async () => {
-    await import('../request')
-
+  it('应该配置响应拦截器', () => {
     // 验证响应拦截器被注册
     expect(mockInterceptors.response.use).toHaveBeenCalled()
   })

@@ -9,6 +9,7 @@
         <div class="profile-name">
           <h2>{{ userStore.username }}</h2>
           <el-tag v-if="userStore.isSuperAdmin" type="danger" size="small">超级管理员</el-tag>
+          <el-tag v-else-if="isAdministrator" type="warning" size="small">管理员</el-tag>
           <el-tag v-else type="info" size="small">普通用户</el-tag>
         </div>
       </div>
@@ -54,13 +55,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 const loading = ref(false)
+const isAdministrator = computed(() => userStore.isAdmin)
 
 /** 刷新用户信息 */
 async function refreshProfile() {
