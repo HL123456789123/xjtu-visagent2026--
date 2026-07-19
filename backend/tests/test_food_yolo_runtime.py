@@ -70,6 +70,7 @@ def test_yolo_provider_returns_v1_model_detection_and_reuses_model(
         str(weights), str(classes_path), model_loader=load_model
     )
 
+    assert provider.is_available() is True
     expected = [
         ModelDetection(
             class_name="tomato",
@@ -103,6 +104,7 @@ def test_yolo_provider_reports_missing_weights(tmp_path: Path, classes_path: Pat
         str(tmp_path / "missing.pt"), str(classes_path), model_loader=lambda _: FakeModel([])
     )
 
+    assert provider.is_available() is False
     with pytest.raises(FoodModelUnavailableError, match="weights not found"):
         provider.recognize(str(image))
 

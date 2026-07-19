@@ -78,10 +78,14 @@ async def get_food_model_status(current_user: User = Depends(get_current_user)):
         {"class_name": class_name, "display_name": display_name}
         for class_name, display_name in display_names.items()
     ]
+    availability_check = getattr(provider, "is_available", None)
+    available = not isinstance(provider, UnavailableFoodRecognitionProvider)
+    if callable(availability_check):
+        available = bool(availability_check())
     status = FoodModelStatusData(
         provider=provider_name,
         model_version=model_version,
-        available=not isinstance(provider, UnavailableFoodRecognitionProvider),
+        available=available,
         class_count=len(classes),
         classes=classes,
     )

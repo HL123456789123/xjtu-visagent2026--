@@ -109,6 +109,14 @@ class YoloFoodRecognitionProvider:
                 raise FoodModelUnavailableError("failed to load food model") from exc
             return self._model
 
+    def is_available(self) -> bool:
+        """Load-check the configured runtime without exposing its path."""
+        try:
+            self._get_model()
+        except FoodModelUnavailableError:
+            return False
+        return True
+
     def recognize(
         self,
         image_path: str,
