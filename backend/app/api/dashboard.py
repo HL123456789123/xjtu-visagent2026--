@@ -3,7 +3,7 @@ Dashboard 数据统计 API 路由
 提供后端聚合的统计数据，避免前端多次请求和聚合计算
 """
 
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from collections import Counter
@@ -32,6 +32,16 @@ from app.entity.schemas import ApiResponse
 logger = get_logger("dashboard_api")
 
 router = APIRouter(prefix="/api/dashboard", tags=["数据看板"])
+
+
+_CST = timezone(timedelta(hours=8))
+
+
+def _food_dashboard_time(value: datetime) -> datetime:
+    """Normalize PostgreSQL's aware timestamps for the app's naive CST clock."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(_CST).replace(tzinfo=None)
 
 
 def _food_item_count(task: FoodRecognitionTask) -> int:
@@ -75,9 +85,9 @@ async def get_food_dashboard_stats(
         ingredients = _food_ingredient_counts(recognitions)
         seven_days_ago = now_cst() - timedelta(days=6)
         trend_counts: Counter[str] = Counter(
-            task.created_at.strftime("%Y-%m-%d")
+            _food_dashboard_time(task.created_at).strftime("%Y-%m-%d")
             for task in recognitions
-            if task.created_at and task.created_at >= seven_days_ago
+            if task.created_at and _food_dashboard_time(task.created_at) >= seven_days_ago
         )
         trend = [
             {

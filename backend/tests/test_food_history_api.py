@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.api.dashboard import _food_dashboard_time
 from app.core.security import hash_password
 from app.core.tz import now_cst
 from app.entity.db_models import (
@@ -37,6 +39,13 @@ def _login(client: TestClient, username: str, password: str) -> None:
     client.cookies.clear()
     response = client.post("/api/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200
+
+
+def test_food_dashboard_time_normalizes_aware_timestamp_to_cst():
+    value = datetime(2026, 7, 19, 4, 0, tzinfo=timezone.utc)
+
+    assert _food_dashboard_time(value) == datetime(2026, 7, 19, 12, 0)
+    assert _food_dashboard_time(now_cst() - timedelta(days=1)).tzinfo is None
 
 
 def test_history_chat_and_food_dashboard_are_owner_scoped(client, db, seed_rbac):
