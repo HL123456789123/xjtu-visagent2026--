@@ -202,10 +202,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   createFoodRecognition,
   confirmFoodIngredients,
+  getFoodRecognition,
   normalizeRecognitionId,
   unwrapFoodApiData,
 } from '@/api/food'
@@ -216,6 +217,13 @@ import RecipeCard from '@/components/recipe/RecipeCard.vue'
 import ChatPage from '@/views/ChatPage.vue'
 import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
 import { createRecipe, getRecipe, unwrapRecipeApiData } from '@/api/recipe'
+
+const props = defineProps({
+  recipeId: {
+    type: Number,
+    default: null,
+  },
+})
 
 const emit = defineEmits(['confirmed', 'recipe-requested'])
 
@@ -526,6 +534,47 @@ async function refreshGeneratedRecipe(payload = {}) {
     recipeLoading.value = false
   }
 }
+
+async function restoreRecipe(recipeId) {
+  if (!Number.isInteger(recipeId) || recipeId <= 0) return
+
+  recipeLoading.value = true
+  recipeError.value = null
+  try {
+    const recipeResponse = await getRecipe(recipeId)
+    const recipe = unwrapRecipeApiData(recipeResponse)
+    const recognitionResponse = await getFoodRecognition(recipe.recognition_id)
+    const recognition = unwrapFoodApiData(recognitionResponse)
+
+    recognitionId.value = recognition.recognition_id
+    recognitionMeta.value = {
+      provider: recognition.provider,
+      modelVersion: recognition.model_version,
+    }
+    recognizedIngredients.value = mapCandidatesToEditableIngredients(recognition.ingredients || [])
+    confirmedIngredients.value = recognition.confirmed_ingredients || []
+    recognizedImageCount.value = recognition.images?.length || 0
+    selectedFiles.value = []
+    generatedRecipe.value = recipe
+    workflowState.value = 'confirmed'
+  } catch (error) {
+    recipeError.value = normalizeRecipeError(error)
+    workflowState.value = 'error'
+  } finally {
+    recipeLoading.value = false
+  }
+}
+
+watch(
+  () => props.recipeId,
+  (recipeId) => {
+    if (recipeId) restoreRecipe(recipeId)
+  },
+)
+
+onMounted(() => {
+  if (props.recipeId) restoreRecipe(props.recipeId)
+})
 </script>
 
 <style lang="scss" scoped>

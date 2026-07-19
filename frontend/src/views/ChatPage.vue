@@ -53,7 +53,12 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { createChatSession, sendChatMessage } from '@/api/chat'
+import {
+  createChatSession,
+  getChatMessages,
+  getChatSessions,
+  sendChatMessage,
+} from '@/api/chat'
 
 const props = defineProps({
   recipeId: {
@@ -88,6 +93,39 @@ async function ensureSession() {
   sessionPromise = createChatSession(props.recipeId)
     .then((response) => {
       const createdId = response?.data?.session_id
+      if (!Number.isInteger(createdId)) throw new Error('会话响应缺少整数 session_id')
+      sessionId.value = createdId
+      sessionRecipeId.value = props.recipeId
+      return createdId
+    })
+    .finally(() => {
+      sessionPromise = null
+    })
+  return sessionPromise
+}
+
+async function restoreSession() {
+  if (!props.recipeId) return null
+  if (sessionId.value && sessionRecipeId.value === props.recipeId) return sessionId.value
+  if (sessionPromise) return sessionPromise
+
+  sessionPromise = getChatSessions(props.recipeId)
+    .then(async (response) => {
+      const sessions = response?.data || []
+      const existing = sessions[0]
+      if (existing?.session_id) {
+        sessionId.value = existing.session_id
+        sessionRecipeId.value = props.recipeId
+        const messageResponse = await getChatMessages(existing.session_id)
+        messages.value = (messageResponse?.data || []).map((message) => ({
+          role: message.role,
+          content: message.content,
+        }))
+        scrollToBottom()
+        return sessionId.value
+      }
+      const created = await createChatSession(props.recipeId)
+      const createdId = created?.data?.session_id
       if (!Number.isInteger(createdId)) throw new Error('会话响应缺少整数 session_id')
       sessionId.value = createdId
       sessionRecipeId.value = props.recipeId
@@ -153,8 +191,8 @@ watch(
     sessionRecipeId.value = null
     messages.value = []
     serviceError.value = ''
-    if (props.recipeId) ensureSession().catch((error) => {
-      serviceError.value = error?.response?.data?.message || error?.message || '会话创建失败'
+    if (props.recipeId) restoreSession().catch((error) => {
+      serviceError.value = error?.response?.data?.message || error?.message || '会话恢复失败'
     })
   },
   { immediate: true },

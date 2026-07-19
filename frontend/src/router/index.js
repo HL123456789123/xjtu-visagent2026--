@@ -39,6 +39,7 @@ const routes = [
         path: 'food-recipes',
         name: 'FoodRecipe',
         component: () => import('@/views/FoodRecipePage.vue'),
+        props: (route) => ({ recipeId: Number(route.query.recipe_id) || null }),
         meta: { title: '食物识别与菜谱', icon: 'Goods' },
       },
       {
@@ -89,7 +90,7 @@ const routes = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/DashboardPage.vue'),
-        meta: { title: '仪表盘', icon: 'DataAnalysis', permission: 'system:dashboard' },
+        meta: { title: '仪表盘', icon: 'DataAnalysis', permission: 'agent:chat' },
       },
       {
         path: 'profile',

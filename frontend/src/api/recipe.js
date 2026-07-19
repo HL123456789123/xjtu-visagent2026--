@@ -10,6 +10,7 @@ import { recipeFixtures, recipeErrorFixtures } from '@/fixtures/recipe'
 export const RECIPE_PATHS = Object.freeze({
   create: '/recipes',
   get: (recipeId) => `/recipes/${recipeId}`,
+  history: '/recipes/history',
 })
 
 let injectedClient = null
@@ -98,6 +99,10 @@ export function getRecipe(recipeId, options = {}) {
   if (client?.get) return client.get(recipeId, options)
 
   return request.get(RECIPE_PATHS.get(recipeId))
+}
+
+export function getRecipeHistory(params = {}) {
+  return request.get(RECIPE_PATHS.history, { params })
 }
 
 /**

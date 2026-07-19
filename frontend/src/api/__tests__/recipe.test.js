@@ -6,6 +6,7 @@ import {
   getRecipe,
   unwrapRecipeApiData,
   createMockRecipeApiClient,
+  getRecipeHistory,
   resetRecipeApiClient,
   setRecipeApiClient,
 } from '../recipe'
@@ -91,6 +92,19 @@ describe('recipe api contract', () => {
 
     expect(getSpy).toHaveBeenCalledOnce()
     expect(getSpy.mock.calls[0][0]).toBe(RECIPE_PATHS.get(101))
+  })
+
+  it('queries the user-scoped recipe history with paging parameters', async () => {
+    const getSpy = vi.spyOn(request, 'get').mockResolvedValue({
+      code: 200,
+      data: { items: [], total: 0, page: 1, page_size: 20 },
+    })
+
+    await getRecipeHistory({ page: 1, page_size: 20 })
+
+    expect(getSpy).toHaveBeenCalledWith(RECIPE_PATHS.history, {
+      params: { page: 1, page_size: 20 },
+    })
   })
 
   it('rejects with 503 error on LLM_UNAVAILABLE mock', async () => {

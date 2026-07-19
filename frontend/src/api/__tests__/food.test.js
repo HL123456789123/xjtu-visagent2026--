@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { uploadRequest } from '@/utils/request'
+import request, { uploadRequest } from '@/utils/request'
 import {
   FOOD_RECOGNITION_PATHS,
   confirmFoodIngredients,
   createFoodRecognition,
   createMockFoodApiClient,
   getFoodRecognition,
+  getFoodModelStatus,
   normalizeConfirmedIngredients,
   normalizeRecognitionId,
   resetFoodApiClient,
@@ -22,6 +23,18 @@ describe('food api contract', () => {
     expect(FOOD_RECOGNITION_PATHS.create).toBe('/food/recognitions')
     expect(FOOD_RECOGNITION_PATHS.get(12)).toBe('/food/recognitions/12')
     expect(FOOD_RECOGNITION_PATHS.confirm(12)).toBe('/food/recognitions/12/ingredients')
+    expect(FOOD_RECOGNITION_PATHS.modelStatus).toBe('/food/model-status')
+  })
+
+  it('reads model status without sending model paths or runtime settings', async () => {
+    const getSpy = vi.spyOn(request, 'get').mockResolvedValue({
+      code: 200,
+      data: { provider: 'yolo', model_version: 'food-yolo-v1', available: true },
+    })
+
+    await getFoodModelStatus()
+
+    expect(getSpy).toHaveBeenCalledWith(FOOD_RECOGNITION_PATHS.modelStatus)
   })
 
   it('returns cloned success and empty fixtures through mock scenarios', async () => {

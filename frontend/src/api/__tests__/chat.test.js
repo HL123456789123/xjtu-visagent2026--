@@ -3,6 +3,8 @@ import request from '@/utils/request'
 import {
   CHAT_PATHS,
   createChatSession,
+  getChatMessages,
+  getChatSessions,
   sendChatMessage,
 } from '../chat'
 
@@ -55,6 +57,18 @@ describe('chat api contract (V1)', () => {
     const [, body] = postSpy.mock.calls[0]
     const keys = Object.keys(body)
     expect(keys).toEqual(['recipe_id'])
+  })
+
+  it('uses read-only endpoints to restore a recipe session and its messages', async () => {
+    const getSpy = vi.spyOn(request, 'get').mockResolvedValue({ code: 200, data: [] })
+
+    await getChatSessions(101)
+    await getChatMessages(501)
+
+    expect(getSpy).toHaveBeenNthCalledWith(1, CHAT_PATHS.sessions, {
+      params: { recipe_id: 101 },
+    })
+    expect(getSpy).toHaveBeenNthCalledWith(2, CHAT_PATHS.sessionMessages(501))
   })
 
   it('sendChatMessage calls streamChat with V1 content body and correct url', async () => {

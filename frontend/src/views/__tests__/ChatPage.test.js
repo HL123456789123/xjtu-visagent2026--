@@ -1,10 +1,17 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatPage from '../ChatPage.vue'
-import { createChatSession, sendChatMessage } from '@/api/chat'
+import {
+  createChatSession,
+  getChatMessages,
+  getChatSessions,
+  sendChatMessage,
+} from '@/api/chat'
 
 vi.mock('@/api/chat', () => ({
   createChatSession: vi.fn(),
+  getChatMessages: vi.fn(),
+  getChatSessions: vi.fn(),
   sendChatMessage: vi.fn(),
 }))
 
@@ -20,6 +27,8 @@ describe('ChatPage V1 boundary', () => {
     createChatSession.mockResolvedValue({
       data: { session_id: 501, recipe_id: 101 },
     })
+    getChatSessions.mockResolvedValue({ data: [] })
+    getChatMessages.mockResolvedValue({ data: [] })
   })
 
   it('sends only content and does not refresh a recipe for an answer', async () => {
@@ -56,5 +65,25 @@ describe('ChatPage V1 boundary', () => {
     expect(wrapper.emitted('recipe-updated')).toEqual([[
       { recipe_id: 101, version: 2 },
     ]])
+  })
+
+  it('restores the newest existing session and never creates a duplicate', async () => {
+    getChatSessions.mockResolvedValue({
+      data: [{ session_id: 801, recipe_id: 101, title: '已有会话', message_count: 2 }],
+    })
+    getChatMessages.mockResolvedValue({
+      data: [
+        { message_id: 1, role: 'user', content: '旧问题' },
+        { message_id: 2, role: 'assistant', content: '旧回答' },
+      ],
+    })
+
+    const wrapper = await mountChat()
+
+    expect(getChatSessions).toHaveBeenCalledWith(101)
+    expect(getChatMessages).toHaveBeenCalledWith(801)
+    expect(createChatSession).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('旧问题')
+    expect(wrapper.text()).toContain('旧回答')
   })
 })

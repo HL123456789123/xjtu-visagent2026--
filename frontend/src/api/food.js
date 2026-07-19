@@ -8,6 +8,7 @@ export const FOOD_RECOGNITION_PATHS = Object.freeze({
   create: '/food/recognitions',
   get: (recognitionId) => `/food/recognitions/${recognitionId}`,
   confirm: (recognitionId) => `/food/recognitions/${recognitionId}/ingredients`,
+  modelStatus: '/food/model-status',
 })
 
 let injectedClient = null
@@ -132,6 +133,10 @@ export function getFoodRecognition(recognitionId, options = {}) {
   if (client?.get) return client.get(recognitionId, options)
 
   return request.get(FOOD_RECOGNITION_PATHS.get(recognitionId))
+}
+
+export function getFoodModelStatus() {
+  return request.get(FOOD_RECOGNITION_PATHS.modelStatus)
 }
 
 export function confirmFoodIngredients(recognitionId, ingredients, options = {}) {

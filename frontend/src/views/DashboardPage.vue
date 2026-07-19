@@ -1,451 +1,290 @@
 <template>
   <div class="dashboard-page">
-    <!-- 统计卡片 -->
-    <div class="stats-cards">
-      <div class="stat-card">
-        <div class="stat-icon" style="background: #409eff20; color: #409eff">
-          <el-icon :size="32"><Aim /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ stats.totalDetections }}</div>
-          <div class="stat-label">检测次数</div>
-        </div>
+    <div class="page-header">
+      <div>
+        <h2>食材数据看板</h2>
+        <p>展示当前账号的识别、确认、菜谱与对话数据。</p>
       </div>
-      
-      <div class="stat-card">
-        <div class="stat-icon" style="background: #67c23a20; color: #67c23a">
-          <el-icon :size="32"><Box /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ stats.totalObjects }}</div>
-          <div class="stat-label">检测目标</div>
-        </div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-icon" style="background: #e6a23c20; color: #e6a23c">
-          <el-icon :size="32"><Cpu /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ stats.totalModels }}</div>
-          <div class="stat-label">训练模型</div>
-        </div>
-      </div>
-      
-      <div class="stat-card">
-        <div class="stat-icon" style="background: #f56c6c20; color: #f56c6c">
-          <el-icon :size="32"><ChatDotRound /></el-icon>
-        </div>
-        <div class="stat-info">
-          <div class="stat-value">{{ stats.totalChats }}</div>
-          <div class="stat-label">对话次数</div>
-        </div>
-      </div>
+      <el-button type="primary" @click="$router.push('/history')">
+        查看历史
+        <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+      </el-button>
     </div>
 
-    <!-- 图表区域 -->
-    <div class="charts-row">
-      <!-- 检测趋势图 -->
-      <div class="chart-card">
-        <div class="card-header">
-          <h3>检测趋势</h3>
-          <el-radio-group v-model="trendPeriod" size="small" @change="loadTrendData">
-            <el-radio-button value="week">近7天</el-radio-button>
-            <el-radio-button value="month">近30天</el-radio-button>
-          </el-radio-group>
-        </div>
-        <div ref="trendChartRef" class="chart-container"></div>
-      </div>
+    <el-alert
+      v-if="loadError"
+      :title="loadError"
+      type="error"
+      :closable="false"
+      show-icon
+      class="load-alert"
+    />
 
-      <!-- 目标类别分布 -->
-      <div class="chart-card">
-        <div class="card-header">
-          <h3>目标类别分布</h3>
+    <div v-loading="loading" class="stats-grid">
+      <article v-for="item in statItems" :key="item.label" class="stat-card">
+        <div class="stat-icon" :class="item.tone">
+          <el-icon :size="24"><component :is="item.icon" /></el-icon>
         </div>
-        <div ref="categoryChartRef" class="chart-container"></div>
-      </div>
+        <div>
+          <div class="stat-value">{{ item.value }}</div>
+          <div class="stat-label">{{ item.label }}</div>
+        </div>
+      </article>
     </div>
 
-    <div class="charts-row">
-      <!-- 场景检测统计 -->
-      <div class="chart-card">
-        <div class="card-header">
-          <h3>场景检测统计</h3>
+    <div class="analysis-grid">
+      <section class="panel">
+        <div class="panel-heading">
+          <h3>近 7 日识别批次</h3>
         </div>
-        <div ref="sceneChartRef" class="chart-container"></div>
-      </div>
+        <div ref="trendChartRef" class="chart" aria-label="近 7 日识别趋势"></div>
+      </section>
 
-      <!-- 模型性能对比 -->
-      <div class="chart-card">
-        <div class="card-header">
-          <h3>模型性能对比</h3>
+      <section class="panel">
+        <div class="panel-heading">
+          <h3>已确认食材分布</h3>
         </div>
-        <div ref="modelChartRef" class="chart-container"></div>
-      </div>
+        <div ref="ingredientChartRef" class="chart" aria-label="已确认食材分布"></div>
+      </section>
     </div>
 
-    <!-- 最近活动 -->
-    <div class="recent-activities">
-      <div class="card-header">
+    <section class="panel activity-panel">
+      <div class="panel-heading">
         <h3>最近活动</h3>
-        <el-button type="primary" link @click="$router.push('/history')">
-          查看全部<el-icon class="el-icon--right"><ArrowRight /></el-icon>
-        </el-button>
       </div>
-      <el-table :data="recentActivities" stripe>
-        <el-table-column prop="type" label="类型" width="120">
+      <el-table :data="recentActivity" v-loading="loading" empty-text="还没有可展示的食材活动">
+        <el-table-column label="类型" width="110">
           <template #default="{ row }">
-            <el-tag :type="getActivityType(row.type)" size="small">
-              {{ getActivityText(row.type) }}
-            </el-tag>
+            <el-tag :type="activityTagType(row.type)" size="small">{{ activityLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="200" />
-        <el-table-column prop="time" label="时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.time) }}
-          </template>
+        <el-table-column prop="title" label="内容" min-width="220" />
+        <el-table-column label="时间" width="190">
+          <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
         </el-table-column>
       </el-table>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { Aim, Box, Cpu, ChatDotRound, ArrowRight } from '@element-plus/icons-vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { ArrowRight, ChatDotRound, Dish, Food, List, Tickets } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { getDashboardStatsApi } from '@/api/dashboard'
+import { getFoodDashboardStatsApi } from '@/api/dashboard'
+import { formatTime } from '@/utils/format'
 
-// 统计数据
-const stats = ref({
-  totalDetections: 0,
-  totalObjects: 0,
-  totalModels: 0,
-  totalChats: 0
+const loading = ref(false)
+const loadError = ref('')
+const dashboard = ref({
+  overview: {},
+  trend: [],
+  ingredient_distribution: [],
+  recent_activity: []
+})
+const trendChartRef = ref(null)
+const ingredientChartRef = ref(null)
+let trendChart = null
+let ingredientChart = null
+
+const statItems = computed(() => {
+  const overview = dashboard.value.overview || {}
+  return [
+    { label: '识别批次', value: overview.recognitions || 0, icon: List, tone: 'blue' },
+    { label: '候选食材', value: overview.detected_items || 0, icon: Food, tone: 'green' },
+    { label: '确认食材', value: overview.confirmed_ingredients || 0, icon: Dish, tone: 'amber' },
+    { label: '菜谱', value: overview.recipes || 0, icon: Tickets, tone: 'rose' },
+    { label: '对话会话', value: overview.chat_sessions || 0, icon: ChatDotRound, tone: 'indigo' }
+  ]
 })
 
-// 趋势周期
-const trendPeriod = ref('week')
+const recentActivity = computed(() => dashboard.value.recent_activity || [])
 
-// 图表引用
-const trendChartRef = ref(null)
-const categoryChartRef = ref(null)
-const sceneChartRef = ref(null)
-const modelChartRef = ref(null)
-
-// 图表实例
-let trendChart = null
-let categoryChart = null
-let sceneChart = null
-let modelChart = null
-
-// 最近活动
-const recentActivities = ref([])
-
-// 后端原始数据缓存
-let _statsData = null
-
-// 加载统计数据
-async function loadStats() {
+async function loadDashboard() {
+  loading.value = true
+  loadError.value = ''
   try {
-    const res = await getDashboardStatsApi()
-    const data = res.data
-    _statsData = data
-
-    // 概览统计
-    stats.value.totalDetections = data.overview.total_detections || 0
-    stats.value.totalObjects = 0 // 后端暂未聚合，可后续扩展
-    stats.value.totalModels = data.overview.total_models || 0
-    stats.value.totalChats = data.overview.total_sessions || 0
-
-    // 最近活动
-    recentActivities.value = (data.recent_detections || []).map(d => ({
-      type: 'detection',
-      description: `完成${d.task_type === 'single' ? '单图' : d.task_type === 'batch' ? '批量' : '视频'}检测，发现 ${d.total_objects || 0} 个目标`,
-      time: d.created_at
-    }))
+    const response = await getFoodDashboardStatsApi()
+    dashboard.value = response.data || dashboard.value
+    await nextTick()
+    renderCharts()
   } catch (error) {
-    console.error('加载统计数据失败:', error)
+    loadError.value = '食材数据暂时无法加载，请稍后重试。'
+    console.error('加载食材数据看板失败:', error)
+  } finally {
+    loading.value = false
   }
 }
 
-// 加载趋势数据
-async function loadTrendData() {
-  await loadStats()
-  await nextTick()
+function renderCharts() {
   renderTrendChart()
+  renderIngredientChart()
 }
 
-// 渲染趋势图
 function renderTrendChart() {
   if (!trendChartRef.value) return
-  
-  if (trendChart) {
-    trendChart.dispose()
-  }
+  trendChart?.dispose()
   trendChart = echarts.init(trendChartRef.value)
-
-  const trend = _statsData?.trend || []
-  const dates = trend.map(t => {
-    const d = new Date(t.date)
-    return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-  })
-  const values = trend.map(t => t.count)
-
+  const trend = dashboard.value.trend || []
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: dates },
-    yAxis: { type: 'value', name: '检测次数' },
+    grid: { top: 24, right: 20, bottom: 28, left: 38 },
+    xAxis: {
+      type: 'category',
+      data: trend.map(item => item.date.slice(5)),
+      boundaryGap: false
+    },
+    yAxis: { type: 'value', minInterval: 1 },
     series: [{
+      name: '识别批次',
       type: 'line',
-      data: values,
       smooth: true,
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-          { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-        ])
-      },
-      lineStyle: { color: '#409eff' },
-      itemStyle: { color: '#409eff' }
+      data: trend.map(item => item.count),
+      lineStyle: { color: '#3478f6', width: 3 },
+      itemStyle: { color: '#3478f6' },
+      areaStyle: { color: 'rgba(52, 120, 246, 0.12)' }
     }]
   })
 }
 
-// 渲染类别分布图
-function renderCategoryChart() {
-  if (!categoryChartRef.value) return
-  
-  if (categoryChart) categoryChart.dispose()
-  categoryChart = echarts.init(categoryChartRef.value)
-
-  const classDist = _statsData?.class_distribution || []
-  const pieData = classDist.map(c => ({ value: c.count, name: c.name }))
-
-  categoryChart.setOption({
+function renderIngredientChart() {
+  if (!ingredientChartRef.value) return
+  ingredientChart?.dispose()
+  ingredientChart = echarts.init(ingredientChartRef.value)
+  const items = dashboard.value.ingredient_distribution || []
+  ingredientChart.setOption({
     tooltip: { trigger: 'item' },
-    legend: { orient: 'vertical', left: 'left' },
+    legend: { bottom: 0, type: 'scroll' },
     series: [{
       type: 'pie',
-      radius: '60%',
-      center: ['50%', '50%'],
-      data: pieData.length > 0 ? pieData : [{ value: 0, name: '暂无数据' }],
-      emphasis: {
-        itemStyle: {
-          shadowBlur: 10,
-          shadowOffsetX: 0,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
-        }
-      }
-    }]
+      radius: ['36%', '64%'],
+      data: items.map(item => ({ name: item.name, value: item.count })),
+      label: { formatter: '{b}: {c}' },
+      emptyCircleStyle: { color: '#edf0f5' }
+    }],
+    graphic: items.length
+      ? []
+      : [{ type: 'text', left: 'center', top: 'center', style: { text: '暂无确认食材', fill: '#8492a6', fontSize: 14 } }]
   })
 }
 
-// 渲染场景统计图
-function renderSceneChart() {
-  if (!sceneChartRef.value) return
-  
-  if (sceneChart) sceneChart.dispose()
-  sceneChart = echarts.init(sceneChartRef.value)
-
-  const sceneStats = _statsData?.scene_stats || []
-  const names = sceneStats.map(s => s.name)
-  const counts = sceneStats.map(s => s.count)
-
-  sceneChart.setOption({
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: names.length > 0 ? names : ['暂无'] },
-    yAxis: { type: 'value', name: '检测次数' },
-    series: [{
-      type: 'bar',
-      data: counts.length > 0 ? counts : [0],
-      itemStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#409eff' },
-          { offset: 1, color: '#79bbff' }
-        ])
-      }
-    }]
-  })
+function activityTagType(type) {
+  return { recognition: 'primary', recipe: 'success', chat: 'warning' }[type] || 'info'
 }
 
-// 渲染模型对比图（使用训练任务状态分布代替）
-function renderModelChart() {
-  if (!modelChartRef.value) return
-  
-  if (modelChart) modelChart.dispose()
-  modelChart = echarts.init(modelChartRef.value)
-
-  const trainingStatus = _statsData?.training_status || []
-  const statusMap = { pending: '等待中', running: '运行中', paused: '已暂停', completed: '已完成', failed: '失败', cancelled: '已取消' }
-  const names = trainingStatus.map(s => statusMap[s.status] || s.status)
-  const counts = trainingStatus.map(s => s.count)
-
-  modelChart.setOption({
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: names.length > 0 ? names : ['暂无'] },
-    yAxis: { type: 'value', name: '任务数' },
-    series: [{
-      type: 'bar',
-      data: counts.length > 0 ? counts : [0],
-      itemStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: '#67c23a' },
-          { offset: 1, color: '#95d475' }
-        ])
-      }
-    }]
-  })
+function activityLabel(type) {
+  return { recognition: '识别', recipe: '菜谱', chat: '对话' }[type] || '活动'
 }
 
-// 活动类型
-function getActivityType(type) {
-  const map = {
-    detection: 'primary',
-    training: 'warning',
-    chat: 'success'
-  }
-  return map[type] || 'info'
-}
-
-function getActivityText(type) {
-  const map = {
-    detection: '检测',
-    training: '训练',
-    chat: '对话'
-  }
-  return map[type] || type
-}
-
-// 格式化时间
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString('zh-CN')
-}
-
-// 窗口大小变化
 function handleResize() {
   trendChart?.resize()
-  categoryChart?.resize()
-  sceneChart?.resize()
-  modelChart?.resize()
+  ingredientChart?.resize()
 }
 
-onMounted(async () => {
-  await loadStats()
-  await nextTick()
-  renderTrendChart()
-  renderCategoryChart()
-  renderSceneChart()
-  renderModelChart()
+onMounted(() => {
+  loadDashboard()
   window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
-  categoryChart?.dispose()
-  sceneChart?.dispose()
-  modelChart?.dispose()
+  ingredientChart?.dispose()
 })
 </script>
 
 <style lang="scss" scoped>
 .dashboard-page {
+  min-height: calc(100vh - #{$header-height} - 40px);
   padding: $spacing-lg;
   background: $bg-color;
-  min-height: calc(100vh - #{$header-height} - 40px);
 }
 
-.stats-cards {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: $spacing-lg;
+.page-header,
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-header {
   margin-bottom: $spacing-lg;
+
+  h2 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 20px;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    font-size: 14px;
+  }
+}
+
+.load-alert { margin-bottom: $spacing-lg; }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: $spacing-md;
+  margin-bottom: $spacing-lg;
+}
+
+.stat-card,
+.panel {
+  background: #fff;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
 }
 
 .stat-card {
-  background: #fff;
-  border-radius: $border-radius-lg;
-  padding: $spacing-lg;
   display: flex;
   align-items: center;
-  gap: $spacing-md;
-  box-shadow: $shadow-sm;
-
-  .stat-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: $border-radius-md;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .stat-info {
-    .stat-value {
-      font-size: 28px;
-      font-weight: 600;
-      color: $text-primary;
-    }
-
-    .stat-label {
-      font-size: 14px;
-      color: $text-secondary;
-      margin-top: $spacing-xs;
-    }
-  }
+  gap: $spacing-sm;
+  min-height: 94px;
+  padding: $spacing-md;
 }
 
-.charts-row {
+.stat-icon {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  place-items: center;
+
+  &.blue { background: #eaf1ff; color: #3478f6; }
+  &.green { background: #e8f7ef; color: #2c9a61; }
+  &.amber { background: #fff4dc; color: #b87916; }
+  &.rose { background: #fff0ef; color: #d25a54; }
+  &.indigo { background: #eff0ff; color: #5859ba; }
+}
+
+.stat-value { color: $text-primary; font-size: 24px; font-weight: 600; }
+.stat-label { margin-top: 4px; color: $text-secondary; font-size: 13px; }
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: $spacing-lg;
   margin-bottom: $spacing-lg;
 }
 
-.chart-card {
-  background: #fff;
-  border-radius: $border-radius-lg;
-  padding: $spacing-lg;
-  box-shadow: $shadow-sm;
+.panel { padding: $spacing-lg; }
+.panel-heading { margin-bottom: $spacing-md; }
+.panel-heading h3 { margin: 0; color: $text-primary; font-size: 16px; }
+.chart { height: 290px; }
+.activity-panel { margin-bottom: $spacing-lg; }
 
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: $spacing-md;
-
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: $text-primary;
-    }
-  }
-
-  .chart-container {
-    height: 300px;
-  }
+@media (max-width: 1200px) {
+  .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-.recent-activities {
-  background: #fff;
-  border-radius: $border-radius-lg;
-  padding: $spacing-lg;
-  box-shadow: $shadow-sm;
-
-  .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: $spacing-md;
-
-    h3 {
-      margin: 0;
-      font-size: 16px;
-      color: $text-primary;
-    }
-  }
+@media (max-width: 760px) {
+  .dashboard-page { padding: $spacing-md; }
+  .page-header { align-items: flex-start; gap: $spacing-sm; }
+  .stats-grid, .analysis-grid { grid-template-columns: 1fr; }
+  .chart { height: 250px; }
 }
 </style>

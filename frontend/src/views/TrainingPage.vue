@@ -4,11 +4,34 @@
     <div class="page-header">
       <h3>训练任务</h3>
       <div class="header-actions">
-        <el-button type="primary" @click="showCreateDialog = true">
+        <el-button v-if="canManageTraining" type="primary" @click="showCreateDialog = true">
           <el-icon><Plus /></el-icon>新建任务
         </el-button>
       </div>
     </div>
+
+    <section v-loading="modelStatusLoading" class="model-status-panel">
+      <div class="model-status-heading">
+        <div>
+          <h4>当前部署模型</h4>
+          <p>这是当前识别服务实际加载的运行状态，不包含训练指标或本地文件路径。</p>
+        </div>
+        <el-tag :type="modelStatus?.available ? 'success' : 'danger'" effect="light">
+          {{ modelStatus?.available ? '可用' : '不可用' }}
+        </el-tag>
+      </div>
+      <div v-if="modelStatus" class="model-status-content">
+        <span><strong>Provider：</strong>{{ modelStatus.provider }}</span>
+        <span><strong>运行版本：</strong>{{ modelStatus.model_version }}</span>
+        <span><strong>类别数：</strong>{{ modelStatus.class_count }}</span>
+        <div class="class-tags">
+          <el-tag v-for="item in modelStatus.classes" :key="item.class_name" size="small" effect="plain">
+            {{ item.display_name }} ({{ item.class_name }})
+          </el-tag>
+        </div>
+      </div>
+      <el-empty v-else :image-size="42" description="暂无可读取的部署模型状态" />
+    </section>
 
     <!-- 状态筛选 -->
     <div class="filter-bar">
@@ -65,7 +88,7 @@
           <template #default="{ row }">
             <div class="row-actions">
               <el-button
-                v-if="row.status === 'pending'"
+                v-if="canManageTraining && row.status === 'pending'"
                 type="success"
                 size="small"
                 link
@@ -74,7 +97,7 @@
                 <el-icon><VideoPlay /></el-icon>启动
               </el-button>
               <el-button
-                v-if="row.status === 'running'"
+                v-if="canManageTraining && row.status === 'running'"
                 type="warning"
                 size="small"
                 link
@@ -83,7 +106,7 @@
                 <el-icon><VideoPause /></el-icon>暂停
               </el-button>
               <el-button
-                v-if="row.status === 'paused'"
+                v-if="canManageTraining && row.status === 'paused'"
                 type="success"
                 size="small"
                 link
@@ -92,7 +115,7 @@
                 <el-icon><VideoPlay /></el-icon>恢复
               </el-button>
               <el-button
-                v-if="['pending', 'running', 'paused'].includes(row.status)"
+                v-if="canManageTraining && ['pending', 'running', 'paused'].includes(row.status)"
                 type="warning"
                 size="small"
                 link
@@ -101,7 +124,7 @@
                 取消
               </el-button>
               <el-button
-                v-if="row.status !== 'running'"
+                v-if="canManageTraining && row.status !== 'running'"
                 type="danger"
                 size="small"
                 link
@@ -173,7 +196,7 @@
     </el-dialog>
 
     <!-- 创建任务对话框 -->
-    <el-dialog v-model="showCreateDialog" title="创建训练任务" width="500px">
+    <el-dialog v-if="canManageTraining" v-model="showCreateDialog" title="创建训练任务" width="500px">
       <el-form :model="createForm" label-width="100px">
         <el-form-item label="基础模型">
           <el-select v-model="createForm.model_name">
@@ -236,7 +259,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Plus, VideoPlay, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import * as echarts from 'echarts/core'
@@ -256,8 +279,12 @@ import {
   getTrainingDevicesApi
 } from '@/api/training'
 import { getDatasetsApi } from '@/api/dataset'
+import { getFoodModelStatus } from '@/api/food'
+import { useUserStore } from '@/stores/user'
 import { formatTime } from '@/utils/format'
 
+const userStore = useUserStore()
+const canManageTraining = computed(() => userStore.hasPermission('training:task:manage'))
 const tasks = ref([])
 const statusFilter = ref('')
 const loading = ref(false)
@@ -275,6 +302,8 @@ const showCreateDialog = ref(false)
 const creating = ref(false)
 const devices = ref([])
 const datasets = ref([])
+const modelStatus = ref(null)
+const modelStatusLoading = ref(false)
 const createForm = ref({
   model_name: 'yolo26n',
   epochs: 100,
@@ -301,6 +330,19 @@ async function loadTasks() {
     console.error('加载任务失败:', error)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadModelStatus() {
+  modelStatusLoading.value = true
+  try {
+    const response = await getFoodModelStatus()
+    modelStatus.value = response.data || null
+  } catch (error) {
+    modelStatus.value = null
+    console.error('加载部署模型状态失败:', error)
+  } finally {
+    modelStatusLoading.value = false
   }
 }
 
@@ -525,8 +567,11 @@ function handleResize() {
 
 onMounted(() => {
   loadTasks()
-  loadDevices()
-  loadDatasets()
+  loadModelStatus()
+  if (canManageTraining.value) {
+    loadDevices()
+    loadDatasets()
+  }
   startPolling()
   window.addEventListener('resize', handleResize)
 })
@@ -569,6 +614,49 @@ onUnmounted(() => {
 
 .filter-bar {
   margin-bottom: $spacing-md;
+}
+
+.model-status-panel {
+  margin-bottom: $spacing-md;
+  padding: $spacing-md;
+  background: #fff;
+  border: 1px solid #e8edf4;
+  border-radius: 8px;
+}
+
+.model-status-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 15px;
+  }
+
+  p {
+    margin: 5px 0 0;
+    color: $text-secondary;
+    font-size: 13px;
+  }
+}
+
+.model-status-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-md;
+  margin-top: $spacing-md;
+  color: $text-regular;
+  font-size: 13px;
+}
+
+.class-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .task-table-wrapper {
