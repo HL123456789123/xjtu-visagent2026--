@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | V1.0 | 2026-07-14 | 每次上传 1 张图片，建立 Food → Recipe → Chat 基线契约。 |
 | V1.1 | 2026-07-16 | Food API 改为每批上传 1～5 张图片；增加逐图标识、批次大小、原子失败、聚合和存储规则。Recipe、Chat、SSE 不变。 |
+| V1.2 | 2026-07-19 | 新增只读的菜谱/会话历史、运行模型状态和 Food 数据看板接口；既有 Food、Recipe、Chat 请求字段与 SSE 事件不变。 |
 
 ---
 
@@ -572,6 +573,32 @@ name 不能为空
 
 ---
 
+## 4. 查询当前运行模型状态
+
+```http
+GET /api/food/model-status
+```
+
+该接口要求登录，但不要求管理权限。它仅用于展示当前 Food Provider 的运行状态，不能用于上传、替换、训练或删除模型。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "provider": "yolo",
+    "model_version": "food-yolo-v1",
+    "available": true,
+    "class_count": 10,
+    "classes": [
+      { "class_name": "banana", "display_name": "香蕉" }
+    ]
+  }
+}
+```
+
+`available=false` 表示当前运行时无法加载 Provider 或必要类别文件。响应不得返回模型本地路径、环境变量、密钥、权重内容或训练指标；Mock 模式可返回空的 `classes` 数组和 `class_count=0`。
+
 # 六、Recipe API
 
 负责人：陈煜君
@@ -667,7 +694,50 @@ GET /api/recipes/{recipe_id}
 
 返回结构与生成接口一致。
 
-## 3. 版本规则
+## 3. 查询当前用户的菜谱历史
+
+```http
+GET /api/recipes/history?page=1&page_size=20
+```
+
+只返回当前登录用户的 Recipe。管理员身份不改变此接口的用户边界，不能借此读取其他用户的菜谱、识别批次或会话。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "recipe_id": 101,
+        "recognition_id": 12,
+        "title": "番茄炒蛋",
+        "version": 2,
+        "provider": "yolo",
+        "model_version": "food-yolo-v1",
+        "image_count": 2,
+        "confirmed_ingredients": [],
+        "updated_at": "2026-07-19T10:00:00+08:00",
+        "latest_session": {
+          "session_id": 33,
+          "recipe_id": 101,
+          "title": "新对话",
+          "message_count": 2,
+          "last_message_at": "2026-07-19T10:01:00+08:00",
+          "created_at": "2026-07-19T10:00:00+08:00"
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 20
+  }
+}
+```
+
+没有历史时固定返回 `items=[]`、`total=0`，不是 404。`page >= 1` 且 `1 <= page_size <= 100`。
+
+## 4. 版本规则
 
 ```text
 首次生成：version = 1
@@ -805,6 +875,17 @@ POST /api/chat/sessions
 }
 ```
 
+## 1.1 查询已有会话与消息
+
+```http
+GET /api/chat/sessions?recipe_id=101
+GET /api/chat/sessions/33/messages
+```
+
+第一个接口先验证 `recipe_id` 属于当前用户，再按最近活动时间返回该菜谱的 active 会话。每项包含 `session_id`、`recipe_id`、`title`、`message_count`、`last_message_at` 和 `created_at`。第二个接口只允许会话所属用户访问，消息按创建时间升序返回 `message_id`、`role`、`content` 和 `created_at`。当前 V1 仅公开 `user` 与 `assistant` 两种消息角色。
+
+无会话时第一个接口返回空数组；不存在或跨用户访问的 Recipe/Session 分别按现有 `RECIPE_NOT_FOUND`、`SESSION_NOT_FOUND` 或 `FORBIDDEN` 规则处理。查询接口不得创建新会话，也不得改变菜谱版本。
+
 ## 2. 发送消息
 
 ```http
@@ -911,7 +992,42 @@ data: {"code":"LLM_UNAVAILABLE","message":"智能服务暂时不可用"}
 
 ---
 
-# 九、Repository 接口
+# 九、Food 数据看板
+
+```http
+GET /api/dashboard/food-stats
+```
+
+普通用户只能获得自己的 Food 识别批次、确认食材、Recipe 和 ChatSession 聚合数据；`super_admin` 可获得全量聚合。该接口是 Food 展示页专用接口，不改变旧的 `/api/dashboard/stats` 行为，也不返回图片、会话正文、模型路径或训练指标。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "overview": {
+      "recognitions": 1,
+      "detected_items": 6,
+      "confirmed_ingredients": 6,
+      "recipes": 1,
+      "chat_sessions": 1
+    },
+    "trend": [{ "date": "2026-07-19", "count": 1 }],
+    "ingredient_distribution": [{ "name": "牛奶", "count": 1 }],
+    "recent_activity": [
+      {
+        "type": "recognition",
+        "title": "完成 1 张图片的食材识别",
+        "created_at": "2026-07-19T10:00:00+08:00"
+      }
+    ]
+  }
+}
+```
+
+空账号仍返回完整结构：所有概览数字为 `0`，`trend` 包含连续 7 天且 `count=0`，`ingredient_distribution=[]`、`recent_activity=[]`。
+
+# 十、Repository 接口
 
 负责人：绕家辉  
 调用者：陈煜君
@@ -966,7 +1082,7 @@ class ChatRepository:
 
 ---
 
-# 十、数据库决定
+# 十一、数据库决定
 
 ## food_recognition_tasks
 
@@ -1060,7 +1176,7 @@ ORM 和 Alembic migration 只由绕家辉修改。
 
 ---
 
-# 十一、状态码
+# 十二、状态码
 
 | HTTP | 业务错误码 | 场景 |
 |---:|---|---|
@@ -1084,7 +1200,7 @@ ORM 和 Alembic migration 只由绕家辉修改。
 
 ---
 
-# 十二、固定文件命名
+# 十三、固定文件命名
 
 ```text
 backend/app/api/food.py
@@ -1116,7 +1232,7 @@ integration/day4-real
 
 ---
 
-# 十三、Canonical Fixture
+# 十四、Canonical Fixture
 
 负责人：吴雯
 
@@ -1141,7 +1257,7 @@ sse_recipe_update.txt：不变
 
 ---
 
-# 十四、每个人只需执行的接口任务
+# 十五、每个人只需执行的接口任务
 
 ## 闫灿宇
 
@@ -1211,7 +1327,7 @@ V1.1 不改变 Recipe、Chat 和 SSE；当前阶段任务不扩大
 
 ---
 
-# 十五、计划中的技术讨论任务统一替换
+# 十六、计划中的技术讨论任务统一替换
 
 删除或改写：
 
@@ -1245,7 +1361,7 @@ V1.1 不改变 Recipe、Chat 和 SSE；当前阶段任务不扩大
 
 ---
 
-# 十六、最终验收主流程
+# 十七、最终验收主流程
 
 ```text
 1. 登录。
@@ -1265,9 +1381,9 @@ V1.1 不改变 Recipe、Chat 和 SSE；当前阶段任务不扩大
 
 ---
 
-# 十七、冻结规则
+# 十八、冻结规则
 
-本文当前修订号为 V1.1。V1.0 为单图上传；V1.1 为多图上传。Recipe、Chat 和 SSE 在本次修订中不变。
+本文当前修订号为 V1.2。V1.0 为单图上传；V1.1 为多图上传；V1.2 增加只读历史、运行模型状态和 Food 数据展示接口。既有 Food、Recipe、Chat 请求字段与 SSE 事件在 V1.2 中不变。
 
 只有以下情况允许修改：
 
