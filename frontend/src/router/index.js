@@ -47,14 +47,15 @@ const routes = [
         name: 'Chat',
         component: () => import('@/views/ChatPage.vue'),
         props: (route) => ({ recipeId: Number(route.query.recipe_id) || null }),
+        beforeEnter: (to) =>
+          Number.isInteger(Number(to.query.recipe_id)) && Number(to.query.recipe_id) > 0
+            ? true
+            : { name: 'History' },
         meta: { title: '菜谱智能对话', icon: 'ChatDotRound' },
       },
       {
         path: 'recipe-chat/:recognitionId',
-        name: 'RecipeChat',
-        component: () => import('@/views/RecipeChatView.vue'),
-        props: (route) => ({ recognitionId: Number(route.params.recognitionId) }),
-        meta: { title: '菜谱与智能对话', icon: 'ChatDotRound' },
+        redirect: { name: 'History' },
       },
       {
         path: 'detection',
@@ -84,13 +85,13 @@ const routes = [
         path: 'history',
         name: 'History',
         component: () => import('@/views/HistoryPage.vue'),
-        meta: { title: '历史记录', icon: 'Clock', permission: 'detection:task:view' },
+        meta: { title: '历史记录', icon: 'Clock' },
       },
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/DashboardPage.vue'),
-        meta: { title: '仪表盘', icon: 'DataAnalysis', permission: 'agent:chat' },
+        meta: { title: '仪表盘', icon: 'DataAnalysis' },
       },
       {
         path: 'profile',
@@ -99,6 +100,16 @@ const routes = [
         meta: { title: '个人信息', icon: 'User' },
       },
       // 管理员路由
+      {
+        path: 'admin/workbench',
+        name: 'AdminWorkbench',
+        component: () => import('@/views/admin/AdminWorkbenchPage.vue'),
+        meta: {
+          title: '模型工作台',
+          icon: 'Setting',
+          anyPermissions: ['user:list', 'role:list', 'detection:task:view', 'training:task:view', 'dataset:view', 'model:view'],
+        },
+      },
       {
         path: 'admin/users',
         name: 'UserManage',
@@ -185,6 +196,13 @@ router.beforeEach(async (to, from, next) => {
   } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
     // 已登录则跳转到首页
     next('/')
+  } else if (to.meta.anyPermissions) {
+    const hasPerm = to.meta.anyPermissions.some((permission) => userStore.hasPermission(permission))
+    if (!hasPerm) {
+      next({ name: 'NotFound' })
+    } else {
+      next()
+    }
   } else if (to.meta.permission) {
     // 需要特定权限的路由，使用细粒度权限判断
     const hasPerm = userStore.hasPermission(to.meta.permission)

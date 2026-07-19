@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetFoodApiClient, setFoodApiClient } from '@/api/food'
 import { resetRecipeApiClient, setRecipeApiClient } from '@/api/recipe'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
+import { foodRecognitionFixtures } from '@/fixtures/foodRecognition'
+import { recipeSuccessFixture } from '@/fixtures/recipe'
 import FoodRecipePage from '../FoodRecipePage.vue'
 
 function makeImageFile(name = 'meal.jpg') {
@@ -13,6 +15,17 @@ async function selectImages(wrapper, files = [makeImageFile()]) {
   const uploader = wrapper.findComponent(FoodImageUploader)
   uploader.vm.selectFiles(files)
   await flushPromises()
+}
+
+function makeFoodApiError(status, message) {
+  const error = new Error(message)
+  if (status !== 0) {
+    error.response = {
+      status,
+      data: { message },
+    }
+  }
+  return error
 }
 
 describe('FoodRecipePage', () => {
@@ -148,16 +161,30 @@ describe('FoodRecipePage', () => {
           { name: '土豆', class_name: null, quantity: 2, unit: '个', source: 'manual' },
         ],
       },
-      { mockScenario: 'off' },
+      {},
     )
     expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
     expect(wrapper.find('[data-testid="recipe-suggestions"]').exists()).toBe(false)
   })
 
-  it('runs the success mock flow and emits the recipe contract after confirmation', async () => {
+  it('runs the supplied recognition flow and emits the recipe contract after confirmation', async () => {
+    setFoodApiClient({
+      create: vi.fn().mockResolvedValue({ data: foodRecognitionFixtures.success }),
+      confirm: vi.fn().mockImplementation(({ recognitionId, ingredients }) =>
+        Promise.resolve({
+          data: {
+            recognition_id: recognitionId,
+            confirmed_ingredients: ingredients,
+          },
+        })
+      ),
+    })
+    setRecipeApiClient({
+      create: vi.fn().mockResolvedValue({ data: recipeSuccessFixture }),
+    })
     const wrapper = mount(FoodRecipePage)
 
-    await wrapper.find('[data-testid="mock-scenario"]').setValue('success')
+    expect(wrapper.find('[data-testid="mock-scenario"]').exists()).toBe(false)
     await selectImages(wrapper, [makeImageFile('breakfast.jpg'), makeImageFile('vegetables.jpg')])
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('selecting')
     expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('2 张图片')
@@ -208,9 +235,11 @@ describe('FoodRecipePage', () => {
   })
 
   it('keeps the empty-recognition state visible and allows manual ingredient input', async () => {
+    setFoodApiClient({
+      create: vi.fn().mockResolvedValue({ data: foodRecognitionFixtures.empty }),
+    })
     const wrapper = mount(FoodRecipePage)
 
-    await wrapper.find('[data-testid="mock-scenario"]').setValue('empty')
     await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
@@ -225,10 +254,12 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="ingredient-errors"]').text()).toContain('不能为空')
   })
 
-  it('shows reserved 503 error state from the mock API', async () => {
+  it('shows the reserved 503 error state from the recognition API', async () => {
+    setFoodApiClient({
+      create: vi.fn().mockRejectedValue(makeFoodApiError(503, '食物识别服务暂不可用')),
+    })
     const wrapper = mount(FoodRecipePage)
 
-    await wrapper.find('[data-testid="mock-scenario"]').setValue('503')
     await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
@@ -238,10 +269,14 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('食物识别服务暂不可用')
   })
 
-  it('shows reserved 413 and 415 error states from the mock API', async () => {
+  it('shows reserved 413 and 415 error states from the recognition API', async () => {
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(makeFoodApiError(413, '单张图片不能超过 10 MB'))
+      .mockRejectedValueOnce(makeFoodApiError(415, '仅支持 JPG、JPEG 或 PNG'))
+    setFoodApiClient({ create })
     const wrapper = mount(FoodRecipePage)
 
-    await wrapper.find('[data-testid="mock-scenario"]').setValue('413')
     await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
@@ -250,7 +285,6 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片过大')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('单张图片不能超过 10 MB')
 
-    await wrapper.find('[data-testid="mock-scenario"]').setValue('415')
     await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
@@ -260,16 +294,18 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('JPG、JPEG 或 PNG')
   })
 
-  it('shows a network failure state when the mock backend is unreachable', async () => {
+  it('shows a network failure state when the recognition backend is unreachable', async () => {
+    setFoodApiClient({
+      create: vi.fn().mockRejectedValue(makeFoodApiError(0, '后端服务不可达')),
+    })
     const wrapper = mount(FoodRecipePage)
 
-    await wrapper.find('[data-testid="mock-scenario"]').setValue('network')
     await selectImages(wrapper)
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('网络连接失败')
-    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('后端 Mock 服务')
+    expect(wrapper.find('[data-testid="error-state"]').text()).toContain('后端服务不可达')
   })
 })

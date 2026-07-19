@@ -23,19 +23,16 @@ import { useUserStore } from '@/stores/user'
 const userStore = useUserStore()
 
 const actions = [
-  { path: '/chat', title: '菜谱对话', description: '围绕当前菜谱继续调整。' },
   { path: '/profile', title: '个人中心', description: '查看并维护个人资料。' },
-  { path: '/history', title: '历史记录', description: '查看已有历史任务。', permission: 'detection:task:view' },
-  { path: '/training', title: '模型训练', description: '进入当前模型训练页面。', permission: 'training:task:view' },
-  { path: '/dashboard', title: '数据看板', description: '查看当前数据看板。', permission: 'system:dashboard' },
+  { path: '/history', title: '历史记录', description: '从已保存的菜谱继续对话或查看版本。' },
+  { path: '/dashboard', title: '数据看板', description: '查看当前账号的食材与菜谱数据。' },
 ]
 
 const visibleActions = computed(() => {
   const items = actions.filter((item) => !item.permission || userStore.hasPermission(item.permission))
-  if (userStore.hasPermission('user:list')) {
-    items.push({ path: '/admin/users', title: '管理后台', description: '进入用户与角色管理。' })
-  } else if (userStore.hasPermission('role:list')) {
-    items.push({ path: '/admin/roles', title: '管理后台', description: '进入角色管理。' })
+  if (['user:list', 'role:list', 'detection:task:view', 'training:task:view', 'dataset:view', 'model:view']
+    .some((permission) => userStore.hasPermission(permission))) {
+    items.push({ path: '/admin/workbench', title: '模型工作台', description: '进入检测、训练、数据与系统管理。' })
   }
   return items
 })

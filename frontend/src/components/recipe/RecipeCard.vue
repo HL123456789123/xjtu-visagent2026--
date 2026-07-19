@@ -43,8 +43,18 @@
         />
       </div>
 
-      <footer v-if="showActions" class="recipe-card__actions">
+      <footer v-if="showActions && (showShareAction || showChatAction)" class="recipe-card__actions">
         <button
+          v-if="showShareAction"
+          class="recipe-card__share-btn"
+          type="button"
+          data-testid="recipe-open-xiaohongshu-share"
+          @click="shareDialogVisible = true"
+        >
+          生成小红书分享稿
+        </button>
+        <button
+          v-if="showChatAction"
           class="recipe-card__chat-btn"
           type="button"
           data-testid="recipe-open-chat"
@@ -54,16 +64,19 @@
           对话修改菜谱
         </button>
       </footer>
+
+      <RecipeShareDialog v-model="shareDialogVisible" :recipe="recipe" />
     </template>
   </article>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import RecipeTitle from './RecipeTitle.vue'
 import RecipeIngredients from './RecipeIngredients.vue'
 import RecipeSteps from './RecipeSteps.vue'
 import NutritionPanel from './NutritionPanel.vue'
+import RecipeShareDialog from './RecipeShareDialog.vue'
 
 const props = defineProps({
   recipe: {
@@ -82,9 +95,18 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  showShareAction: {
+    type: Boolean,
+    default: true,
+  },
+  showChatAction: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const emit = defineEmits(['open-chat', 'retry'])
+const shareDialogVisible = ref(false)
 
 const defaultDisclaimer = '营养数据由模型估算，仅供参考，不构成医疗或营养建议。'
 
@@ -218,27 +240,39 @@ function emitRetry() {
 }
 
 .recipe-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-sm;
   border-top: 1px solid rgba(121, 82, 45, 0.12);
   padding-top: $spacing-md;
 }
 
-.recipe-card__chat-btn {
+.recipe-card__chat-btn,
+.recipe-card__share-btn {
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #89a94f, #e6a23c);
+  border-radius: 6px;
   color: #fffaf0;
   height: 42px;
   padding: 0 24px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 800;
-  box-shadow: 0 14px 26px rgba(137, 169, 79, 0.22);
+}
 
-  &:disabled {
-    background: #eadfce;
-    color: #ad947d;
-    box-shadow: none;
-    cursor: not-allowed;
-  }
+.recipe-card__chat-btn {
+  background: linear-gradient(135deg, #89a94f, #e6a23c);
+  box-shadow: 0 14px 26px rgba(137, 169, 79, 0.22);
+}
+
+.recipe-card__share-btn {
+  background: #d95249;
+  box-shadow: 0 12px 22px rgba(217, 82, 73, 0.2);
+}
+
+.recipe-card__chat-btn:disabled {
+  background: #eadfce;
+  color: #ad947d;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 </style>

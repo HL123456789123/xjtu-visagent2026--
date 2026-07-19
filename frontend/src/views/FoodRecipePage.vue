@@ -13,17 +13,6 @@
         </div>
         <div class="food-recipe-page__steps-line"></div>
       </div>
-      <select v-model="mockScenario" aria-label="Mock response scenario" data-testid="mock-scenario">
-        <option value="off">后端 Mock API</option>
-        <option value="success">前端 Mock 成功</option>
-        <option value="empty">前端 Mock 空识别</option>
-        <option value="401">前端 Mock 401</option>
-        <option value="413">前端 Mock 413</option>
-        <option value="415">前端 Mock 415</option>
-        <option value="422">前端 Mock 422</option>
-        <option value="503">前端 Mock 503</option>
-        <option value="network">前端 Mock 网络失败</option>
-      </select>
       <span class="food-recipe-page__state-badge" data-testid="workflow-state">
         {{ workflowState }}
       </span>
@@ -112,7 +101,6 @@
             v-model="recognizedIngredients"
             :disabled="workflowState === 'confirmed' || workflowState === 'confirming'"
             @confirm="handleConfirm"
-            @validation-error="handleIngredientValidation"
           />
 
           <RecognitionSummary
@@ -186,7 +174,7 @@
               :recipe="generatedRecipe"
               :loading="recipeLoading"
               :error="recipeError"
-              :show-actions="false"
+              :show-chat-action="false"
               @retry="generateRecipeFromRecognition"
             />
             <section
@@ -232,13 +220,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import {
-  createFoodRecognition,
-  confirmFoodIngredients,
-  getFoodRecognition,
-  normalizeRecognitionId,
-  unwrapFoodApiData,
-} from '@/api/food'
+import { confirmFoodIngredients, normalizeRecognitionId, unwrapFoodApiData } from '@/api/food'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
 import IngredientEditor from '@/components/food/IngredientEditor.vue'
 import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
@@ -246,6 +228,7 @@ import RecipeCard from '@/components/recipe/RecipeCard.vue'
 import ChatPage from '@/views/ChatPage.vue'
 import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
 import { createRecipe, getRecipe, unwrapRecipeApiData } from '@/api/recipe'
+import { useFoodRecognitionWorkflow } from '@/composables/useFoodRecognitionWorkflow'
 
 const props = defineProps({
   recipeId: {
@@ -256,15 +239,6 @@ const props = defineProps({
 
 const emit = defineEmits(['confirmed', 'recipe-requested'])
 
-const workflowState = ref('idle')
-const selectedFiles = ref([])
-const confThreshold = ref(0.25)
-const mockScenario = ref('off')
-const recognizedIngredients = ref([])
-const confirmedIngredients = ref([])
-const recognizedImageCount = ref(0)
-const recognitionId = ref('')
-const validationMessage = ref('')
 const generatedRecipe = ref(null)
 const recipeLoading = ref(false)
 const recipeError = ref(null)
@@ -277,25 +251,39 @@ const recipePreferences = ref({
   max_time_minutes: 30,
   avoid_ingredients: [],
 })
-const errorState = ref({
-  status: null,
-  title: '',
-  message: '',
-})
-const recognitionMeta = ref({
-  provider: '',
-  modelVersion: '',
-})
 
-const visibleStates = [
-  { key: 'loading', title: 'Loading', description: '上传和识别处理中。' },
-  { key: 'empty', title: '空识别', description: '识别成功但无候选食材。' },
-  { key: '401', title: '401', description: '登录失效或未登录。' },
-  { key: '413', title: '413', description: '图片超过大小限制。' },
-  { key: '415', title: '415', description: '图片格式不支持。' },
-  { key: '422', title: '422', description: '图片或参数校验失败。' },
-  { key: '503', title: '503', description: '模型服务暂不可用。' },
-]
+function resetRecipeFlow() {
+  generatedRecipe.value = null
+  recipeError.value = null
+  recipeLoading.value = false
+  suggestionSavingName.value = ''
+  suggestionError.value = ''
+}
+
+const {
+  workflowState,
+  selectedFiles,
+  confThreshold,
+  recognizedIngredients,
+  confirmedIngredients,
+  recognizedImageCount,
+  recognitionId,
+  errorState,
+  recognitionMeta,
+  isBusy,
+  busyText,
+  selectedImageNames,
+  selectedImageText,
+  handleConfirm,
+  handleFileSelected,
+  resetRecognition,
+  restoreRecipe: restoreRecognitionForRecipe,
+  setValidationError,
+  startRecognition,
+} = useFoodRecognitionWorkflow({
+  resetRecipeFlow,
+  onConfirmed: (payload) => emit('confirmed', payload),
+})
 
 const workflowSteps = [
   {
@@ -321,16 +309,6 @@ const workflowSteps = [
   },
 ]
 
-const visibleStateKey = computed(() => {
-  if (workflowState.value === 'uploading' || workflowState.value === 'confirming') return 'loading'
-  if (workflowState.value === 'recognized' && recognizedIngredients.value.length === 0) return 'empty'
-  if (workflowState.value === 'error') return String(errorState.value.status || '503')
-  return ''
-})
-
-const isBusy = computed(() => workflowState.value === 'uploading' || workflowState.value === 'confirming')
-const busyText = computed(() => (workflowState.value === 'confirming' ? '正在确认食材...' : '正在识别食材...'))
-const selectedImageNames = computed(() => selectedFiles.value.map((file) => file.name))
 const showRecipeFlow = computed(
   () => workflowState.value === 'confirmed' || recipeLoading.value || generatedRecipe.value || recipeError.value
 )
@@ -343,19 +321,6 @@ const suggestedIngredients = computed(() =>
     return name && !confirmedIngredientNames.value.has(name)
   })
 )
-const selectedImageText = computed(() => {
-  const count = selectedFiles.value.length
-  if (count <= 1) return '图片'
-  return `${count} 张图片`
-})
-
-function resetRecipeFlow() {
-  generatedRecipe.value = null
-  recipeError.value = null
-  recipeLoading.value = false
-  suggestionSavingName.value = ''
-  suggestionError.value = ''
-}
 
 function normalizeIngredientName(value) {
   return String(value || '').trim().toLowerCase()
@@ -379,9 +344,7 @@ async function acceptSuggestedIngredient(ingredient) {
   ]
 
   try {
-    const response = await confirmFoodIngredients(recognitionId.value, nextIngredients, {
-      mockScenario: mockScenario.value,
-    })
+    const response = await confirmFoodIngredients(recognitionId.value, nextIngredients)
     const payload = unwrapFoodApiData(response)
     const updatedIngredients = payload.confirmed_ingredients || nextIngredients
     confirmedIngredients.value = updatedIngredients
@@ -397,139 +360,6 @@ async function acceptSuggestedIngredient(ingredient) {
   }
 }
 
-function handleFileSelected() {
-  workflowState.value = 'selecting'
-  resetRecognition()
-}
-
-function resetRecognition() {
-  recognizedIngredients.value = []
-  confirmedIngredients.value = []
-  recognizedImageCount.value = 0
-  recognitionId.value = ''
-  validationMessage.value = ''
-  errorState.value = { status: null, title: '', message: '' }
-  recognitionMeta.value = { provider: '', modelVersion: '' }
-  resetRecipeFlow()
-  if (selectedFiles.value.length === 0) workflowState.value = 'idle'
-}
-
-function setValidationError(message) {
-  validationMessage.value = message
-  errorState.value = {
-    status: 422,
-    title: '图片校验失败',
-    message,
-  }
-  workflowState.value = 'error'
-}
-
-function getErrorTitle(status) {
-  if (status === 0) return '网络连接失败'
-  if (status === 401) return '需要重新登录'
-  if (status === 413) return '图片过大'
-  if (status === 415) return '图片格式不支持'
-  if (status === 422) return '请求校验失败'
-  if (status === 503) return '识别服务不可用'
-  return '识别失败'
-}
-
-function handleApiError(error) {
-  const status = error?.response?.status ?? 0
-  const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.detail ||
-    error?.message ||
-    '网络连接失败，请检查后端服务。'
-
-  errorState.value = {
-    status,
-    title: getErrorTitle(status),
-    message,
-  }
-  workflowState.value = 'error'
-}
-
-function applyRecognitionResult(response) {
-  const payload = unwrapFoodApiData(response)
-  const nextRecognitionId = normalizeRecognitionId(payload.recognition_id)
-  if (!nextRecognitionId) {
-    handleApiError({
-      response: {
-        status: 422,
-        data: { message: '识别结果缺少整数 recognition_id。' },
-      },
-    })
-    return
-  }
-
-  recognitionId.value = nextRecognitionId
-  recognitionMeta.value = {
-    provider: payload.provider,
-    modelVersion: payload.model_version,
-  }
-  recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
-  confirmedIngredients.value = []
-  resetRecipeFlow()
-  recognizedImageCount.value = payload.images?.length || selectedFiles.value.length
-  workflowState.value = 'recognized'
-}
-
-async function startRecognition() {
-  if (selectedFiles.value.length === 0) {
-    setValidationError('请先选择 1 至 5 张 JPG/PNG 图片。')
-    return
-  }
-
-  workflowState.value = 'uploading'
-  errorState.value = { status: null, title: '', message: '' }
-
-  try {
-    const response = await createFoodRecognition(
-      {
-        images: selectedFiles.value,
-        conf_threshold: confThreshold.value,
-      },
-      { mockScenario: mockScenario.value }
-    )
-    applyRecognitionResult(response)
-  } catch (error) {
-    handleApiError(error)
-  }
-}
-
-async function handleConfirm(ingredients) {
-  if (!recognitionId.value) return
-
-  workflowState.value = 'confirming'
-  errorState.value = { status: null, title: '', message: '' }
-
-  try {
-    const response = await confirmFoodIngredients(recognitionId.value, ingredients, {
-      mockScenario: mockScenario.value,
-    })
-    const payload = unwrapFoodApiData(response)
-    const confirmedRecognitionId = normalizeRecognitionId(payload.recognition_id) || recognitionId.value
-    const confirmed = payload.confirmed_ingredients || ingredients
-
-    recognitionId.value = confirmedRecognitionId
-    confirmedIngredients.value = confirmed
-    workflowState.value = 'confirmed'
-    resetRecipeFlow()
-
-    emit('confirmed', {
-      recognition_id: confirmedRecognitionId,
-      confirmed_ingredients: confirmed,
-    })
-  } catch (error) {
-    handleApiError(error)
-  }
-}
-
-function handleIngredientValidation(errors) {
-  validationMessage.value = errors[0] || ''
-}
-
 function buildRecipePreferences() {
   const avoidIngredients = avoidIngredientsText.value
     .split(/[,，、\s]+/)
@@ -542,10 +372,6 @@ function buildRecipePreferences() {
     max_time_minutes: recipePreferences.value.max_time_minutes || null,
     avoid_ingredients: avoidIngredients,
   }
-}
-
-function resolveRecipeMockScenario() {
-  return mockScenario.value === 'off' ? 'off' : 'success'
 }
 
 function normalizeRecipeError(error) {
@@ -575,15 +401,11 @@ async function generateRecipeFromRecognition(payload = {}) {
   const preferences = buildRecipePreferences()
   recipeLoading.value = true
   recipeError.value = null
-
   try {
-    const response = await createRecipe(
-      {
-        recognition_id: nextRecognitionId,
-        preferences,
-      },
-      { mockScenario: resolveRecipeMockScenario() }
-    )
+    const response = await createRecipe({
+      recognition_id: nextRecognitionId,
+      preferences,
+    })
     const recipe = unwrapRecipeApiData(response)
     generatedRecipe.value = recipe
     emit('recipe-requested', {
@@ -606,9 +428,7 @@ async function refreshGeneratedRecipe(payload = {}) {
   recipeLoading.value = true
   recipeError.value = null
   try {
-    const response = await getRecipe(recipeId, {
-      mockScenario: mockScenario.value === 'off' ? 'off' : 'v2',
-    })
+    const response = await getRecipe(recipeId)
     generatedRecipe.value = unwrapRecipeApiData(response)
   } catch (error) {
     recipeError.value = normalizeRecipeError(error)
@@ -625,23 +445,8 @@ async function restoreRecipe(recipeId) {
   try {
     const recipeResponse = await getRecipe(recipeId)
     const recipe = unwrapRecipeApiData(recipeResponse)
-    const recognitionResponse = await getFoodRecognition(recipe.recognition_id)
-    const recognition = unwrapFoodApiData(recognitionResponse)
-
-    recognitionId.value = recognition.recognition_id
-    recognitionMeta.value = {
-      provider: recognition.provider,
-      modelVersion: recognition.model_version,
-    }
-    const restoredConfirmedIngredients = recognition.confirmed_ingredients || []
-    recognizedIngredients.value = mapCandidatesToEditableIngredients(
-      restoredConfirmedIngredients.length ? restoredConfirmedIngredients : recognition.ingredients || []
-    )
-    confirmedIngredients.value = restoredConfirmedIngredients
-    recognizedImageCount.value = recognition.images?.length || 0
-    selectedFiles.value = []
+    await restoreRecognitionForRecipe(recipe)
     generatedRecipe.value = recipe
-    workflowState.value = 'confirmed'
   } catch (error) {
     recipeError.value = normalizeRecipeError(error)
     workflowState.value = 'error'

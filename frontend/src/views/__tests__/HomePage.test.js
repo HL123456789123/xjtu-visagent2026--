@@ -23,15 +23,16 @@ describe('HomePage', () => {
     const wrapper = mountHome({ id: 1, username: 'viewer', roles: ['viewer'], permissions: [] })
 
     expect(wrapper.text()).toContain('开始食物识别')
-    expect(wrapper.text()).toContain('菜谱对话')
+    expect(wrapper.text()).toContain('历史记录')
+    expect(wrapper.text()).toContain('数据看板')
     expect(wrapper.text()).toContain('个人中心')
     expect(wrapper.text()).not.toContain('管理后台')
   })
 
-  it('offers the current administrator route only when user:list is present', () => {
+  it('offers the model workbench only when an operation permission is present', () => {
     const wrapper = mountHome({ id: 2, username: 'manager', roles: ['admin'], permissions: ['user:list'] })
 
-    expect(wrapper.text()).toContain('管理后台')
-    expect(wrapper.html()).toContain('/admin/users')
+    expect(wrapper.text()).toContain('模型工作台')
+    expect(wrapper.html()).toContain('/admin/workbench')
   })
 })

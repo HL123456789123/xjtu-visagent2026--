@@ -125,6 +125,28 @@ describe('RecipeCard', () => {
     expect(wrapper.emitted('open-chat')[0][0]).toEqual({ recipe_id: 101 })
   })
 
+  it('opens an editable Xiaohongshu share draft without publishing anything', async () => {
+    const wrapper = mount(RecipeCard, {
+      props: { recipe: recipeSuccessFixture },
+    })
+
+    await wrapper.find('[data-testid="recipe-open-xiaohongshu-share"]').trigger('click')
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="xiaohongshu-draft"]').element.value).toContain('番茄炒蛋')
+    expect(wrapper.find('[data-testid="xiaohongshu-draft"]').element.value).toContain('#今日菜谱')
+    expect(wrapper.text()).toContain('复制文案')
+  })
+
+  it('can show the share action without rendering a duplicate chat action', () => {
+    const wrapper = mount(RecipeCard, {
+      props: { recipe: recipeSuccessFixture, showChatAction: false },
+    })
+
+    expect(wrapper.find('[data-testid="recipe-open-xiaohongshu-share"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="recipe-open-chat"]').exists()).toBe(false)
+  })
+
   it('renders empty fixture without errors', () => {
     const wrapper = mount(RecipeCard, {
       props: { recipe: recipeEmptyFixture },

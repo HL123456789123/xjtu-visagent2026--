@@ -2,9 +2,9 @@
   <div class="history-page">
     <div class="filter-bar">
       <el-radio-group v-model="historyType" @change="changeHistoryType">
-        <el-radio-button value="food">食材与菜谱</el-radio-button>
-        <el-radio-button value="detection">检测记录</el-radio-button>
-        <el-radio-button value="training">训练记录</el-radio-button>
+        <el-radio-button v-for="item in historyTabs" :key="item.value" :value="item.value">
+          {{ item.label }}
+        </el-radio-button>
       </el-radio-group>
       <el-select
         v-if="historyType === 'detection'"
@@ -95,14 +95,16 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDetectionResultsApi, getDetectionTasksApi, getScenesApi } from '@/api/detection'
 import { getRecipeHistory } from '@/api/recipe'
 import { getTrainingTasksApi } from '@/api/training'
 import { formatTime } from '@/utils/format'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 const historyType = ref('food')
 const records = ref([])
 const scenes = ref([])
@@ -113,6 +115,13 @@ const total = ref(0)
 const loading = ref(false)
 const showDetectionDetail = ref(false)
 const detectionResults = ref([])
+
+const historyTabs = computed(() => {
+  const tabs = [{ value: 'food', label: '食材与菜谱' }]
+  if (userStore.hasPermission('detection:task:view')) tabs.push({ value: 'detection', label: '检测记录' })
+  if (userStore.hasPermission('training:task:view')) tabs.push({ value: 'training', label: '训练记录' })
+  return tabs
+})
 
 async function loadScenes() {
   try {
@@ -146,6 +155,7 @@ async function loadHistory() {
 
 function changeHistoryType() {
   currentPage.value = 1
+  if (historyType.value === 'detection') loadScenes()
   loadHistory()
 }
 
@@ -185,7 +195,6 @@ function getStatusText(status) {
 }
 
 onMounted(async () => {
-  await loadScenes()
   await loadHistory()
 })
 </script>

@@ -68,30 +68,25 @@ const menuOpen = ref(false)
 
 const navItems = [
   { id: 'home', label: '首页', path: '/home' },
-  { id: 'food', label: '食物识别', path: '/food-recipes' },
-  { id: 'chat', label: '菜谱对话', path: '/chat' },
-  { id: 'history', label: '历史记录', path: '/history', permission: 'detection:task:view' },
-  { id: 'training', label: '模型训练', path: '/training', permission: 'training:task:view' },
-  { id: 'dashboard', label: '数据看板', path: '/dashboard', permission: 'system:dashboard' },
+  { id: 'food', label: '食材与菜谱', path: '/food-recipes' },
+  { id: 'history', label: '历史记录', path: '/history' },
+  { id: 'dashboard', label: '数据看板', path: '/dashboard' },
   { id: 'profile', label: '个人中心', path: '/profile' },
 ]
 
 const visibleNavItems = computed(() => {
   const items = navItems.filter((item) => !item.permission || userStore.hasPermission(item.permission))
 
-  if (userStore.hasPermission('user:list')) {
-    items.push({ id: 'admin', label: '管理后台', path: '/admin/users' })
-  } else if (userStore.hasPermission('role:list')) {
-    items.push({ id: 'admin', label: '管理后台', path: '/admin/roles' })
+  if (['user:list', 'role:list', 'detection:task:view', 'training:task:view', 'dataset:view', 'model:view']
+    .some((permission) => userStore.hasPermission(permission))) {
+    items.push({ id: 'admin', label: '模型工作台', path: '/admin/workbench' })
   }
 
   return items
 })
 
 function isNavActive(item) {
-  if (item.id === 'chat') {
-    return route.path === '/chat' || route.path.startsWith('/recipe-chat/')
-  }
+  if (item.id === 'admin') return route.path.startsWith('/admin')
   return route.path === item.path || route.path.startsWith(`${item.path}/`)
 }
 

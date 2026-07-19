@@ -80,7 +80,9 @@ describe('AppHeader top navigation', () => {
     expect(wrapper.find('[data-testid="top-nav"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-home"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-food"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="nav-history"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="nav-dashboard"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-profile"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="nav-food"]').classes()).toContain('top-nav__item--active')
@@ -94,9 +96,9 @@ describe('AppHeader top navigation', () => {
       permissions: ['user:list', 'role:list'],
     })
 
-    expect(wrapper.find('[data-testid="nav-admin"]').text()).toBe('管理后台')
+    expect(wrapper.find('[data-testid="nav-admin"]').text()).toBe('模型工作台')
     await wrapper.find('[data-testid="nav-admin"]').trigger('click')
-    expect(push).toHaveBeenCalledWith('/admin/users')
+    expect(push).toHaveBeenCalledWith('/admin/workbench')
   })
 
   it('keeps the compact navigation operable', async () => {
