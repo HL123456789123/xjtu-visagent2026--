@@ -44,6 +44,19 @@ describe('RBAC route guard', () => {
     expect(router.currentRoute.value.name).toBe('UserManage')
   })
 
+  it('uses the restored home page as the authenticated root route', async () => {
+    setAuthenticatedUser({
+      id: 1,
+      username: 'cook',
+      roles: ['user'],
+      permissions: ['food:recognize'],
+    })
+
+    await router.push('/')
+
+    expect(router.currentRoute.value.name).toBe('Home')
+  })
+
   it('removes the legacy operator workbench route', async () => {
     setAuthenticatedUser({
       id: 3,

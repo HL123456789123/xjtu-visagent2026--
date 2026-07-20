@@ -32,7 +32,13 @@
 
     <!-- 菜谱内容 -->
     <template v-else>
-      <RecipeTitle :recipe="recipe" />
+      <RecipeTitle
+        :recipe="recipe"
+        :versions="availableVersions"
+        :selected-version="selectedVersion"
+        :version-loading="versionLoading"
+        @version-change="emitVersionChange"
+      />
 
       <div class="recipe-card__body">
         <RecipeIngredients :ingredients="recipe.ingredients || []" />
@@ -103,9 +109,21 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  availableVersions: {
+    type: Array,
+    default: () => [],
+  },
+  selectedVersion: {
+    type: Number,
+    default: null,
+  },
+  versionLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['open-chat', 'retry'])
+const emit = defineEmits(['open-chat', 'retry', 'version-change'])
 const shareDialogVisible = ref(false)
 
 const defaultDisclaimer = '营养数据由模型估算，仅供参考，不构成医疗或营养建议。'
@@ -136,6 +154,10 @@ function emitOpenChat() {
 
 function emitRetry() {
   emit('retry')
+}
+
+function emitVersionChange(version) {
+  emit('version-change', version)
 }
 </script>
 

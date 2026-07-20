@@ -110,15 +110,24 @@ export function getRecipeHistory(params = {}) {
   return request.get(RECIPE_PATHS.history, { params })
 }
 
-export function getRecipeVersions(recipeId) {
+export function getRecipeVersions(recipeId, options = {}) {
+  const client = options.client || injectedClient
+  if (client?.versions) return client.versions(recipeId, options)
+  if (injectedClient) {
+    return Promise.resolve({ data: { recipe_id: recipeId, current_version: null, versions: [] } })
+  }
   return request.get(RECIPE_PATHS.versions(recipeId))
 }
 
-export function getRecipeVersion(recipeId, version) {
+export function getRecipeVersion(recipeId, version, options = {}) {
+  const client = options.client || injectedClient
+  if (client?.version) return client.version(recipeId, version, options)
   return request.get(RECIPE_PATHS.version(recipeId, version))
 }
 
-export function restoreRecipeVersion(recipeId, version) {
+export function restoreRecipeVersion(recipeId, version, options = {}) {
+  const client = options.client || injectedClient
+  if (client?.restoreVersion) return client.restoreVersion(recipeId, version, options)
   return request.post(RECIPE_PATHS.restoreVersion(recipeId, version))
 }
 
@@ -133,12 +142,14 @@ export function unwrapRecipeApiData(response) {
  * 创建 Mock Recipe API 客户端（用于页面级注入）
  */
 export function createMockRecipeApiClient(scenario = 'success') {
+  const fixture = scenario === 'v2' ? recipeFixtures.v2 : recipeFixtures.success
   return {
     create: () => mockResponse(recipeFixtures[scenario] || recipeFixtures.success, 201, '菜谱生成成功'),
-    get: (recipeId) => {
-      // version=2 场景时返回 v2 fixture
-      const fixture = scenario === 'v2' ? recipeFixtures.v2 : recipeFixtures.success
-      return mockResponse(fixture, 200, 'success')
-    },
+    get: () => mockResponse(fixture, 200, 'success'),
+    versions: (recipeId) => mockResponse({
+      recipe_id: recipeId,
+      current_version: fixture.version,
+      versions: [{ version: fixture.version, is_current: true }],
+    }, 200, 'success'),
   }
 }

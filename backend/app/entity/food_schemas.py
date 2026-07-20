@@ -85,7 +85,7 @@ class FoodRecognitionCreateData(FoodSchemaBase):
     model_version: str
     task: Literal["detect", "classify"] = "detect"
     localization: Literal["object", "full_image"] = "object"
-    images: list[RecognitionImage] = Field(min_length=1, max_length=5)
+    images: list[RecognitionImage] = Field(min_length=1, max_length=8)
     ingredients: list[IngredientCandidate]
     created_at: datetime
 

@@ -56,6 +56,7 @@ const visibleActions = computed(() => {
   border-radius: 28px;
   box-shadow: 0 22px 60px rgba(102, 68, 35, 0.1);
   padding: clamp(28px, 6vw, 64px);
+  animation: home-rise 0.55s ease-out both;
 
   h1 {
     color: #31512f;
@@ -78,7 +79,7 @@ const visibleActions = computed(() => {
   color: #cf652d;
   font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   margin: 0 0 $spacing-sm;
   text-transform: uppercase;
 }
@@ -92,6 +93,12 @@ const visibleActions = computed(() => {
   font-weight: 800;
   padding: 12px 18px;
   text-decoration: none;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    box-shadow: 0 16px 32px rgba(229, 104, 52, 0.26);
+    transform: translateY(-2px);
+  }
 }
 
 .home-actions {
@@ -111,6 +118,13 @@ const visibleActions = computed(() => {
   padding: $spacing-lg;
   text-decoration: none;
   transition: transform 0.2s, box-shadow 0.2s;
+  animation: home-rise 0.45s ease-out both;
+
+  @for $index from 1 through 5 {
+    &:nth-child(#{$index}) {
+      animation-delay: #{0.07s * $index};
+    }
+  }
 
   &:hover {
     box-shadow: 0 16px 36px rgba(102, 68, 35, 0.12);
@@ -121,6 +135,30 @@ const visibleActions = computed(() => {
     color: #76573f;
     font-size: 14px;
     line-height: 1.6;
+  }
+}
+
+@keyframes home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero,
+  .home-action {
+    animation: none;
+  }
+
+  .home-hero__primary,
+  .home-action {
+    transition: none;
   }
 }
 </style>

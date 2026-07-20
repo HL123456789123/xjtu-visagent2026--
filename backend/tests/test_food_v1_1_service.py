@@ -181,13 +181,13 @@ async def test_multi_image_service_keeps_order_and_assigns_image_index():
     assert media_type == "image/png"
 
 
-@pytest.mark.parametrize("count", [1, 5])
-def test_image_count_accepts_v1_1_boundaries(count: int):
+@pytest.mark.parametrize("count", [1, 8])
+def test_image_count_accepts_current_boundaries(count: int):
     FoodRecognitionService._validate_image_count(count)
 
 
-@pytest.mark.parametrize("count", [0, 6])
-def test_image_count_rejects_outside_v1_1_boundaries(count: int):
+@pytest.mark.parametrize("count", [0, 9])
+def test_image_count_rejects_outside_current_boundaries(count: int):
     with pytest.raises(InvalidImageCountError) as exc_info:
         FoodRecognitionService._validate_image_count(count)
     assert exc_info.value.error_code == "INVALID_IMAGE_COUNT"
@@ -203,8 +203,7 @@ def test_size_boundaries_distinguish_single_and_batch_errors():
         )
     assert single_error.value.error_code == "IMAGE_TOO_LARGE"
 
-    # The defensive batch guard remains useful even though the public 1..5 and
-    # 10 MiB rules make this combination unreachable through a valid request.
+    # The 50 MiB batch guard is reachable when 6..8 valid files are uploaded.
     with pytest.raises(ImageBatchTooLargeError) as batch_error:
         FoodRecognitionService._validate_batch_sizes(
             [FoodRecognitionService.MAX_SINGLE_IMAGE_BYTES] * 5 + [1]
@@ -315,7 +314,7 @@ def test_canonical_food_fixtures_validate_against_public_schema():
     for name in ["food_recognition_success.json", "food_recognition_empty.json"]:
         payload = json.loads((fixtures / name).read_text(encoding="utf-8"))
         parsed = FoodRecognitionCreateData.model_validate(payload["data"])
-        assert 1 <= len(parsed.images) <= 5
+        assert 1 <= len(parsed.images) <= 8
 
 
 def test_v1_1_orm_and_repositories_share_one_database_model():
@@ -388,8 +387,8 @@ def test_api_accepts_only_repeated_images_field():
     assert legacy.json()["detail"] == "INVALID_IMAGE_COUNT"
 
 
-@pytest.mark.parametrize("image_count", [1, 5])
-def test_api_accepts_v1_1_image_count_boundaries(image_count: int):
+@pytest.mark.parametrize("image_count", [1, 8])
+def test_api_accepts_current_image_count_boundaries(image_count: int):
     service, _, _, _ = make_service()
     files = [
         ("images", (f"image-{index}.png", image_bytes("PNG"), "image/png"))
@@ -427,16 +426,16 @@ def test_api_zero_images_returns_v1_invalid_image_count(request_kwargs, case: st
     assert response.status_code == 400
     assert response.json() == {
         "code": 400,
-        "message": "图片数量必须为 1 至 5 张",
+        "message": "图片数量必须为 1 至 8 张",
         "detail": "INVALID_IMAGE_COUNT",
     }
 
 
-def test_api_six_images_returns_v1_invalid_image_count():
+def test_api_nine_images_returns_invalid_image_count():
     service, _, _, _ = make_service()
     files = [
         ("images", (f"image-{index}.png", image_bytes("PNG"), "image/png"))
-        for index in range(6)
+        for index in range(9)
     ]
 
     with TestClient(make_food_api(service)) as client:

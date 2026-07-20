@@ -99,6 +99,24 @@ describe('RecipeCard', () => {
     expect(wrapper.find('[data-testid="nutrition-disclaimer"]').text()).toContain('营养数据由模型估算')
   })
 
+  it('switches available recipe versions from the title control', async () => {
+    const wrapper = mount(RecipeCard, {
+      props: {
+        recipe: { ...recipeSuccessFixture, version: 3 },
+        selectedVersion: 3,
+        availableVersions: [
+          { version: 1, is_current: false },
+          { version: 2, is_current: false },
+          { version: 3, is_current: true },
+        ],
+      },
+    })
+
+    await wrapper.find('[data-testid="recipe-version-select"]').setValue('1')
+
+    expect(wrapper.emitted('version-change')?.[0]).toEqual([1])
+  })
+
   it('renders empty ingredient list message', () => {
     const wrapper = mount(RecipeCard, {
       props: {
@@ -138,7 +156,7 @@ describe('RecipeCard', () => {
     await wrapper.find('[data-testid="recipe-open-xiaohongshu-share"]').trigger('click')
 
     expect(document.querySelector('[role="dialog"]')).not.toBeNull()
-    expect(document.querySelector('[data-testid="xiaohongshu-title"]').value).toBe('番茄炒蛋')
+    expect(document.querySelector('[data-testid="xiaohongshu-title"]').value).toContain('番茄炒蛋')
     expect(document.querySelector('[data-testid="xiaohongshu-tags"]').value).toContain('#今日菜谱')
     expect(document.body.textContent).toContain('复制全部')
     expect(document.body.style.overflow).toBe('hidden')

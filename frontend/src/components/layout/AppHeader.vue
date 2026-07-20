@@ -1,6 +1,6 @@
 <template>
   <header class="app-header">
-    <router-link class="header-brand" to="/food-recipes" aria-label="FridgeChef 食材与菜谱">
+    <router-link class="header-brand" to="/home" aria-label="FridgeChef 首页">
       <span class="brand-mark" aria-hidden="true">🍳</span>
       <span class="brand-title">FridgeChef</span>
     </router-link>
@@ -67,6 +67,7 @@ const userStore = useUserStore()
 const menuOpen = ref(false)
 
 const navItems = [
+  { id: 'home', label: '首页', path: '/home' },
   { id: 'food', label: '食材与菜谱', path: '/food-recipes' },
   { id: 'history', label: '历史记录', path: '/history' },
   { id: 'dashboard', label: '数据看板', path: '/dashboard' },
@@ -155,7 +156,7 @@ async function handleCommand(command) {
   color: #31512f;
   font-size: 21px;
   font-weight: 900;
-  letter-spacing: -0.03em;
+  letter-spacing: 0;
 }
 
 .top-nav {

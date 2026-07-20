@@ -95,6 +95,68 @@ describe('FoodRecipePage', () => {
     expect(wrapper.text()).toContain('当前为整图分类模式')
   })
 
+  it('shows v1 from the title selector and can return to the current version', async () => {
+    const currentRecipe = {
+      ...recipeSuccessFixture,
+      recipe_id: 101,
+      recognition_id: 12,
+      version: 3,
+      title: '当前菜谱',
+    }
+    const get = vi.fn().mockResolvedValue({ data: currentRecipe })
+    const version = vi.fn().mockResolvedValue({
+      data: {
+        version: 1,
+        recipe: { ...recipeSuccessFixture, version: undefined, title: '初版菜谱' },
+      },
+    })
+    setRecipeApiClient({
+      get,
+      versions: vi.fn().mockResolvedValue({
+        data: {
+          recipe_id: 101,
+          current_version: 3,
+          versions: [
+            { version: 1, is_current: false },
+            { version: 2, is_current: false },
+            { version: 3, is_current: true },
+          ],
+        },
+      }),
+      version,
+    })
+    setFoodApiClient({
+      get: vi.fn().mockResolvedValue({
+        data: {
+          recognition_id: 12,
+          provider: 'mock',
+          model_version: 'food-mock-v1',
+          images: [],
+          ingredients: [],
+          confirmed_ingredients: [
+            { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
+          ],
+        },
+      }),
+    })
+
+    const wrapper = mount(FoodRecipePage, { props: { recipeId: 101 } })
+    await flushPromises()
+
+    await wrapper.find('[data-testid="recipe-version-select"]').setValue('1')
+    await flushPromises()
+
+    expect(version).toHaveBeenCalledWith(101, 1, expect.any(Object))
+    expect(wrapper.find('[data-testid="recipe-title"]').text()).toBe('初版菜谱')
+    expect(wrapper.find('[data-testid="historical-version-note"]').text()).toContain('正在查看 v1')
+
+    await wrapper.find('[data-testid="return-current-version"]').trigger('click')
+    await flushPromises()
+
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="recipe-title"]').text()).toBe('当前菜谱')
+  })
+
   it('does not present recipe suggestions as owned ingredients', async () => {
     setRecipeApiClient({
       get: vi.fn().mockResolvedValue({

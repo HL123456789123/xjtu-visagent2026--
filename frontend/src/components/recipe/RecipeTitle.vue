@@ -2,7 +2,20 @@
   <header class="recipe-title">
     <div class="recipe-title__heading">
       <h2 data-testid="recipe-title">{{ recipe.title || '未命名菜谱' }}</h2>
-      <span v-if="recipe.version" class="recipe-title__version" data-testid="recipe-version">
+      <select
+        v-if="selectableVersions.length > 1"
+        class="recipe-title__version-select"
+        :value="selectedVersion || recipe.version"
+        :disabled="versionLoading"
+        aria-label="选择菜谱版本"
+        data-testid="recipe-version-select"
+        @change="changeVersion"
+      >
+        <option v-for="item in selectableVersions" :key="item.version" :value="item.version">
+          v{{ item.version }}{{ item.is_current ? '（当前）' : '' }}
+        </option>
+      </select>
+      <span v-else-if="recipe.version" class="recipe-title__version" data-testid="recipe-version">
         v{{ recipe.version }}
       </span>
     </div>
@@ -27,12 +40,38 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   recipe: {
     type: Object,
     default: () => ({}),
   },
+  versions: {
+    type: Array,
+    default: () => [],
+  },
+  selectedVersion: {
+    type: Number,
+    default: null,
+  },
+  versionLoading: {
+    type: Boolean,
+    default: false,
+  },
 })
+
+const emit = defineEmits(['version-change'])
+const selectableVersions = computed(() =>
+  [...props.versions]
+    .filter((item) => Number.isInteger(Number(item?.version)))
+    .sort((left, right) => Number(left.version) - Number(right.version))
+)
+
+function changeVersion(event) {
+  const version = Number(event.target.value)
+  if (Number.isInteger(version) && version > 0) emit('version-change', version)
+}
 </script>
 
 <style lang="scss" scoped>
@@ -103,6 +142,24 @@ defineProps({
     color: #3a2a1d;
     font-size: 14px;
     font-weight: 800;
+  }
+}
+
+.recipe-title__version-select {
+  height: 30px;
+  border: 1px solid rgba(150, 91, 34, 0.24);
+  border-radius: 6px;
+  background: #fff8e8;
+  color: #965b22;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 26px 0 9px;
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.68;
   }
 }
 

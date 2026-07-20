@@ -1,11 +1,11 @@
-# 食物识别菜谱平台：API 与模块接口冻结完整版（V1.3）
+# 食物识别菜谱平台：API 与模块接口冻结完整版（V1.4）
 
 > 本文档是五天开发期间的唯一接口标准。其他计划、个人任务、代码注释或群聊内容与本文冲突时，一律以本文为准。  
 > 适用分支：`develop` 及全部个人功能分支。
-> 契约修订号：`V1.3`
+> 契约修订号：`V1.4`
 > 变更日期：`2026-07-20`
-> 主要变更：新增不可变菜谱版本、固定三级角色和 Food 模型注册管理；检测与整图分类共用现有 Food 请求字段。
-> 受影响模块：Recipe、Chat 上下文、Food 模型运行时、管理员 API、前端导航及数据库结构。
+> 主要变更：Food API 每批图片上限从 5 张调整为 8 张；单图 10 MB 与整批 50 MB 上限不变。
+> 受影响模块：Food 上传校验、前端上传交互与 Food 契约测试。
 > 兼容说明：既有 Food、Recipe、Chat 请求字段及 SSE 四种事件名不变；新增字段和只读/管理接口不得形成第二套主链路。
 
 ## 修订记录
@@ -16,6 +16,7 @@
 | V1.1 | 2026-07-16 | Food API 改为每批上传 1～5 张图片；增加逐图标识、批次大小、原子失败、聚合和存储规则。Recipe、Chat、SSE 不变。 |
 | V1.2 | 2026-07-19 | 新增只读的菜谱/会话历史、运行模型状态和 Food 数据看板接口；既有 Food、Recipe、Chat 请求字段与 SSE 事件不变。 |
 | V1.3 | 2026-07-20 | 新增 Recipe 不可变版本、会话摘要、固定三级角色、Food 模型包校验与热切换；旧检测/训练/数据集/角色 API 下线。 |
+| V1.4 | 2026-07-20 | Food API 每批图片上限调整为 8 张；保留 `images` 字段、单图 10 MB、整批 50 MB 与原子失败规则。 |
 
 ---
 
@@ -25,7 +26,7 @@
 
 ```text
 登录
-→ 一次上传 1～5 张 JPG/PNG 图片
+→ 一次上传 1～8 张 JPG/PNG 图片
 → YOLO 检测图片中的多种原材料
 → 返回候选食材
 → 用户增删改并确认食材
@@ -155,14 +156,14 @@ message_id
 ```text
 格式：JPG、JPEG、PNG
 单张图片最大：10 MB
-每批图片数量：1～5 张
+每批图片数量：1～8 张
 每批总大小最大：50 MB
 唯一上传字段：images
 ```
 
 每张文件的扩展名、Content-Type 和实际解码结果都必须是 JPG/JPEG/PNG；只改扩展名不视为有效图片。同一次请求上传的所有图片归属于同一个 `recognition_id`。`images` 即使只上传 1 张也必须使用；公开 API 不再接受 `image` 别名。后端按照上传顺序保存图片，并逐张调用模型完成识别，最后汇总为一组候选食材。
 
-本节的 10 MB 和 50 MB 均按二进制字节上限计算：`10 * 1024 * 1024` 与 `50 * 1024 * 1024` 字节；恰好位于上限的图片或整批请求允许通过。由于公开请求同时限制为最多 5 张、每张最多 10 MB，合法单图集合不会单独触发“整批超过 50 MB”；后端仍保留该防御性检查。若单张和整批规则同时看似超限，优先返回 `413 IMAGE_TOO_LARGE`。
+本节的 10 MB 和 50 MB 均按二进制字节上限计算：`10 * 1024 * 1024` 与 `50 * 1024 * 1024` 字节；恰好位于上限的图片或整批请求允许通过。上传 6～8 张图片时，即使每张都未超过 10 MB，整批仍可能触发 50 MB 上限。若单张和整批规则同时超限，优先返回 `413 IMAGE_TOO_LARGE`。
 
 ## 8. 默认值
 
@@ -411,7 +412,7 @@ Content-Type: multipart/form-data
 表单：
 
 ```text
-images：必填，可重复 multipart 字段，按上传顺序携带 1～5 张 JPG/JPEG/PNG 图片
+images：必填，可重复 multipart 字段，按上传顺序携带 1～8 张 JPG/JPEG/PNG 图片
 conf_threshold：选填，默认 0.25
 ```
 
@@ -1182,7 +1183,7 @@ ORM 和 Alembic migration 只由绕家辉修改。
 | HTTP | 业务错误码 | 场景 |
 |---:|---|---|
 | 400 | `BAD_REQUEST` | 普通请求错误 |
-| 400 | `INVALID_IMAGE_COUNT` | `images` 少于 1 张或多于 5 张 |
+| 400 | `INVALID_IMAGE_COUNT` | `images` 少于 1 张或多于 8 张 |
 | 401 | `UNAUTHORIZED` | 未登录 |
 | 403 | `FORBIDDEN` | 访问他人资源 |
 | 404 | `RECOGNITION_NOT_FOUND` | 识别记录不存在 |
@@ -1250,8 +1251,8 @@ V1.1 合入后，吴雯负责更新而不是新增第二套 fixture：
 
 ```text
 food_recognition_success.json：至少包含 2 张 images；每个候选包含 image_index，且能关联对应 image_url
-food_recognition_empty.json：保留 1～5 张 images，ingredients 必须为 []
-test_food_contract.py：增加 1/5/6 张、单张 10 MB、整批 50 MB、格式、逐图关联和整批失败边界
+food_recognition_empty.json：保留 1～8 张 images，ingredients 必须为 []
+test_food_contract.py：覆盖 1/8/9 张、单张 10 MB、整批 50 MB、格式、逐图关联和整批失败边界
 recipe_success.json：不变
 sse_recipe_update.txt：不变
 ```

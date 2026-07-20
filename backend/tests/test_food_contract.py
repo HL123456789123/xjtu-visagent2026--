@@ -11,7 +11,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 FOOD_RECOGNITION_CREATED_MESSAGE = "识别完成"
 MB = 1024 * 1024
-MAX_IMAGES_PER_BATCH = 5
+MAX_IMAGES_PER_BATCH = 8
 MAX_SINGLE_IMAGE_BYTES = 10 * MB
 MAX_IMAGE_BATCH_BYTES = 50 * MB
 
@@ -156,13 +156,13 @@ def test_food_recognition_empty_fixture_matches_v1_1_contract():
     assert payload["data"]["ingredients"] == []
 
 
-@pytest.mark.parametrize("image_count", [1, 5])
-def test_v1_1_food_image_count_accepts_contract_boundaries(image_count: int):
+@pytest.mark.parametrize("image_count", [1, 8])
+def test_food_image_count_accepts_current_contract_boundaries(image_count: int):
     assert_valid_image_count(image_count)
 
 
-@pytest.mark.parametrize("image_count", [0, 6])
-def test_v1_1_food_image_count_rejects_out_of_range_batches(image_count: int):
+@pytest.mark.parametrize("image_count", [0, 9])
+def test_food_image_count_rejects_out_of_range_batches(image_count: int):
     with pytest.raises(ValueError, match="INVALID_IMAGE_COUNT"):
         assert_valid_image_count(image_count)
 
@@ -177,13 +177,12 @@ def test_v1_1_food_single_image_size_rejects_more_than_10_mb():
 
 
 def test_v1_1_food_batch_total_size_accepts_50_mb():
-    assert_valid_batch_total_size([MAX_SINGLE_IMAGE_BYTES] * MAX_IMAGES_PER_BATCH)
+    assert_valid_batch_total_size([MAX_SINGLE_IMAGE_BYTES] * 5)
 
 
 def test_v1_1_food_batch_total_size_rejects_more_than_50_mb():
     with pytest.raises(ValueError, match="IMAGE_BATCH_TOO_LARGE"):
-        # This defensive-size test bypasses the public image-count rule. A valid
-        # request has at most five 10 MiB files and therefore cannot exceed 50 MiB.
+        # Six to eight individually valid images can exceed the 50 MiB batch cap.
         assert_valid_batch_total_size([MAX_SINGLE_IMAGE_BYTES] * MAX_IMAGES_PER_BATCH + [1])
 
 

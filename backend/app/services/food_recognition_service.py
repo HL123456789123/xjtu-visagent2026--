@@ -47,7 +47,7 @@ class FoodServiceError(AppException):
 
 class InvalidImageCountError(FoodServiceError):
     def __init__(self) -> None:
-        super().__init__(400, "INVALID_IMAGE_COUNT", "图片数量必须为 1 至 5 张")
+        super().__init__(400, "INVALID_IMAGE_COUNT", "图片数量必须为 1 至 8 张")
 
 
 class ImageTooLargeError(FoodServiceError):
@@ -245,7 +245,7 @@ def to_china_time(value: datetime) -> datetime:
 
 class FoodRecognitionService:
     MIN_IMAGES = 1
-    MAX_IMAGES = 5
+    MAX_IMAGES = 8
     MAX_SINGLE_IMAGE_BYTES = 10 * 1024 * 1024
     MAX_BATCH_BYTES = 50 * 1024 * 1024
     _MIME_TYPES = {

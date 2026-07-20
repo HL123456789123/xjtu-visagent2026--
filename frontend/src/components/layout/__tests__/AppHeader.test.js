@@ -78,7 +78,7 @@ describe('AppHeader top navigation', () => {
     })
 
     expect(wrapper.find('[data-testid="top-nav"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="nav-home"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="nav-home"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-food"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="nav-history"]').exists()).toBe(true)

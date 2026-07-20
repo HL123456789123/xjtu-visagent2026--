@@ -56,15 +56,6 @@
           {{ maxBatchSizeMB }} MB
         </span>
         <small>点击选择，或直接拖拽图片上传</small>
-        <button
-          class="food-uploader__demo"
-          type="button"
-          :disabled="disabled"
-          data-testid="food-image-demo"
-          @click.stop="selectDemoImage"
-        >
-          使用固定演示图
-        </button>
       </div>
     </div>
 
@@ -104,7 +95,7 @@ const props = defineProps({
   },
   maxFiles: {
     type: Number,
-    default: 5,
+    default: 8,
   },
   maxBatchSizeMB: {
     type: Number,
@@ -113,14 +104,6 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false,
-  },
-  demoImageUrl: {
-    type: String,
-    default: '/food-carousel-1.jpg',
-  },
-  demoImageName: {
-    type: String,
-    default: 'fixed-demo-food.jpg',
   },
 })
 
@@ -220,22 +203,6 @@ function selectFile(file) {
   return selectFiles(file ? [file] : [])
 }
 
-async function selectDemoImage() {
-  if (props.disabled) return false
-  try {
-    const response = await fetch(props.demoImageUrl)
-    if (!response.ok) throw new Error('demo image unavailable')
-    const blob = await response.blob()
-    const file = new File([blob], props.demoImageName, {
-      type: blob.type || 'image/jpeg',
-    })
-    return selectFile(file)
-  } catch {
-    setValidationError('固定演示图加载失败，请手动选择图片。')
-    return false
-  }
-}
-
 function handleNativeFile(event) {
   selectFiles(event.target.files || [])
   event.target.value = ''
@@ -287,7 +254,6 @@ defineExpose({
   validateFiles,
   selectFile,
   selectFiles,
-  selectDemoImage,
   clearSelection,
   removeSelectedFile,
 })
@@ -375,28 +341,6 @@ defineExpose({
   box-shadow: 0 14px 28px rgba(229, 109, 59, 0.26);
   font-size: 34px;
   font-weight: 300;
-}
-
-.food-uploader__demo {
-  height: 34px;
-  margin-top: 6px;
-  border: 1px solid rgba(121, 82, 45, 0.16);
-  border-radius: 999px;
-  background: #2e2116;
-  color: #fffaf0;
-  padding: 0 16px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
-
-  &:hover:not(:disabled) {
-    background: #3d2b1d;
-  }
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
 }
 
 .food-uploader__preview-grid {

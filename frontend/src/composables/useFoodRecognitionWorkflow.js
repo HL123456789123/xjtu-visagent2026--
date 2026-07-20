@@ -116,7 +116,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
 
   async function startRecognition() {
     if (selectedFiles.value.length === 0) {
-      setValidationError('请先选择 1 至 5 张 JPG/PNG 图片。')
+      setValidationError('请先选择 1 至 8 张 JPG/PNG 图片。')
       return
     }
 

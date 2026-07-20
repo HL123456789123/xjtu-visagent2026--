@@ -31,31 +31,9 @@ describe('FoodImageUploader', () => {
     const wrapper = mount(FoodImageUploader)
 
     expect(wrapper.find('[data-testid="food-image-input"]').attributes('multiple')).toBeDefined()
-    expect(wrapper.text()).toContain('1 至 5 张')
+    expect(wrapper.text()).toContain('1 至 8 张')
     expect(wrapper.text()).toContain('单图不超过 10 MB')
     expect(wrapper.text()).toContain('整批不超过 50 MB')
-  })
-
-  it('loads the fixed demo image through the same selection flow', async () => {
-    const blob = new Blob(['demo'], { type: 'image/jpeg' })
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        blob: vi.fn().mockResolvedValue(blob),
-      })
-    )
-    const wrapper = mount(FoodImageUploader)
-
-    await wrapper.find('[data-testid="food-image-demo"]').trigger('click')
-    await flushPromises()
-
-    const selectedFile = wrapper.emitted('selected')?.[0][0][0]
-    expect(fetch).toHaveBeenCalledWith('/food-carousel-1.jpg')
-    expect(selectedFile.name).toBe('fixed-demo-food.jpg')
-    expect(selectedFile.type).toBe('image/jpeg')
-    await wrapper.setProps({ modelValue: [selectedFile] })
-    expect(wrapper.find('[data-testid="food-image-name"]').text()).toBe('fixed-demo-food.jpg')
   })
 
   it('rejects non JPG/PNG files', async () => {
@@ -96,16 +74,17 @@ describe('FoodImageUploader', () => {
     expect(wrapper.emitted('validation-error')?.[0][0]).toContain('10 MB')
   })
 
-  it('rejects more than five images in one batch', () => {
+  it('accepts eight images and rejects a ninth image in one batch', () => {
     const wrapper = mount(FoodImageUploader)
-    const files = Array.from({ length: 6 }, (_, index) =>
+    const files = Array.from({ length: 9 }, (_, index) =>
       new File(['image'], `meal-${index + 1}.jpg`, { type: 'image/jpeg' })
     )
 
+    expect(wrapper.vm.selectFiles(files.slice(0, 8))).toBe(true)
     const selected = wrapper.vm.selectFiles(files)
 
     expect(selected).toBe(false)
-    expect(wrapper.emitted('validation-error')?.[0][0]).toContain('最多上传 5 张')
+    expect(wrapper.emitted('validation-error')?.[0][0]).toContain('最多上传 8 张')
   })
 
   it('rejects batches over the default 50 MB limit', () => {

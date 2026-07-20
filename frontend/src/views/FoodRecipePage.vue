@@ -54,7 +54,7 @@
       <section class="food-recipe-page__right">
         <div v-if="workflowState === 'idle'" class="food-recipe-page__empty" data-testid="idle-state">
           <strong>今天想用什么食材做饭？</strong>
-          <span>先选择 1 至 5 张食物图片，系统会帮你整理候选食材。</span>
+          <span>先选择 1 至 8 张食物图片，系统会帮你整理候选食材。</span>
         </div>
 
         <div v-else-if="workflowState === 'selecting'" class="food-recipe-page__empty" data-testid="selecting-state">
@@ -152,11 +152,28 @@
               :recipe="generatedRecipe"
               :loading="recipeLoading"
               :error="recipeError"
+              :available-versions="recipeVersions"
+              :selected-version="selectedRecipeVersion"
+              :version-loading="versionLoading"
               :show-chat-action="false"
               @retry="generateRecipeFromRecognition"
+              @version-change="selectRecipeVersion"
             />
+            <div
+              v-if="isViewingHistoricalVersion"
+              class="food-recipe-page__version-note"
+              data-testid="historical-version-note"
+            >
+              <span>正在查看 v{{ selectedRecipeVersion }}，历史内容不会被改写。</span>
+              <button type="button" data-testid="return-current-version" @click="selectRecipeVersion(currentRecipeVersion)">
+                返回当前 v{{ currentRecipeVersion }}
+              </button>
+            </div>
+            <p v-if="versionError" class="food-recipe-page__version-error" data-testid="recipe-version-error">
+              {{ versionError }}
+            </p>
             <ChatPage
-              v-if="generatedRecipe?.recipe_id"
+              v-if="generatedRecipe?.recipe_id && !isViewingHistoricalVersion"
               :recipe-id="generatedRecipe.recipe_id"
               @recipe-updated="refreshGeneratedRecipe"
             />
@@ -175,7 +192,13 @@ import IngredientEditor from '@/components/food/IngredientEditor.vue'
 import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
 import RecipeCard from '@/components/recipe/RecipeCard.vue'
 import ChatPage from '@/views/ChatPage.vue'
-import { createRecipe, getRecipe, unwrapRecipeApiData } from '@/api/recipe'
+import {
+  createRecipe,
+  getRecipe,
+  getRecipeVersion,
+  getRecipeVersions,
+  unwrapRecipeApiData,
+} from '@/api/recipe'
 import { useFoodRecognitionWorkflow } from '@/composables/useFoodRecognitionWorkflow'
 
 const props = defineProps({
@@ -190,6 +213,11 @@ const emit = defineEmits(['confirmed', 'recipe-requested'])
 const generatedRecipe = ref(null)
 const recipeLoading = ref(false)
 const recipeError = ref(null)
+const recipeVersions = ref([])
+const currentRecipeVersion = ref(null)
+const selectedRecipeVersion = ref(null)
+const versionLoading = ref(false)
+const versionError = ref('')
 const avoidIngredientsText = ref('')
 const recipePreferences = ref({
   servings: 2,
@@ -202,6 +230,10 @@ function resetRecipeFlow() {
   generatedRecipe.value = null
   recipeError.value = null
   recipeLoading.value = false
+  recipeVersions.value = []
+  currentRecipeVersion.value = null
+  selectedRecipeVersion.value = null
+  versionError.value = ''
 }
 
 const {
@@ -254,6 +286,11 @@ const workflowSteps = [
 const showRecipeFlow = computed(
   () => workflowState.value === 'confirmed' || recipeLoading.value || generatedRecipe.value || recipeError.value
 )
+const isViewingHistoricalVersion = computed(() =>
+  Number.isInteger(selectedRecipeVersion.value) &&
+  Number.isInteger(currentRecipeVersion.value) &&
+  selectedRecipeVersion.value !== currentRecipeVersion.value
+)
 const workflowStateText = computed(() => ({
   idle: '等待上传',
   selecting: '图片已选好',
@@ -291,6 +328,53 @@ function normalizeRecipeError(error) {
   }
 }
 
+async function loadRecipeVersions(recipeId, fallbackVersion) {
+  const normalizedFallback = Number(fallbackVersion) || 1
+  try {
+    const response = await getRecipeVersions(recipeId)
+    const data = unwrapRecipeApiData(response) || {}
+    const versions = Array.isArray(data.versions) ? data.versions : []
+    recipeVersions.value = versions.length
+      ? versions
+      : [{ version: normalizedFallback, is_current: true }]
+    currentRecipeVersion.value = Number(data.current_version) || normalizedFallback
+  } catch {
+    recipeVersions.value = [{ version: normalizedFallback, is_current: true }]
+    currentRecipeVersion.value = normalizedFallback
+  }
+  selectedRecipeVersion.value = currentRecipeVersion.value
+}
+
+async function selectRecipeVersion(version) {
+  const recipeId = Number(generatedRecipe.value?.recipe_id)
+  const targetVersion = Number(version)
+  if (!Number.isInteger(recipeId) || recipeId <= 0 || !Number.isInteger(targetVersion)) return
+  if (targetVersion === selectedRecipeVersion.value) return
+
+  versionLoading.value = true
+  versionError.value = ''
+  try {
+    if (targetVersion === currentRecipeVersion.value) {
+      const response = await getRecipe(recipeId)
+      generatedRecipe.value = unwrapRecipeApiData(response)
+    } else {
+      const response = await getRecipeVersion(recipeId, targetVersion)
+      const snapshot = unwrapRecipeApiData(response)
+      generatedRecipe.value = {
+        ...snapshot.recipe,
+        recipe_id: recipeId,
+        recognition_id: generatedRecipe.value?.recognition_id,
+        version: snapshot.version,
+      }
+    }
+    selectedRecipeVersion.value = targetVersion
+  } catch (error) {
+    versionError.value = normalizeRecipeError(error).message
+  } finally {
+    versionLoading.value = false
+  }
+}
+
 async function generateRecipeFromRecognition(payload = {}) {
   const nextRecognitionId = normalizeRecognitionId(payload.recognition_id ?? recognitionId.value)
   if (!nextRecognitionId) {
@@ -312,6 +396,7 @@ async function generateRecipeFromRecognition(payload = {}) {
     })
     const recipe = unwrapRecipeApiData(response)
     generatedRecipe.value = recipe
+    await loadRecipeVersions(recipe.recipe_id, recipe.version)
     emit('recipe-requested', {
       recognition_id: nextRecognitionId,
       preferences,
@@ -334,6 +419,7 @@ async function refreshGeneratedRecipe(payload = {}) {
   try {
     const response = await getRecipe(recipeId)
     generatedRecipe.value = unwrapRecipeApiData(response)
+    await loadRecipeVersions(recipeId, generatedRecipe.value?.version)
   } catch (error) {
     recipeError.value = normalizeRecipeError(error)
   } finally {
@@ -351,6 +437,7 @@ async function restoreRecipe(recipeId) {
     const recipe = unwrapRecipeApiData(recipeResponse)
     await restoreRecognitionForRecipe(recipe)
     generatedRecipe.value = recipe
+    await loadRecipeVersions(recipeId, recipe.version)
   } catch (error) {
     recipeError.value = normalizeRecipeError(error)
     workflowState.value = 'error'
@@ -666,6 +753,36 @@ onMounted(() => {
   margin-top: 6px;
   border-top: 1px solid rgba(121, 82, 45, 0.12);
   padding-top: 24px;
+}
+
+.food-recipe-page__version-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-left: 3px solid #d99a2b;
+  background: #fff6df;
+  color: #765b36;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+
+  button {
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+    color: #b45b25;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    padding: 4px;
+  }
+}
+
+.food-recipe-page__version-error {
+  margin: 0;
+  color: #c44b37;
+  font-size: 13px;
 }
 
 .food-recipe-page__recipe-header {
