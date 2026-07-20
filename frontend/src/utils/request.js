@@ -30,66 +30,67 @@ request.interceptors.request.use(
   }
 )
 
-// 响应拦截器 —— 统一错误处理
-request.interceptors.response.use(
-  (response) => {
-    // 直接返回 data
-    return response.data
-  },
-  (error) => {
-    const { response, config } = error
-    if (response) {
-      const msg = response.data?.message
-      const detail = response.data?.detail
-      switch (response.status) {
-        case 401:
-          // 登录接口的 401 表示用户名或密码错误，不做 token 过期处理
-          if (config?.url?.includes('/auth/login')) {
-            ElMessage.error(msg || detail || '用户名或密码错误')
-          } else {
-            // 其他接口的 401 表示 Token 过期或无效
-            ElMessage.error('登录已过期，请重新登录')
-            const userStore = useUserStore()
-            userStore.logout()
-            router.push('/login')
-          }
-          break
-        case 403:
-          ElMessage.error(msg || '没有权限访问该资源')
-          break
-        case 413:
-          ElMessage.error(msg || detail || '上传图片总大小超过限制')
-          break
-        case 415:
-          ElMessage.error(msg || detail || '图片格式不受支持')
-          break
-        case 404:
-          ElMessage.error(msg || '请求的资源不存在')
-          break
-        case 422:
-          // Pydantic 验证错误
-          if (Array.isArray(detail)) {
-            ElMessage.error(detail[0]?.msg || msg || '请求参数错误')
-          } else {
-            ElMessage.error(msg || detail || '请求参数错误')
-          }
-          break
-        case 500:
-          ElMessage.error(msg || '服务器内部错误')
-          break
-        case 503:
-          ElMessage.error(msg || detail || '服务暂时不可用')
-          break
-        default:
-          ElMessage.error(msg || detail || `请求错误 (${response.status})`)
-      }
-    } else {
-      // 网络错误
-      ElMessage.error('网络连接失败，请检查网络')
-    }
+function responseMessage(response) {
+  const message = response.data?.message
+  const detail = response.data?.detail
+  const detailMessage = Array.isArray(detail) ? detail[0]?.msg : detail
+  return { message, detailMessage }
+}
+
+function handleResponseError(error) {
+  const { response, config } = error
+
+  if (!response) {
+    ElMessage.error('网络连接失败，请检查网络')
     return Promise.reject(error)
   }
-)
+
+  const { message, detailMessage } = responseMessage(response)
+  const fallbackMessage = message || detailMessage
+
+  switch (response.status) {
+    case 401:
+      if (config?.url?.includes('/auth/login')) {
+        ElMessage.error(fallbackMessage || '用户名或密码错误')
+      } else {
+        ElMessage.error('登录已过期，请重新登录')
+        useUserStore().logout()
+        router.push('/login')
+      }
+      break
+    case 403:
+      ElMessage.error(fallbackMessage || '没有权限访问该资源')
+      break
+    case 404:
+      ElMessage.error(fallbackMessage || '请求的资源不存在')
+      break
+    case 413:
+      ElMessage.error(fallbackMessage || '上传图片总大小超过限制')
+      break
+    case 415:
+      ElMessage.error(fallbackMessage || '图片格式不受支持')
+      break
+    case 422:
+      ElMessage.error(fallbackMessage || '请求参数错误')
+      break
+    case 500:
+      ElMessage.error(fallbackMessage || '服务器内部错误')
+      break
+    case 503:
+      ElMessage.error(fallbackMessage || '服务暂时不可用')
+      break
+    default:
+      ElMessage.error(fallbackMessage || `请求错误 (${response.status})`)
+  }
+
+  return Promise.reject(error)
+}
+
+function registerResponseInterceptor(client) {
+  client.interceptors.response.use((response) => response.data, handleResponseError)
+}
+
+registerResponseInterceptor(request)
 
 export default request
 
@@ -103,47 +104,6 @@ const uploadRequest = axios.create({
   },
 })
 
-// 复用主实例的响应拦截器逻辑
-uploadRequest.interceptors.response.use(
-  (response) => response.data,
-  (error) => {
-    const { response } = error
-    if (response) {
-      const msg = response.data?.message
-      const detail = response.data?.detail
-      switch (response.status) {
-        case 401:
-          ElMessage.error('登录已过期，请重新登录')
-          useUserStore().logout()
-          router.push('/login')
-          break
-        case 403:
-          ElMessage.error(msg || '没有权限访问该资源')
-          break
-        case 413:
-          ElMessage.error(msg || detail || '上传图片总大小超过限制')
-          break
-        case 415:
-          ElMessage.error(msg || detail || '图片格式不受支持')
-          break
-        case 422:
-          if (Array.isArray(detail)) {
-            ElMessage.error(detail[0]?.msg || msg || '请求参数错误')
-          } else {
-            ElMessage.error(msg || detail || '请求参数错误')
-          }
-          break
-        case 503:
-          ElMessage.error(msg || detail || '服务暂时不可用')
-          break
-        default:
-          ElMessage.error(msg || detail || `请求错误 (${response.status})`)
-      }
-    } else {
-      ElMessage.error('网络连接失败，请检查网络')
-    }
-    return Promise.reject(error)
-  }
-)
+registerResponseInterceptor(uploadRequest)
 
 export { uploadRequest }
