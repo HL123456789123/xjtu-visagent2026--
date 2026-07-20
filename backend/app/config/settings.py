@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     FOOD_MODEL_PATH: str = "/models/food/best.pt"
     FOOD_CLASSES_PATH: str = ""
     FOOD_CONF_THRESHOLD: float = 0.25
+    FOOD_MODEL_REGISTRY_DIR: str = "/models/food-registry"
+    FOOD_MODEL_MAX_PACKAGE_BYTES: int = 512 * 1024 * 1024
 
     # Recipe and Chat use the explicit V1.1 LLM_* names below. OPENAI_* stays
     # available for legacy application configuration only.
@@ -145,6 +147,13 @@ class Settings(BaseSettings):
     def validate_food_conf_threshold(cls, v: float) -> float:
         if not 0 <= v <= 1:
             raise ValueError("FOOD_CONF_THRESHOLD must be between 0 and 1")
+        return v
+
+    @field_validator('FOOD_MODEL_MAX_PACKAGE_BYTES')
+    @classmethod
+    def validate_food_model_package_size(cls, v: int) -> int:
+        if v < 1024 * 1024:
+            raise ValueError("FOOD_MODEL_MAX_PACKAGE_BYTES must be at least 1 MiB")
         return v
 
     @field_validator('LLM_MODE')

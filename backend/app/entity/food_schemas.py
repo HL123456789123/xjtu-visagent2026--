@@ -83,6 +83,8 @@ class FoodRecognitionCreateData(FoodSchemaBase):
     status: Literal["completed"]
     provider: Literal["mock", "yolo"]
     model_version: str
+    task: Literal["detect", "classify"] = "detect"
+    localization: Literal["object", "full_image"] = "object"
     images: list[RecognitionImage] = Field(min_length=1, max_length=5)
     ingredients: list[IngredientCandidate]
     created_at: datetime
@@ -108,5 +110,7 @@ class FoodModelStatusData(FoodSchemaBase):
     provider: Literal["mock", "yolo"]
     model_version: str
     available: bool
+    task: Literal["detect", "classify"] = "detect"
+    localization: Literal["object", "full_image"] = "object"
     class_count: int = Field(strict=True, ge=0)
     classes: list[FoodModelClass]

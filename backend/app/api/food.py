@@ -86,6 +86,8 @@ async def get_food_model_status(current_user: User = Depends(get_current_user)):
         provider=provider_name,
         model_version=model_version,
         available=available,
+        task=str(getattr(provider, "task", "detect")),
+        localization=str(getattr(provider, "localization", "object")),
         class_count=len(classes),
         classes=classes,
     )

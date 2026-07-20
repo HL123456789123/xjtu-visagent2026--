@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from app.modeling.food_yolo_runtime import (
     BoundingBox,
@@ -134,3 +135,36 @@ def test_yolo_provider_rejects_relative_or_missing_image(classes_path: Path, tmp
 
     with pytest.raises(ValueError, match="absolute"):
         provider.recognize("food.jpg")
+
+
+def test_classification_provider_returns_one_full_image_result(tmp_path: Path):
+    weights = tmp_path / "best.pt"
+    classes = tmp_path / "classes.yaml"
+    image = tmp_path / "food.jpg"
+    weights.write_bytes(b"test-only")
+    classes.write_text(
+        "names:\n  0:\n    class_name: tomato\n    display_name: 番茄\n",
+        encoding="utf-8",
+    )
+    Image.new("RGB", (80, 40), color=(200, 30, 30)).save(image, "JPEG")
+    model = SimpleNamespace(
+        predict=lambda **_: [
+            SimpleNamespace(probs=SimpleNamespace(top1=0, top1conf=FakeScalar(0.91)))
+        ]
+    )
+    provider = YoloFoodRecognitionProvider(
+        str(weights),
+        str(classes),
+        task="classify",
+        model_loader=lambda _: model,
+    )
+
+    assert provider.task == "classify"
+    assert provider.localization == "full_image"
+    assert provider.recognize(str(image), 0.5) == [
+        ModelDetection(
+            class_name="tomato",
+            confidence=0.91,
+            bbox=BoundingBox(x1=0.0, y1=0.0, x2=80.0, y2=40.0),
+        )
+    ]

@@ -8,18 +8,14 @@ from app.config.settings import settings
 from app.core.rate_limiter import limiter
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
-from app.api.training import router as training_router
-from app.api.detection import router as detection_router
 from app.api.chat import router as chat_router
 from app.api.food import file_router as food_file_router
 from app.api.food import router as food_router
 from app.api.recipes import router as recipes_router
 from app.api.dashboard import router as dashboard_router
-from app.api.camera import router as camera_router
 from app.api.knowledge import router as knowledge_router
-from app.api.model import router as model_router
+from app.api.food_models import router as food_models_router
 from app.api.admin import router as admin_router
-from app.api.dataset import router as dataset_router
 from app.core.logger import setup_logger
 from app.core.exceptions import (
     AppException,
@@ -55,7 +51,7 @@ def init_redis():
 
 
 def init_seed():
-    """初始化种子数据（检测场景等）"""
+    """初始化固定的三级角色与权限，不创建任何默认账号。"""
     from app.database.session import SessionLocal
     from app.database.seed import seed_scenes
 
@@ -71,13 +67,19 @@ def init_seed():
         db.close()
 
 
-def _recover_training_tasks():
-    """恢复因进程重启而中断的训练任务状态"""
+def init_food_model_runtime():
+    """Restore the active registered model after a backend restart when available."""
+    from app.database.session import SessionLocal
+    from app.services.food_model_service import FoodModelService
+
+    db = SessionLocal()
     try:
-        from app.services.training_service import training_service
-        training_service._recover_interrupted_tasks()
-    except Exception as e:
-        logger.error(f"训练任务恢复失败: {e}")
+        if FoodModelService(db).initialize_active_runtime():
+            logger.info("已恢复数据库中启用的 Food 模型")
+    except Exception as exc:
+        logger.warning(f"Food 模型注册表尚不可用，继续使用环境配置: {type(exc).__name__}")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -89,8 +91,7 @@ async def lifespan(_app: FastAPI):
     init_minio()
     init_redis()
     init_seed()
-    # 在种子数据初始化完成后，恢复中断的训练任务
-    _recover_training_tasks()
+    init_food_model_runtime()
     yield
     # 关闭时执行：优雅清理资源
     logger.info("正在关闭服务...")
@@ -138,43 +139,21 @@ def _validate_security_config():
 
 
 async def _shutdown_cleanup():
-    """优雅关闭：停止训练线程、关闭 LLM 客户端和 Redis 连接"""
-    import asyncio
+    """优雅关闭 LLM 与 Redis 客户端。"""
 
-    # 1. 停止所有训练任务
+    # 1. 关闭 LLM httpx 客户端
     try:
-        from app.services.training_service import training_service
+        from app.services.llm_gateway import get_llm_gateway
 
-        with training_service._lock:
-            for task_id, stop_flag in training_service.task_stop_flags.items():
-                stop_flag.set()
-                logger.info(f"已发送停止信号: 训练任务 {task_id}")
-
-        # 等待训练线程结束（最多 5 秒）
-        # 使用 to_thread 包装 join，避免在 async 上下文中阻塞事件循环
-        for task_id, thread in list(training_service.active_tasks.items()):
-            await asyncio.to_thread(thread.join, timeout=5)
-            if thread.is_alive():
-                logger.warning(f"训练线程 {task_id} 未能在超时内停止")
-    except Exception as e:
-        logger.error(f"训练任务关闭失败: {e}")
-
-    # 2. 关闭 LLM httpx 客户端
-    try:
-        from app.services.agent_graph import _llm_cache
-
-        if _llm_cache is not None and hasattr(_llm_cache, "async_client"):
-            client = _llm_cache.async_client
-            if client and hasattr(client, "aclose"):
-                try:
-                    await client.aclose()
-                    logger.info("LLM httpx 客户端已关闭")
-                except Exception as e:
-                    logger.warning(f"LLM 客户端关闭失败: {e}")
+        gateway = get_llm_gateway()
+        if gateway.client is not None:
+            await gateway.client.close()
+            logger.info("LLM httpx 客户端已关闭")
+        get_llm_gateway.cache_clear()
     except Exception as e:
         logger.error(f"LLM 客户端关闭失败: {e}")
 
-    # 3. 关闭 Redis 连接
+    # 2. 关闭 Redis 连接
     try:
         from app.storage.redis_client import redis_client
 
@@ -189,7 +168,7 @@ async def _shutdown_cleanup():
 app = FastAPI(
     title="VisAgent",
     version="0.1.0",
-    description="基于 YOLO26 的目标检测智能体平台 API",
+    description="食材识别、菜谱生成与智能对话平台 API",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -223,18 +202,14 @@ app.add_middleware(
 # ── 注册路由 ─────────────────────────────────────────
 app.include_router(auth_router)
 app.include_router(health_router)
-app.include_router(training_router)
-app.include_router(detection_router)
 app.include_router(food_router)
 app.include_router(food_file_router)
 app.include_router(recipes_router)
 app.include_router(chat_router)
 app.include_router(dashboard_router)
-app.include_router(camera_router)
 app.include_router(knowledge_router)
-app.include_router(model_router)
+app.include_router(food_models_router)
 app.include_router(admin_router)
-app.include_router(dataset_router)
 
 
 @app.get("/")

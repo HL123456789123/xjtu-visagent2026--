@@ -65,8 +65,8 @@ def test_history_chat_and_food_dashboard_are_owner_scoped(client, db, seed_rbac)
     db.flush()
     db.add_all(
         [
-            UserRole(user_id=owner.id, role_id=seed_rbac["operator"].id),
-            UserRole(user_id=other.id, role_id=seed_rbac["operator"].id),
+            UserRole(user_id=owner.id, role_id=seed_rbac["user"].id),
+            UserRole(user_id=other.id, role_id=seed_rbac["user"].id),
         ]
     )
 
@@ -188,13 +188,21 @@ def test_food_model_status_does_not_expose_runtime_paths(client, db, seed_rbac):
     )
     db.add(user)
     db.flush()
-    db.add(UserRole(user_id=user.id, role_id=seed_rbac["operator"].id))
+    db.add(UserRole(user_id=user.id, role_id=seed_rbac["user"].id))
     db.commit()
 
     _login(client, "model_status_user", "model-password")
     response = client.get("/api/food/model-status")
     assert response.status_code == 200
     data = response.json()["data"]
-    assert set(data) == {"provider", "model_version", "available", "class_count", "classes"}
+    assert set(data) == {
+        "provider",
+        "model_version",
+        "available",
+        "class_count",
+        "classes",
+        "task",
+        "localization",
+    }
     assert data["class_count"] == len(data["classes"])
     assert "path" not in str(data).lower()

@@ -86,6 +86,8 @@ services:
       # V1.1 declares this setting. The current API still accepts the effective
       # threshold as a request field, so this value is documented but unused.
       FOOD_CONF_THRESHOLD: ${FOOD_CONF_THRESHOLD:-0.25}
+      FOOD_MODEL_REGISTRY_DIR: /models/food-registry
+      FOOD_MODEL_MAX_PACKAGE_BYTES: ${FOOD_MODEL_MAX_PACKAGE_BYTES:-536870912}
       LLM_MODE: ${LLM_MODE:-fake}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://example.invalid/v1}
       LLM_API_KEY: ${LLM_API_KEY:-replace_me}
@@ -94,6 +96,8 @@ services:
     volumes:
       # Optional real-model input; Mock mode remains usable when it is empty.
       - ./models/food:/models/food:ro
+      # Admin-managed packages persist independently and never enter Git.
+      - food_model_registry:/models/food-registry
     command: >-
       sh -c "uv run --no-sync alembic upgrade head && exec uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8888"
     healthcheck:
@@ -125,3 +129,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  food_model_registry:

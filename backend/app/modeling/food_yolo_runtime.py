@@ -13,6 +13,7 @@ from threading import Lock
 from typing import Any, Callable, Protocol
 
 import yaml
+from PIL import Image
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,12 +82,17 @@ class YoloFoodRecognitionProvider:
         *,
         device: str | int | None = None,
         image_size: int = 640,
+        task: str = "detect",
         model_loader: ModelLoader | None = None,
     ) -> None:
+        if task not in {"detect", "classify"}:
+            raise ValueError("task must be detect or classify")
         self._model_path = Path(model_path)
         self._classes = _load_class_names(Path(classes_path))
         self._device = device
         self._image_size = image_size
+        self.task = task
+        self.localization = "object" if task == "detect" else "full_image"
         self._model_loader = model_loader or _default_model_loader
         self._model: Any | None = None
         self._model_lock = Lock()
@@ -146,6 +152,9 @@ class YoloFoodRecognitionProvider:
 
         if not results:
             return []
+        if self.task == "classify":
+            return self._classification_result(results[0], image, conf_threshold)
+
         boxes = getattr(results[0], "boxes", None)
         if boxes is None:
             return []
@@ -167,3 +176,30 @@ class YoloFoodRecognitionProvider:
                 )
             )
         return detections
+
+    def _classification_result(
+        self, result: Any, image_path: Path, conf_threshold: float
+    ) -> list[ModelDetection]:
+        probs = getattr(result, "probs", None)
+        if probs is None:
+            raise FoodModelUnavailableError("food model returned invalid classification")
+        try:
+            class_id = int(probs.top1)
+            raw_confidence = probs.top1conf
+            confidence = float(
+                raw_confidence.item() if hasattr(raw_confidence, "item") else raw_confidence
+            )
+            class_name = self._classes[class_id]
+            with Image.open(image_path) as image:
+                width, height = image.size
+        except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError) as exc:
+            raise FoodModelUnavailableError("food model returned invalid classification") from exc
+        if confidence < conf_threshold:
+            return []
+        return [
+            ModelDetection(
+                class_name=class_name,
+                confidence=confidence,
+                bbox=BoundingBox(x1=0.0, y1=0.0, x2=float(width), y2=float(height)),
+            )
+        ]

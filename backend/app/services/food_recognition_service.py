@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
+from threading import Lock
 from typing import Mapping, Protocol
 
 import yaml
@@ -134,6 +135,9 @@ class MinioFoodObjectStorage:
 
 
 class MockFoodRecognitionProvider:
+    task = "detect"
+    localization = "object"
+
     def recognize(
         self, image_path: str, conf_threshold: float = 0.25
     ) -> list[ModelDetection]:
@@ -142,8 +146,10 @@ class MockFoodRecognitionProvider:
 
 
 class UnavailableFoodRecognitionProvider:
-    def __init__(self, error: FoodModelUnavailableError) -> None:
+    def __init__(self, error: FoodModelUnavailableError, *, task: str = "detect") -> None:
         self._error = error
+        self.task = task
+        self.localization = "object" if task == "detect" else "full_image"
 
     def recognize(
         self, image_path: str, conf_threshold: float = 0.25
@@ -165,8 +171,42 @@ def _read_display_names(classes_path: Path) -> dict[str, str]:
     return result
 
 
+_runtime_provider_override: tuple[
+    FoodRecognitionProvider, str, str, dict[str, str]
+] | None = None
+_runtime_provider_lock = Lock()
+
+
+def set_runtime_food_provider(
+    provider: FoodRecognitionProvider,
+    provider_name: str,
+    model_version: str,
+    display_names: Mapping[str, str],
+) -> None:
+    """Atomically replace the provider used by newly created Food services."""
+    global _runtime_provider_override
+    with _runtime_provider_lock:
+        _runtime_provider_override = (
+            provider,
+            provider_name,
+            model_version,
+            dict(display_names),
+        )
+        build_default_food_provider.cache_clear()
+
+
+def clear_runtime_food_provider() -> None:
+    global _runtime_provider_override
+    with _runtime_provider_lock:
+        _runtime_provider_override = None
+        build_default_food_provider.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def build_default_food_provider() -> tuple[FoodRecognitionProvider, str, str, dict[str, str]]:
+    with _runtime_provider_lock:
+        if _runtime_provider_override is not None:
+            return _runtime_provider_override
     runtime_settings = Settings()
     mode = runtime_settings.FOOD_PROVIDER
     if mode == "mock":
@@ -235,6 +275,8 @@ class FoodRecognitionService:
         self.provider_name = provider_name or "yolo"
         self.model_version = model_version or "food-yolo-v1"
         self.display_names = dict(display_names or {})
+        self.model_task = str(getattr(provider, "task", "detect"))
+        self.localization = str(getattr(provider, "localization", "object"))
         self._object_storage = object_storage
 
     async def create_recognition(
@@ -392,14 +434,17 @@ class FoodRecognitionService:
         except Exception as exc:
             raise FoodModelUnavailableServiceError() from exc
 
-    @staticmethod
     def _group_raw_detections(
-        object_names: list[str], detections_by_image: list[list[ModelDetection]]
+        self,
+        object_names: list[str],
+        detections_by_image: list[list[ModelDetection]],
     ) -> list[dict[str, object]]:
         return [
             {
                 "image_index": image_index,
                 "image_object_name": object_name,
+                "task": self.model_task,
+                "localization": self.localization,
                 "detections": [asdict(detection) for detection in detections],
             }
             for image_index, (object_name, detections) in enumerate(
@@ -413,6 +458,7 @@ class FoodRecognitionService:
         candidates: list[IngredientCandidate] = []
         for group in raw_detections:
             image_index = int(group["image_index"])
+            candidate_kind = "cls" if group.get("task") == "classify" else "det"
             detections = group.get("detections", [])
             for detection_index, raw_detection in enumerate(detections, start=1):
                 detection = ModelDetection(
@@ -422,7 +468,7 @@ class FoodRecognitionService:
                 )
                 candidates.append(
                     IngredientCandidate(
-                        candidate_id=f"img-{image_index}-det-{detection_index}",
+                        candidate_id=f"img-{image_index}-{candidate_kind}-{detection_index}",
                         image_index=image_index,
                         class_name=detection.class_name,
                         display_name=self.display_names.get(
@@ -454,11 +500,15 @@ class FoodRecognitionService:
 
     def _to_create_data(self, task: FoodRecognitionTask) -> FoodRecognitionCreateData:
         object_names = list(task.image_object_names or [])
+        raw_groups = list(task.raw_detections or [])
+        first_group = raw_groups[0] if raw_groups else {}
         return FoodRecognitionCreateData(
             recognition_id=task.id,
             status="completed",
             provider=task.provider,
             model_version=task.model_version,
+            task=str(first_group.get("task", "detect")),
+            localization=str(first_group.get("localization", "object")),
             images=[
                 RecognitionImage(
                     image_index=index,
@@ -466,7 +516,7 @@ class FoodRecognitionService:
                 )
                 for index in range(len(object_names))
             ],
-            ingredients=self._candidates_from_raw(task.raw_detections or []),
+            ingredients=self._candidates_from_raw(raw_groups),
             created_at=to_china_time(task.created_at),
         )
 
