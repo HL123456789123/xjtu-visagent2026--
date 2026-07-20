@@ -117,12 +117,13 @@ uv run pytest
 
 ```bash
 cd frontend
+bun run lint
 bun run test
 bun run build
 ```
 
-- `test`、`test:watch`、`dev`、`build`、`preview` 均真实存在于 `package.json`。
-- 当前不存在 `lint` script，不得使用或声称已运行 `bun run lint`；需要由前端 owner 决定是否补充。
+- `lint`、`lint:fix`、`test`、`test:watch`、`dev`、`build`、`preview` 均真实存在于 `package.json`。
+- `bun run lint` 只执行检查；需要显式修复时才使用 `bun run lint:fix`，不得把自动修复混入普通验证。
 
 ### Docker 配置检查：从仓库根目录执行
 
@@ -207,6 +208,7 @@ uv run pytest
 从 `frontend/` 执行：
 
 ```bash
+bun run lint
 bun run test
 bun run build
 ```
@@ -282,6 +284,6 @@ chore(docker): 修复容器构建
 | Dockerfile 引导工具混用 | 后端镜像用 pip 安装 uv，前端镜像用 npm 安装 bun；应用依赖后续仍由 uv/bun 管理 | 吴雯 |
 | Food 模式变量未接入现有配置 | V1 的 `FOOD_*` 尚未完整出现在 settings 和后端 `.env.example` | 黄小石、绕家辉 |
 | LLM 模式变量未接入现有配置 | V1 的 `LLM_*` 尚未完整出现在 settings 和后端 `.env.example` | 陈煜君 |
-| 前端命令复核 | `package.json` 没有 `lint` script，但 README 仍推荐 `bun run lint`；Bun 版本也未在项目中固定 | 刘楚涵、李晨宁 |
+| 前端命令复核 | 已补充 ESLint 检查命令；Bun 版本仍未在项目中固定 | 刘楚涵、李晨宁 |
 | 命令标准维护 | `AGENTS.md` 与计划、README、课程讲义或旧提示出现冲突时需要统一裁决 | 闫灿宇 |
 | 运行时版本未完全固定 | Python 仅声明 `>=3.11`，未声明上限；项目未固定本地 Bun/Node 版本 | 绕家辉、前端 owner、闫灿宇 |

@@ -11,7 +11,7 @@ import {
   resetRecipeApiClient,
   setRecipeApiClient,
 } from '../recipe'
-import { recipeSuccessFixture, recipeV2Fixture } from '@/fixtures/recipe'
+import { recipeSuccessFixture } from '@/fixtures/recipe'
 
 describe('recipe api contract', () => {
   afterEach(() => {

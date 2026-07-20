@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import request from '../request'
 
 // 使用 vi.hoisted 确保 mock 工厂中引用的对象在 resetModules 后保持稳定
-const { mockInterceptors, mockAxiosInstance, mockCreate } = vi.hoisted(() => {
+const { mockInterceptors, mockCreate } = vi.hoisted(() => {
   const mockInterceptors = {
     request: { use: vi.fn() },
     response: { use: vi.fn() },
