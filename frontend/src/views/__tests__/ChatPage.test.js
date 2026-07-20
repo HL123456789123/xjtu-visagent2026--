@@ -74,7 +74,7 @@ describe('ChatPage V1 boundary', () => {
     getChatMessages.mockResolvedValue({
       data: [
         { message_id: 1, role: 'user', content: '旧问题' },
-        { message_id: 2, role: 'assistant', content: '旧回答' },
+        { message_id: 2, role: 'assistant', content: '旧回答', recipe_version: 2 },
       ],
     })
 
@@ -85,5 +85,6 @@ describe('ChatPage V1 boundary', () => {
     expect(createChatSession).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('旧问题')
     expect(wrapper.text()).toContain('旧回答')
+    expect(wrapper.text()).toContain('查看本次生成的 v2 菜谱')
   })
 })

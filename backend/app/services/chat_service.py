@@ -56,6 +56,7 @@ class ChatService:
                 message_id=message.id,
                 role=message.role,
                 content=message.content,
+                recipe_version=message.recipe_version,
                 created_at=message.created_at,
             )
             for message in self.repository.list_messages_for_session(session_id)
@@ -86,7 +87,10 @@ class ChatService:
         try:
             session = self.get_session(session_id, user_id)
             current = await self.recipes.get_recipe(session.recipe_id, user_id)
-            self.repository.save_message(session_id, "user", content)
+            conversation_summary, recent_messages = self.repository.get_conversation_context(
+                session_id, recent_limit=12
+            )
+            user_message = self.repository.save_message(session_id, "user", content)
             current_data = current.model_dump(
                 mode="json",
                 exclude={
@@ -103,6 +107,8 @@ class ChatService:
                 {
                     "current_recipe": current_data,
                     "message": content,
+                    "conversation_summary": conversation_summary,
+                    "recent_messages": recent_messages,
                     "llm_output": None,
                     "response": {},
                 }
@@ -111,16 +117,32 @@ class ChatService:
             answer = str(response["answer"])
             yield format_sse(SSE_EVENT_TOKEN, {"content": answer})
 
+            updated_version = None
             if response["action"] == "update_recipe":
                 updated = await self.recipes.update_recipe(
-                    session.recipe_id, user_id, response["recipe"]
+                    session.recipe_id,
+                    user_id,
+                    response["recipe"],
+                    change_reason=answer,
+                    source_message_id=user_message.id,
                 )
+                updated_version = updated.version
                 yield format_sse(
                     SSE_EVENT_RECIPE_UPDATED,
                     {"recipe_id": updated.recipe_id, "version": updated.version},
                 )
 
-            message = self.repository.save_message(session_id, "assistant", answer)
+            message = self.repository.save_message(
+                session_id,
+                "assistant",
+                answer,
+                recipe_version=updated_version,
+            )
+            try:
+                self.repository.refresh_context_summary(session_id, recent_limit=12)
+            except Exception:
+                # 摘要只是后续上下文优化，不能把已保存的对话降级为失败响应。
+                pass
             yield format_sse(SSE_EVENT_DONE, {"message_id": message.id})
         except SessionNotFoundError:
             yield format_sse(

@@ -25,6 +25,8 @@ class GenerateRecipeState(TypedDict):
 class ChatRecipeState(TypedDict):
     current_recipe: dict
     message: str
+    conversation_summary: str
+    recent_messages: list[dict[str, str]]
     llm_output: ChatLLMResult | None
     response: dict
 
@@ -64,6 +66,9 @@ async def load_recipe_context(state: ChatRecipeState) -> dict:
 async def call_llm(state: ChatRecipeState) -> dict:
     prompt = (
         f"当前菜谱：\n{json.dumps(state['current_recipe'], ensure_ascii=False)}"
+        f"\n\n较早对话摘要：\n{state.get('conversation_summary') or '无'}"
+        "\n\n最近对话：\n"
+        f"{json.dumps(state.get('recent_messages') or [], ensure_ascii=False)}"
         f"\n\n用户消息：\n{state['message']}"
     )
     output = await get_llm_gateway().chat(

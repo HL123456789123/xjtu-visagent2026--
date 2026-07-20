@@ -1,13 +1,7 @@
 <template>
   <section class="recipe-chat" data-testid="chat-page">
     <header class="recipe-chat__header">
-      <div>
-        <span>Recipe Chat</span>
-        <h2>菜谱对话</h2>
-      </div>
-      <span class="recipe-chat__session" data-testid="session-state">
-        {{ sessionId ? `会话 #${sessionId}` : '等待菜谱' }}
-      </span>
+      <h2>菜谱对话</h2>
     </header>
 
     <p v-if="!recipeId" class="recipe-chat__notice">
@@ -28,6 +22,14 @@
       >
         <strong>{{ message.role === 'user' ? '我' : '菜谱助手' }}</strong>
         <p>{{ message.content }}</p>
+        <button
+          v-if="message.recipe_version"
+          class="recipe-chat__version"
+          type="button"
+          @click="openVersion(message.recipe_version)"
+        >
+          查看本次生成的 v{{ message.recipe_version }} 菜谱
+        </button>
       </article>
     </div>
 
@@ -48,6 +50,10 @@
         {{ loading ? '处理中…' : '发送' }}
       </button>
     </form>
+
+    <el-dialog v-model="versionVisible" :title="`菜谱版本 v${selectedVersion}`" width="min(880px, 94vw)" destroy-on-close>
+      <RecipeCard v-if="versionRecipe" :recipe="versionRecipe" :show-actions="false" />
+    </el-dialog>
   </section>
 </template>
 
@@ -59,6 +65,8 @@ import {
   getChatSessions,
   sendChatMessage,
 } from '@/api/chat'
+import { getRecipeVersion } from '@/api/recipe'
+import RecipeCard from '@/components/recipe/RecipeCard.vue'
 
 const props = defineProps({
   recipeId: {
@@ -76,6 +84,9 @@ const draft = ref('')
 const loading = ref(false)
 const serviceError = ref('')
 const messageList = ref(null)
+const versionVisible = ref(false)
+const selectedVersion = ref(null)
+const versionRecipe = ref(null)
 let stopStream = null
 let sessionPromise = null
 
@@ -120,6 +131,7 @@ async function restoreSession() {
         messages.value = (messageResponse?.data || []).map((message) => ({
           role: message.role,
           content: message.content,
+          recipe_version: message.recipe_version || null,
         }))
         scrollToBottom()
         return sessionId.value
@@ -160,6 +172,8 @@ async function sendMessage() {
       },
       onRecipeUpdated(payload) {
         if (Number.isInteger(payload?.recipe_id) && Number.isInteger(payload?.version)) {
+          const assistant = [...messages.value].reverse().find((message) => message.role === 'assistant')
+          if (assistant) assistant.recipe_version = payload.version
           emit('recipe-updated', payload)
         }
       },
@@ -180,6 +194,17 @@ async function sendMessage() {
     loading.value = false
     serviceError.value = error?.response?.data?.message || error?.message || '会话创建失败'
   }
+}
+
+async function openVersion(version) {
+  const response = await getRecipeVersion(props.recipeId, version)
+  selectedVersion.value = version
+  versionRecipe.value = {
+    ...response.data.recipe,
+    recipe_id: props.recipeId,
+    version,
+  }
+  versionVisible.value = true
 }
 
 watch(
@@ -219,14 +244,8 @@ onBeforeUnmount(() => stopStream?.())
   gap: 16px;
 }
 
-.recipe-chat__header span,
-.recipe-chat__session {
-  color: #8b6846;
-  font-size: 13px;
-}
-
 .recipe-chat__header h2 {
-  margin: 4px 0 0;
+  margin: 0;
   color: #3a2a1d;
 }
 
@@ -266,6 +285,17 @@ onBeforeUnmount(() => stopStream?.())
 .recipe-chat__message p {
   margin: 5px 0 0;
   white-space: pre-wrap;
+}
+
+.recipe-chat__version {
+  margin-top: 10px;
+  border: 1px solid #d7c69d;
+  border-radius: 6px;
+  background: #fffaf0;
+  color: #6a762e;
+  cursor: pointer;
+  padding: 7px 10px;
+  font-weight: 700;
 }
 
 .recipe-chat__composer {

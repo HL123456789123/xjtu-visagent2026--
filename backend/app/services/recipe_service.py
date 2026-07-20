@@ -14,6 +14,9 @@ from app.entity.recipe_schemas import (
     RecipeHistoryItem,
     RecipeHistoryPage,
     RecipeResponse,
+    RecipeVersionDetail,
+    RecipeVersionList,
+    RecipeVersionSummary,
 )
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.food_repository import FoodRepository
@@ -49,6 +52,11 @@ class RecognitionNotFoundError(RecipeServiceError):
 class RecipeNotFoundError(RecipeServiceError):
     def __init__(self) -> None:
         super().__init__(404, "RECIPE_NOT_FOUND", "菜谱不存在")
+
+
+class RecipeVersionNotFoundError(RecipeServiceError):
+    def __init__(self) -> None:
+        super().__init__(404, "RECIPE_VERSION_NOT_FOUND", "菜谱版本不存在")
 
 
 class RecipePermissionDeniedError(RecipeServiceError):
@@ -188,14 +196,25 @@ class RecipeService:
         return RecipeHistoryPage(items=items, total=total, page=page, page_size=page_size)
 
     async def update_recipe(
-        self, recipe_id: int, user_id: int, new_recipe_data: dict
+        self,
+        recipe_id: int,
+        user_id: int,
+        new_recipe_data: dict,
+        *,
+        change_reason: str | None = None,
+        source_message_id: int | None = None,
     ) -> RecipeResponse:
         try:
             validated = RecipeGenerateResult.model_validate(new_recipe_data)
         except ValidationError as exc:
             raise InvalidRecipeLLMOutputError() from exc
         record = self.recipe_repository.save_new_recipe_version(
-            recipe_id, user_id, validated.model_dump(mode="json")
+            recipe_id,
+            user_id,
+            validated.model_dump(mode="json"),
+            change_type="chat_update",
+            change_reason=change_reason,
+            source_message_id=source_message_id,
         )
         if record is None:
             existing = self.recipe_repository.get_recipe(recipe_id)
@@ -203,3 +222,60 @@ class RecipeService:
                 raise RecipeNotFoundError()
             raise RecipePermissionDeniedError()
         return self._to_response(record)
+
+    async def list_versions(self, recipe_id: int, user_id: int) -> RecipeVersionList:
+        current = await self.get_recipe(recipe_id, user_id)
+        records = self.recipe_repository.list_versions(recipe_id, user_id) or []
+        return RecipeVersionList(
+            recipe_id=recipe_id,
+            current_version=current.version,
+            versions=[
+                self._to_version_summary(record, current.version, user_id) for record in records
+            ],
+        )
+
+    async def get_version(
+        self, recipe_id: int, version: int, user_id: int
+    ) -> RecipeVersionDetail:
+        current = await self.get_recipe(recipe_id, user_id)
+        record = self.recipe_repository.get_version(recipe_id, version, user_id)
+        if record is None:
+            raise RecipeVersionNotFoundError()
+        return RecipeVersionDetail(
+            **self._to_version_summary(record, current.version, user_id).model_dump(),
+            recipe=RecipeGenerateResult.model_validate(record.recipe_data),
+        )
+
+    async def restore_version(
+        self, recipe_id: int, version: int, user_id: int
+    ) -> RecipeResponse:
+        await self.get_version(recipe_id, version, user_id)
+        record = self.recipe_repository.restore_version(recipe_id, version, user_id)
+        if record is None:
+            raise RecipeVersionNotFoundError()
+        return self._to_response(record)
+
+    def _to_version_summary(
+        self, record, current_version: int, user_id: int
+    ) -> RecipeVersionSummary:
+        source_message = None
+        if self.chat_repository is not None and record.source_message_id is not None:
+            message = self.chat_repository.get_message(record.source_message_id)
+            session = (
+                self.chat_repository.get_session_for_user(message.session_id, user_id)
+                if message is not None
+                else None
+            )
+            if session is not None and session.recipe_id == record.recipe_id:
+                source_message = message.content
+        return RecipeVersionSummary(
+            version=record.version,
+            title=str(record.recipe_data.get("title", "未命名菜谱")),
+            change_type=record.change_type,
+            change_reason=record.change_reason,
+            source_message_id=record.source_message_id,
+            source_message=source_message,
+            source_version=record.source_version,
+            is_current=record.version == current_version,
+            created_at=to_china_time(record.created_at),
+        )

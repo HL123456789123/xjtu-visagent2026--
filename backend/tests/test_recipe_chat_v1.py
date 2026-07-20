@@ -202,10 +202,37 @@ async def test_chat_answer_does_not_increment_version_and_uses_only_v1_events(re
 
 
 @pytest.mark.asyncio
+async def test_chat_summary_failure_does_not_interrupt_saved_reply(repositories, monkeypatch):
+    _, user, food_repository, recipe_repository, chat_repository = repositories
+    recognition = create_recognition(food_repository, user.id)
+    recipes = RecipeService(food_repository, recipe_repository, chat_repository)
+    recipe = await recipes.create_recipe(
+        RecipeCreateRequest(recognition_id=recognition.id), user.id
+    )
+    chat = ChatService(chat_repository, recipes)
+    session = await chat.create_session(user.id, recipe.recipe_id)
+
+    def fail_summary(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("summary unavailable")
+
+    monkeypatch.setattr(chat_repository, "refresh_context_summary", fail_summary)
+    chunks = [
+        chunk
+        async for chunk in chat.send_message_stream(
+            session.id, user.id, "鸡蛋怎么炒得嫩一些？"
+        )
+    ]
+
+    assert event_names(chunks) == ["token", "done"]
+    assert len(chat.list_messages(session.id, user.id)) == 2
+
+
+@pytest.mark.asyncio
 async def test_chat_update_replaces_complete_recipe_and_increments_once(repositories):
     _, user, food_repository, recipe_repository, chat_repository = repositories
     recognition = create_recognition(food_repository, user.id)
-    recipes = RecipeService(food_repository, recipe_repository)
+    recipes = RecipeService(food_repository, recipe_repository, chat_repository)
     recipe = await recipes.create_recipe(
         RecipeCreateRequest(recognition_id=recognition.id), user.id
     )
@@ -235,6 +262,113 @@ async def test_chat_update_replaces_complete_recipe_and_increments_once(reposito
         "steps",
         "nutrition",
     }
+
+    versions = await recipes.list_versions(recipe.recipe_id, user.id)
+    assert [item.version for item in versions.versions] == [2, 1]
+    assert versions.versions[0].change_type == "chat_update"
+    assert versions.versions[0].source_message == "改成三人份并且少放油"
+    assert versions.versions[1].change_type == "generated"
+    assert (await recipes.get_version(recipe.recipe_id, 1, user.id)).recipe.servings == 2
+    assert (await recipes.get_version(recipe.recipe_id, 2, user.id)).recipe.servings == 3
+    messages = chat.list_messages(session.id, user.id)
+    assert messages[-1].recipe_version == 2
+
+
+@pytest.mark.asyncio
+async def test_restoring_an_old_snapshot_creates_a_new_latest_version(repositories):
+    _, user, food_repository, recipe_repository, chat_repository = repositories
+    recognition = create_recognition(food_repository, user.id)
+    recipes = RecipeService(food_repository, recipe_repository, chat_repository)
+    recipe = await recipes.create_recipe(
+        RecipeCreateRequest(recognition_id=recognition.id), user.id
+    )
+    original_title = recipe.title
+    updated_data = recipe.model_dump(
+        mode="json",
+        exclude={
+            "recipe_id",
+            "recognition_id",
+            "version",
+            "nutrition_disclaimer",
+            "generator",
+            "created_at",
+            "updated_at",
+        },
+    )
+    updated_data["title"] = "第二版菜谱"
+    await recipes.update_recipe(recipe.recipe_id, user.id, updated_data)
+
+    restored = await recipes.restore_version(recipe.recipe_id, 1, user.id)
+    versions = await recipes.list_versions(recipe.recipe_id, user.id)
+
+    assert restored.version == 3
+    assert restored.title == original_title
+    assert [item.version for item in versions.versions] == [3, 2, 1]
+    assert versions.versions[0].change_type == "restore"
+    assert versions.versions[0].source_version == 1
+    assert (await recipes.get_version(recipe.recipe_id, 2, user.id)).recipe.title == "第二版菜谱"
+
+
+@pytest.mark.asyncio
+async def test_recipe_versions_are_owner_scoped(repositories):
+    db, user, food_repository, recipe_repository, chat_repository = repositories
+    recognition = create_recognition(food_repository, user.id)
+    recipes = RecipeService(food_repository, recipe_repository, chat_repository)
+    recipe = await recipes.create_recipe(
+        RecipeCreateRequest(recognition_id=recognition.id), user.id
+    )
+    other = User(username="version_other", email="version-other@example.com", hashed_password="x")
+    db.add(other)
+    db.commit()
+    db.refresh(other)
+
+    with pytest.raises(RecipePermissionDeniedError):
+        await recipes.list_versions(recipe.recipe_id, other.id)
+    with pytest.raises(RecipePermissionDeniedError):
+        await recipes.get_version(recipe.recipe_id, 1, other.id)
+    with pytest.raises(RecipePermissionDeniedError):
+        await recipes.restore_version(recipe.recipe_id, 1, other.id)
+
+
+def test_chat_context_keeps_recent_twelve_messages_and_persists_older_summary(repositories):
+    _, user, food_repository, recipe_repository, chat_repository = repositories
+    recognition = create_recognition(food_repository, user.id)
+    recipe = recipe_repository.create_recipe(
+        user.id,
+        recognition.id,
+        {
+            "title": "上下文测试",
+            "summary": "测试",
+            "servings": 2,
+            "cooking_time_minutes": 10,
+            "difficulty": "简单",
+            "ingredients": [],
+            "steps": [],
+            "nutrition": {
+                "basis": "per_serving",
+                "calories_kcal": 0,
+                "protein_g": 0,
+                "fat_g": 0,
+                "carbohydrates_g": 0,
+            },
+        },
+        {"provider": "fake", "model": "fixture", "is_mock": True},
+    )
+    session = chat_repository.create_session(user.id, recipe.id)
+    for index in range(15):
+        chat_repository.save_message(
+            session.id,
+            "user" if index % 2 == 0 else "assistant",
+            f"消息 {index}",
+        )
+
+    chat_repository.refresh_context_summary(session.id, recent_limit=12)
+    summary, recent = chat_repository.get_conversation_context(session.id, recent_limit=12)
+
+    assert "消息 0" in summary
+    assert "消息 2" in summary
+    assert "消息 3" not in summary
+    assert [item["content"] for item in recent] == [f"消息 {index}" for index in range(3, 15)]
 
 
 @pytest.mark.asyncio

@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     BigInteger,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from app.database.session import Base
@@ -56,6 +57,11 @@ class User(Base):
     operation_logs = relationship("OperationLog", back_populates="user")
     models = relationship("Model", back_populates="creator")
     datasets = relationship("Dataset", back_populates="user")
+    food_model_versions = relationship(
+        "FoodModelVersion",
+        back_populates="uploader",
+        foreign_keys="FoodModelVersion.uploaded_by",
+    )
 
 
 class Role(Base):
@@ -530,6 +536,33 @@ class Recipe(Base):
     user = relationship("User", back_populates="recipes")
     recognition = relationship("FoodRecognitionTask", back_populates="recipes")
     chat_sessions = relationship("ChatSession", back_populates="recipe")
+    versions = relationship(
+        "RecipeVersion",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+        order_by="RecipeVersion.version",
+    )
+
+
+class RecipeVersion(Base):
+    """Immutable recipe snapshot created by generation, chat updates, or restores."""
+
+    __tablename__ = "recipe_versions"
+    __table_args__ = (
+        UniqueConstraint("recipe_id", "version", name="uq_recipe_versions_recipe_version"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), nullable=False, index=True)
+    version = Column(Integer, nullable=False)
+    recipe_data = Column(JSON, nullable=False)
+    change_type = Column(String(30), nullable=False, default="generated")
+    change_reason = Column(Text, nullable=True)
+    source_message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True)
+    source_version = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=now_cst)
+
+    recipe = relationship("Recipe", back_populates="versions")
 
 
 class ChatSession(Base):
@@ -548,6 +581,8 @@ class ChatSession(Base):
     title = Column(String(200), nullable=True, comment="会话标题（取第一条消息摘要）")
     status = Column(String(20), default="active", comment="状态：active/archived")
     message_count = Column(Integer, default=0, comment="消息数量")
+    context_summary = Column(Text, nullable=False, default="", server_default="")
+    summary_through_message_id = Column(Integer, nullable=True)
     last_message_at = Column(DateTime, nullable=True, index=True, comment="最后消息时间")
     created_at = Column(DateTime, default=now_cst, comment="创建时间")
     updated_at = Column(DateTime, default=now_cst, onupdate=now_cst)
@@ -587,10 +622,40 @@ class ChatMessage(Base):
     # 元信息
     tokens_used = Column(Integer, nullable=True, comment="Token 消耗量")
     latency_ms = Column(Integer, nullable=True, comment="响应耗时（毫秒）")
+    recipe_version = Column(Integer, nullable=True, comment="该回复产生的菜谱版本")
     created_at = Column(DateTime, default=now_cst, index=True, comment="创建时间")
 
     # 关联
     session = relationship("ChatSession", back_populates="messages")
+
+
+class FoodModelVersion(Base):
+    """Validated Food model package stored outside Git and activated explicitly."""
+
+    __tablename__ = "food_model_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    version = Column(String(100), unique=True, nullable=False, index=True)
+    task = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False, default="validating", index=True)
+    weights_path = Column(String(500), nullable=False)
+    classes_path = Column(String(500), nullable=False)
+    weight_sha256 = Column(String(64), nullable=False)
+    classes_sha256 = Column(String(64), nullable=False)
+    file_size = Column(BigInteger, nullable=False)
+    class_count = Column(Integer, nullable=False)
+    classes = Column(JSON, nullable=False, default=list)
+    manifest = Column(JSON, nullable=False, default=dict)
+    is_active = Column(Boolean, nullable=False, default=False, server_default="false", index=True)
+    validation_error = Column(Text, nullable=True)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    activated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=now_cst)
+    validated_at = Column(DateTime(timezone=True), nullable=True)
+    activated_at = Column(DateTime(timezone=True), nullable=True)
+
+    uploader = relationship("User", back_populates="food_model_versions", foreign_keys=[uploaded_by])
 
 
 # ══════════════════════════════════════════════════════════════

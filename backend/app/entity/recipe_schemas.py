@@ -117,7 +117,30 @@ class ChatMessageResponse(StrictSchema):
     message_id: int = Field(strict=True)
     role: Literal["user", "assistant"]
     content: str
+    recipe_version: int | None = Field(default=None, strict=True, ge=1)
     created_at: datetime
+
+
+class RecipeVersionSummary(StrictSchema):
+    version: int = Field(strict=True, ge=1)
+    title: str
+    change_type: Literal["generated", "chat_update", "restore", "backfill"]
+    change_reason: str | None = None
+    source_message_id: int | None = Field(default=None, strict=True, ge=1)
+    source_message: str | None = Field(default=None, max_length=4000)
+    source_version: int | None = Field(default=None, strict=True, ge=1)
+    is_current: bool
+    created_at: datetime
+
+
+class RecipeVersionDetail(RecipeVersionSummary):
+    recipe: RecipeGenerateResult
+
+
+class RecipeVersionList(StrictSchema):
+    recipe_id: int = Field(strict=True, ge=1)
+    current_version: int = Field(strict=True, ge=1)
+    versions: list[RecipeVersionSummary]
 
 
 class RecipeHistoryItem(StrictSchema):

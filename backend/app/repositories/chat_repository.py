@@ -66,8 +66,23 @@ class ChatRepository:
             .all()
         )
 
-    def save_message(self, session_id: int, role: str, content: str) -> ChatMessage:
-        message = ChatMessage(session_id=session_id, role=role, content=content)
+    def get_message(self, message_id: int) -> ChatMessage | None:
+        return self.db.get(ChatMessage, message_id)
+
+    def save_message(
+        self,
+        session_id: int,
+        role: str,
+        content: str,
+        *,
+        recipe_version: int | None = None,
+    ) -> ChatMessage:
+        message = ChatMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            recipe_version=recipe_version,
+        )
         session = self.db.get(ChatSession, session_id)
         if session is None:
             raise ValueError("会话不存在")
@@ -76,6 +91,50 @@ class ChatRepository:
         self.db.add(message)
         self._commit_and_refresh(message)
         return message
+
+    def attach_recipe_version(self, message_id: int, recipe_version: int) -> None:
+        message = self.db.get(ChatMessage, message_id)
+        if message is None:
+            raise ValueError("消息不存在")
+        message.recipe_version = recipe_version
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def get_conversation_context(
+        self, session_id: int, *, recent_limit: int = 12
+    ) -> tuple[str, list[dict[str, str]]]:
+        session = self.db.get(ChatSession, session_id)
+        if session is None:
+            raise ValueError("会话不存在")
+        messages = self.list_messages_for_session(session_id)
+        recent = messages[-recent_limit:]
+        return session.context_summary or "", [
+            {"role": message.role, "content": message.content} for message in recent
+        ]
+
+    def refresh_context_summary(self, session_id: int, *, recent_limit: int = 12) -> None:
+        session = self.db.get(ChatSession, session_id)
+        if session is None:
+            raise ValueError("会话不存在")
+        messages = self.list_messages_for_session(session_id)
+        older = messages[:-recent_limit]
+        if not older:
+            return
+        role_names = {"user": "用户", "assistant": "助手"}
+        lines = [
+            f"{role_names.get(message.role, message.role)}：{message.content[:240]}"
+            for message in older
+        ]
+        session.context_summary = "\n".join(lines)[-3000:]
+        session.summary_through_message_id = older[-1].id
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
     def _commit_and_refresh(self, entity) -> None:
         try:

@@ -46,6 +46,42 @@ async def list_recipe_history(
     return ApiResponse(code=200, message="success", data=history.model_dump(mode="json"))
 
 
+@router.get("/{recipe_id}/versions", response_model=ApiResponse)
+async def list_recipe_versions(
+    recipe_id: int,
+    current_user: User = Depends(get_current_user),
+    service: RecipeService = Depends(get_recipe_service),
+):
+    versions = await service.list_versions(recipe_id, current_user.id)
+    return ApiResponse(code=200, message="success", data=versions.model_dump(mode="json"))
+
+
+@router.get("/{recipe_id}/versions/{version}", response_model=ApiResponse)
+async def get_recipe_version(
+    recipe_id: int,
+    version: int,
+    current_user: User = Depends(get_current_user),
+    service: RecipeService = Depends(get_recipe_service),
+):
+    snapshot = await service.get_version(recipe_id, version, current_user.id)
+    return ApiResponse(code=200, message="success", data=snapshot.model_dump(mode="json"))
+
+
+@router.post("/{recipe_id}/versions/{version}/restore", response_model=ApiResponse)
+async def restore_recipe_version(
+    recipe_id: int,
+    version: int,
+    current_user: User = Depends(get_current_user),
+    service: RecipeService = Depends(get_recipe_service),
+):
+    recipe = await service.restore_version(recipe_id, version, current_user.id)
+    return ApiResponse(
+        code=200,
+        message=f"已恢复为新版本 v{recipe.version}",
+        data=recipe.model_dump(mode="json"),
+    )
+
+
 @router.get("/{recipe_id}", response_model=ApiResponse)
 async def get_recipe(
     recipe_id: int,

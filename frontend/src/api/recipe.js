@@ -11,6 +11,9 @@ export const RECIPE_PATHS = Object.freeze({
   create: '/recipes',
   get: (recipeId) => `/recipes/${recipeId}`,
   history: '/recipes/history',
+  versions: (recipeId) => `/recipes/${recipeId}/versions`,
+  version: (recipeId, version) => `/recipes/${recipeId}/versions/${version}`,
+  restoreVersion: (recipeId, version) => `/recipes/${recipeId}/versions/${version}/restore`,
 })
 
 export const RECIPE_GENERATION_TIMEOUT_MS = 90_000
@@ -105,6 +108,18 @@ export function getRecipe(recipeId, options = {}) {
 
 export function getRecipeHistory(params = {}) {
   return request.get(RECIPE_PATHS.history, { params })
+}
+
+export function getRecipeVersions(recipeId) {
+  return request.get(RECIPE_PATHS.versions(recipeId))
+}
+
+export function getRecipeVersion(recipeId, version) {
+  return request.get(RECIPE_PATHS.version(recipeId, version))
+}
+
+export function restoreRecipeVersion(recipeId, version) {
+  return request.post(RECIPE_PATHS.restoreVersion(recipeId, version))
 }
 
 /**
