@@ -1,12 +1,12 @@
-# 食物识别菜谱平台：API 与模块接口冻结完整版（V1.1）
+# 食物识别菜谱平台：API 与模块接口冻结完整版（V1.3）
 
 > 本文档是五天开发期间的唯一接口标准。其他计划、个人任务、代码注释或群聊内容与本文冲突时，一律以本文为准。  
 > 适用分支：`develop` 及全部个人功能分支。
-> 契约修订号：`V1.1`
-> 变更日期：`2026-07-16`
-> 主要变更：Food 识别从单图上传升级为每批 1～5 张图片；一批只创建一个 `recognition_id`。
-> 受影响模块：Food 前端、Food API、Food Service、Food Repository/ORM、canonical Food fixtures 与契约测试。
-> 迁移说明：公开 multipart 字段统一为 `images`；已有单图内部实现通过 Service Adapter 逐张调用，不长期保留 `image` 公开字段。Recipe 只读取最终 `confirmed_ingredients`，Recipe、Chat 和 SSE 契约不变。
+> 契约修订号：`V1.3`
+> 变更日期：`2026-07-20`
+> 主要变更：新增不可变菜谱版本、固定三级角色和 Food 模型注册管理；检测与整图分类共用现有 Food 请求字段。
+> 受影响模块：Recipe、Chat 上下文、Food 模型运行时、管理员 API、前端导航及数据库结构。
+> 兼容说明：既有 Food、Recipe、Chat 请求字段及 SSE 四种事件名不变；新增字段和只读/管理接口不得形成第二套主链路。
 
 ## 修订记录
 
@@ -15,6 +15,7 @@
 | V1.0 | 2026-07-14 | 每次上传 1 张图片，建立 Food → Recipe → Chat 基线契约。 |
 | V1.1 | 2026-07-16 | Food API 改为每批上传 1～5 张图片；增加逐图标识、批次大小、原子失败、聚合和存储规则。Recipe、Chat、SSE 不变。 |
 | V1.2 | 2026-07-19 | 新增只读的菜谱/会话历史、运行模型状态和 Food 数据看板接口；既有 Food、Recipe、Chat 请求字段与 SSE 事件不变。 |
+| V1.3 | 2026-07-20 | 新增 Recipe 不可变版本、会话摘要、固定三级角色、Food 模型包校验与热切换；旧检测/训练/数据集/角色 API 下线。 |
 
 ---
 
@@ -1361,7 +1362,116 @@ V1.1 不改变 Recipe、Chat 和 SSE；当前阶段任务不扩大
 
 ---
 
-# 十七、最终验收主流程
+# 十七、V1.3 增量契约
+
+## 1. 菜谱版本
+
+```text
+GET  /api/recipes/{recipe_id}/versions
+GET  /api/recipes/{recipe_id}/versions/{version}
+POST /api/recipes/{recipe_id}/versions/{version}/restore
+```
+
+- 初次生成原子保存 Recipe 与 v1 快照。
+- 只有结构化 `update_recipe` 和恢复操作创建新版本；普通问答只保存消息。
+- 快照不可变。恢复旧版本时复制内容生成新的最大版本号，不覆盖、不删除中间版本。
+- 旧数据首次访问时仅把当前 Recipe 回填为一个 `backfill` 快照，不推测已经丢失的旧版本。
+- 三个接口都按 `recipe.user_id == current_user.id` 校验所有权；管理员身份不能越过此边界。
+
+版本列表元素固定包含：
+
+```json
+{
+  "version": 2,
+  "title": "番茄炒蛋",
+  "change_type": "chat_update",
+  "change_reason": "改成三人份并少放油",
+  "source_message_id": 31,
+  "source_message": "改成三人份并且少放油",
+  "source_version": null,
+  "is_current": true,
+  "created_at": "2026-07-20T11:30:00+08:00"
+}
+```
+
+版本详情在上述字段外增加 `recipe`，其结构为既有 `RecipeGenerateResult`。恢复接口返回既有完整 `RecipeResponse`。
+
+## 2. 对话上下文与版本关联
+
+- 单条用户消息仍限制 4000 字符，不设固定会话轮数上限。
+- LLM 输入由当前菜谱、持久化会话摘要、最近 12 条消息和当前消息组成。
+- 更早消息压缩到 `chat_sessions.context_summary`；摘要维护失败不影响已经保存的回复和 `done` 事件。
+- 助手消息只有在产生菜谱快照时才返回非空 `recipe_version`。
+- SSE 仍只允许 `token`、`recipe_updated`、`done`、`error`，更新顺序仍为 `token → recipe_updated → done`。
+
+## 3. 固定三级角色
+
+产品角色只允许 `super_admin`、`admin`、`user`。公开注册固定分配 `user`；Token 中伪造角色或权限不生效，后端每次从数据库读取当前角色和账号状态。
+
+| 操作 | user | admin | super_admin |
+| --- | --- | --- | --- |
+| 本人 Food/Recipe/Chat/历史/看板 | 是 | 是 | 是 |
+| 查看用户列表、模型管理 | 否 | 是 | 是 |
+| 普通用户晋升 admin | 否 | 是 | 是 |
+| 管理 admin | 否 | 否 | 是 |
+| 通过 API 设置 super_admin | 否 | 否 | 否 |
+
+用户管理接口：
+
+```text
+GET    /api/admin/users
+GET    /api/admin/users/{user_id}
+PUT    /api/admin/users/{user_id}
+PUT    /api/admin/users/{user_id}/role
+PUT    /api/admin/users/{user_id}/status
+POST   /api/admin/users/{user_id}/reset-password
+DELETE /api/admin/users/{user_id}
+```
+
+角色变更请求只接受 `{"role":"user"}` 或 `{"role":"admin"}`。禁止删除或禁用自己；有业务数据的用户先禁用，不做自动级联删除。敏感操作写入 `operation_logs`。启动过程不得创建可预测默认账号。
+
+## 4. Food 模型注册与运行时
+
+管理员接口：
+
+```text
+GET    /api/admin/food-models
+POST   /api/admin/food-models                 multipart: package=<zip>
+POST   /api/admin/food-models/{model_id}/activate
+POST   /api/admin/food-models/rollback
+DELETE /api/admin/food-models/{model_id}
+```
+
+ZIP 根目录只允许 `best.pt`、`classes.yaml`、`manifest.json`，以及可选的 `samples/*.jpg|jpeg|png`。后端必须限制上传大小、文件数、解压总体积和压缩比例，并拒绝重复文件、符号链接、绝对路径和 `..` 路径。
+
+`manifest.json` 必填：`schema_version=1`、`name`、`version`、`task=detect|classify`、`weights_file=best.pt`、`classes_file=classes.yaml`、两个 SHA-256、`class_count`、`trained_at`；`dataset` 和 `metrics` 可选，缺失时展示真实空状态。
+
+`classes.yaml` 固定格式：
+
+```yaml
+names:
+  0:
+    class_name: tomato
+    display_name: 番茄
+```
+
+类别 ID 必须从 0 连续，英文标识不得重复，模型内嵌类别与类别表必须完全一致。上传校验通过不会自动上线；启用前重新加载并冒烟推理，成功后原子切换，失败时保留旧模型。活跃模型和最后一个健康模型不得删除。响应不得返回权重路径、环境变量或其他敏感配置。
+
+检测任务保持多目标 bbox。分类任务每张图只返回 Top-1，bbox 为整图 ROI，并在 Food 响应和模型状态中返回：
+
+```json
+{"task":"classify","localization":"full_image"}
+```
+
+检测对应 `{"task":"detect","localization":"object"}`。`image_index`、multipart `images` 和已有 Food 请求字段不变。
+
+## 5. 下线接口
+
+传统检测、模型训练、数据集管理、摄像头检测、旧 `/api/models` 和独立角色管理路由不再注册，统一返回 404。旧数据库表、历史数据和既有 migration 保留。
+
+---
+
+# 十八、最终验收主流程
 
 ```text
 1. 登录。
@@ -1381,9 +1491,9 @@ V1.1 不改变 Recipe、Chat 和 SSE；当前阶段任务不扩大
 
 ---
 
-# 十八、冻结规则
+# 十九、冻结规则
 
-本文当前修订号为 V1.2。V1.0 为单图上传；V1.1 为多图上传；V1.2 增加只读历史、运行模型状态和 Food 数据展示接口。既有 Food、Recipe、Chat 请求字段与 SSE 事件在 V1.2 中不变。
+本文当前修订号为 V1.3。V1.0 为单图上传；V1.1 为多图上传；V1.2 增加只读历史、运行模型状态和 Food 数据展示接口；V1.3 增加不可变菜谱版本、固定三级角色和 Food 模型注册管理。既有 Food、Recipe、Chat 请求字段与 SSE 四种事件名保持不变。
 
 只有以下情况允许修改：
 
