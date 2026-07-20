@@ -1,14 +1,14 @@
-# Recipe 版本与 Food 模型注册 Migration 交接
+# Recipe 版本与 Food 模型注册 Migration 记录
 
 日期：2026-07-20
 目标分支：`codex/recipe-versions-model-admin`
-数据库 owner：绕家辉
+执行授权：项目负责人于 2026-07-20 明确授权 Codex 执行
 
 ## 当前状态
 
-ORM、Repository、Service、API 和测试已经按本文件所列结构实现。依据仓库 `AGENTS.md`，本次没有创建或修改 `backend/alembic/versions/`。数据库 owner 合入单链 migration 前，新版 Docker 可以构建和启动，但调用菜谱版本或 Food 模型注册业务会因缺表/缺列失败，因此不得宣称新版 Docker 业务验收通过。
+Migration `5d14fc303d6d_add_recipe_versions_and_food_model_.py` 已创建，父 revision 为 `a7e1c9f42d6b`，迁移链保持单一 head。自动生成候选中出现的旧表索引、注释、外键和 `users.is_superuser` 等无关漂移均已人工移除。
 
-2026-07-20 本机复核结果：`alembic heads` 与 `alembic current` 均为单一 `a7e1c9f42d6b (head)`；现有数据库尚无 `recipe_versions`、`food_model_versions`，也尚无下文列出的三个新增列。为保护当前演示数据，本轮没有用新版后端重建正在运行的容器。
+迁移先在由正式本地库备份恢复出的 `visagent_migration_test` 上完成 `upgrade -> downgrade -> upgrade`，再升级正式本地库。验证期间 19 个用户、21 条菜谱和 20 个会话数量保持不变，既有会话的 `context_summary` 无空值。
 
 ## 结构变更
 
@@ -76,17 +76,16 @@ ORM、Repository、Service、API 和测试已经按本文件所列结构实现�
 4. 不推测 v1 到当前版本之间已经丢失的内容。
 5. 不删除旧角色、旧检测/训练/数据集表及其历史数据。
 
-## Owner 操作与复核
+## 验证与部署结果
 
-从 `backend/` 执行，并先确认目标为允许操作的本地/测试库：
+已完成：
 
-```powershell
-uv run alembic current
-uv run alembic heads
-uv run alembic revision --autogenerate -m "add recipe versions and food model registry"
-uv run alembic upgrade head
-uv run alembic current
-uv run pytest
-```
+- 独立数据库首次升级到 `5d14fc303d6d`。
+- 独立数据库降级到 `a7e1c9f42d6b`，新增表和列均被撤销，旧数据数量不变。
+- 独立数据库再次升级到 `5d14fc303d6d`。
+- 正式本地库升级到 `5d14fc303d6d`。
+- backend/frontend 镜像重建并强制重建容器。
+- `alembic heads` 与 `alembic current` 均为 `5d14fc303d6d (head)`。
+- backend、frontend、PostgreSQL、Redis、MinIO 均运行正常。
 
-Owner 需要人工复核：单一 head、部分唯一索引、server default、upgrade/downgrade 顺序、FK 创建顺序，以及 downgrade 是否会明确丢弃新版本数据。migration 文件应由数据库 owner 单独提交，本交接不代替该提交。
+降级会删除新版本快照与模型注册数据，只用于迁移验证或明确回滚；生产回滚前仍须单独备份数据库与模型注册命名卷。

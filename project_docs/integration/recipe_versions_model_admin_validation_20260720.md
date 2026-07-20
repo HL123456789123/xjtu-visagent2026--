@@ -6,9 +6,9 @@
 
 ## 结论
 
-菜谱不可变版本、对话上下文恢复、三级角色、用户管理、Food 模型注册与安全切换、用户端精简和分享弹窗已经完成代码与自动化验证。Compose 配置和应用镜像构建通过。
+菜谱不可变版本、对话上下文恢复、三级角色、用户管理、Food 模型注册与安全切换、用户端精简和分享弹窗已经完成代码与自动化验证。单链 Alembic migration 已通过独立数据库的升级、降级、再升级验证，正式本地数据库已升级，新版 Docker 已运行。
 
-数据库 owner 尚未生成新结构的单链 Alembic migration，因此没有重建当前业务后端，也没有宣称新版 Docker 业务链路或最终发布通过。完成 migration 后必须再执行 Mock/Fake、YOLO Detect/Real LLM、分类模型、热切换和重启持久化复验。
+运行配置确认为 `FOOD_PROVIDER=yolo`、`LLM_MODE=real`，LLM Key 仅确认已配置且未显示。本轮部署后只执行了不调用 LLM 的只读和权限冒烟，因此仍不得把它写成完整 Real LLM 业务验收或最终发布通过。
 
 ## 修改前备份
 
@@ -16,6 +16,11 @@
 - Git bundle SHA-256：`7B053ABE6183BD4CF32553C0B9FCFB15E8507794DFE8DAE2E5BBA498FEE8BF02`
 - PostgreSQL 逻辑备份 SHA-256：`7BBD3802719B8371D9B9B5730C46B1B280A9C554C34EA654216B4C06F1E514C4`
 - 备份未包含 `.env`、API Key、Token、模型权重或训练集。
+
+正式迁移前再次备份到 `D:\bytecreek\backups\visagent\20260720-124538-premigration`：
+
+- Git bundle SHA-256：`BE4FFCB6A24C662E404F6210677302AD02B6B4F17B21BE4CC6D4980E38FE3307`
+- PostgreSQL 逻辑备份 SHA-256：`76857402593183DF9C0B0F31E9D9A5F488EC346B2A30E636546A3D8A72209E8B`
 
 ## 自动化验证
 
@@ -27,7 +32,10 @@
 | 前端生产构建 | `frontend/`：`bun run build` | 通过 |
 | Compose 配置 | `docker compose -p visagent-history-dev config --quiet` | 通过 |
 | 应用镜像构建 | `docker compose -p visagent-history-dev build backend frontend` | 通过，约 15 秒 |
-| Alembic | `heads` / `current` | 均为单一 `a7e1c9f42d6b (head)` |
+| Alembic | `heads` / `current` | 均为单一 `5d14fc303d6d (head)` |
+| Migration 往返 | 独立数据库 `upgrade -> downgrade -> upgrade` | 通过，最终为 `5d14fc303d6d (head)` |
+| 正式本地库 | `alembic upgrade head` | 通过，`5d14fc303d6d (head)` |
+| 部署后 API | 注册、登录、模型状态、历史空态、管理员 API | 通过，普通用户管理员 API 为 403 |
 
 构建警告仅包括第三方 VueUse pure annotation 和前端大分包提示。测试中的 Element Plus 未注册组件提示来自浅挂载环境，不影响测试结果或生产构建。
 
@@ -48,15 +56,13 @@
 - 已检查普通用户桌面与 390px 移动视口，页面宽度无横向溢出。
 - 已检查模型管理和用户管理管理员页面。
 - 视觉检查使用的随机临时管理员及其审计日志已删除，未记录密码。
-- 当前五服务仍保持运行，没有停止服务或删除命名卷。
+- 当前五服务均保持运行，backend/frontend 已切换为新版镜像，没有删除命名卷。
 
 ## 待复验项
 
-1. 数据库 owner 按交接文档创建并复核单链 migration。
-2. 在允许操作的数据库执行 `upgrade head`，确认新增表、列、约束和部分唯一索引。
-3. 用标准模型 ZIP 验证上传、冒烟、启用、回滚、删除和重启持久化。
-4. 完成 Mock/Fake 与 YOLO Detect/Real LLM 两轮业务链路。
-5. 新分类权重交付后，验证单图 Top-1 和整图分类提示。
+1. 用标准模型 ZIP 验证上传、冒烟、启用、回滚、删除和重启持久化。
+2. 完成一次 YOLO Detect/Real LLM 菜谱生成与结构化对话更新业务链路。
+3. 新分类权重交付后，验证单图 Top-1 和整图分类提示。
 
 ## Git 与敏感信息
 
