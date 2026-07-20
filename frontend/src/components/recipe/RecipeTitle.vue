@@ -11,16 +11,16 @@
     </p>
     <dl class="recipe-title__meta">
       <div>
-        <dt>份数</dt>
-        <dd data-testid="recipe-servings">{{ recipe.servings ?? '-' }} 人份</dd>
+        <dt class="sr-only">用餐人数</dt>
+        <dd data-testid="recipe-servings">适合 {{ recipe.servings ?? '-' }} 人食用</dd>
       </div>
       <div>
-        <dt>耗时</dt>
-        <dd data-testid="recipe-cooking-time">{{ recipe.cooking_time_minutes ?? '-' }} 分钟</dd>
+        <dt class="sr-only">预计用时</dt>
+        <dd data-testid="recipe-cooking-time">预计用时 {{ recipe.cooking_time_minutes ?? '-' }} 分钟</dd>
       </div>
       <div>
-        <dt>难度</dt>
-        <dd data-testid="recipe-difficulty">{{ recipe.difficulty || '-' }}</dd>
+        <dt class="sr-only">难度</dt>
+        <dd data-testid="recipe-difficulty">难度 {{ recipe.difficulty || '-' }}</dd>
       </div>
     </dl>
   </header>
@@ -104,5 +104,17 @@ defineProps({
     font-size: 14px;
     font-weight: 800;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

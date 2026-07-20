@@ -1,9 +1,13 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import RecipeCard from '../RecipeCard.vue'
 import { recipeSuccessFixture, recipeEmptyFixture } from '@/fixtures/recipe'
 
 describe('RecipeCard', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+    document.body.style.overflow = ''
+  })
   it('renders loading state', () => {
     const wrapper = mount(RecipeCard, {
       props: { recipe: {}, loading: true },
@@ -72,7 +76,7 @@ describe('RecipeCard', () => {
     // Meta
     expect(wrapper.find('[data-testid="recipe-servings"]').text()).toContain('2')
     expect(wrapper.find('[data-testid="recipe-cooking-time"]').text()).toContain('20')
-    expect(wrapper.find('[data-testid="recipe-difficulty"]').text()).toBe('简单')
+    expect(wrapper.find('[data-testid="recipe-difficulty"]').text()).toBe('难度 简单')
 
     // Ingredients
     const ingredients = wrapper.findAll('[data-testid="ingredient-item"]')
@@ -128,14 +132,16 @@ describe('RecipeCard', () => {
   it('opens an editable Xiaohongshu share draft without publishing anything', async () => {
     const wrapper = mount(RecipeCard, {
       props: { recipe: recipeSuccessFixture },
+      attachTo: document.body,
     })
 
     await wrapper.find('[data-testid="recipe-open-xiaohongshu-share"]').trigger('click')
 
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="xiaohongshu-draft"]').element.value).toContain('番茄炒蛋')
-    expect(wrapper.find('[data-testid="xiaohongshu-draft"]').element.value).toContain('#今日菜谱')
-    expect(wrapper.text()).toContain('复制文案')
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(document.querySelector('[data-testid="xiaohongshu-title"]').value).toBe('番茄炒蛋')
+    expect(document.querySelector('[data-testid="xiaohongshu-tags"]').value).toContain('#今日菜谱')
+    expect(document.body.textContent).toContain('复制全部')
+    expect(document.body.style.overflow).toBe('hidden')
   })
 
   it('can show the share action without rendering a duplicate chat action', () => {

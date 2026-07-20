@@ -74,6 +74,8 @@ describe('FoodRecipePage', () => {
           recognition_id: 12,
           provider: 'mock',
           model_version: 'food-mock-v1',
+          task: 'classify',
+          localization: 'full_image',
           images: [{ image_index: 0, image_url: '/food/12/0' }],
           ingredients: [],
           confirmed_ingredients: [
@@ -86,22 +88,14 @@ describe('FoodRecipePage', () => {
     const wrapper = mount(FoodRecipePage, { props: { recipeId: 101 } })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('可以生成菜谱啦～')
     expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(1)
     expect(wrapper.find('[data-testid="ingredient-name"]').element.value).toBe('egg')
-    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('1 项')
+    expect(wrapper.text()).toContain('食材都确认好啦，可以生成菜谱啦～')
+    expect(wrapper.text()).toContain('当前为整图分类模式')
   })
 
-  it('lets a user accept recipe suggestions into confirmed ingredients', async () => {
-    const confirm = vi.fn().mockResolvedValue({
-      data: {
-        recognition_id: 12,
-        confirmed_ingredients: [
-          { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
-          { name: '土豆', class_name: null, quantity: 2, unit: '个', source: 'manual' },
-        ],
-      },
-    })
+  it('does not present recipe suggestions as owned ingredients', async () => {
     setRecipeApiClient({
       get: vi.fn().mockResolvedValue({
         data: {
@@ -143,28 +137,13 @@ describe('FoodRecipePage', () => {
           ],
         },
       }),
-      confirm,
     })
 
     const wrapper = mount(FoodRecipePage, { props: { recipeId: 101 } })
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="recipe-suggestions"]').text()).toContain('土豆')
-    await wrapper.find('[data-testid="recipe-suggestions"] button').trigger('click')
-    await flushPromises()
-
-    expect(confirm).toHaveBeenCalledWith(
-      {
-        recognitionId: 12,
-        ingredients: [
-          { name: '番茄', class_name: 'tomato', quantity: 1, unit: '个', source: 'model' },
-          { name: '土豆', class_name: null, quantity: 2, unit: '个', source: 'manual' },
-        ],
-      },
-      {},
-    )
-    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
     expect(wrapper.find('[data-testid="recipe-suggestions"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('纳入本次食材')
   })
 
   it('runs the supplied recognition flow and emits the recipe contract after confirmation', async () => {
@@ -186,13 +165,13 @@ describe('FoodRecipePage', () => {
 
     expect(wrapper.find('[data-testid="mock-scenario"]').exists()).toBe(false)
     await selectImages(wrapper, [makeImageFile('breakfast.jpg'), makeImageFile('vegetables.jpg')])
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('selecting')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('图片已选好')
     expect(wrapper.find('[data-testid="selecting-state"]').text()).toContain('2 张图片')
 
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('recognized')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('请确认食材')
     const ingredientNames = wrapper
       .findAll('[data-testid="ingredient-name"]')
       .map((input) => input.element.value)
@@ -201,11 +180,10 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('confirmed')
-    expect(wrapper.find('[data-testid="summary-recognition-id"]').text()).toBe('12')
-    expect(wrapper.find('[data-testid="summary-confirmed-count"]').text()).toBe('2 项')
-    expect(wrapper.find('[data-testid="summary-image-count"]').text()).toBe('2 张')
-    expect(wrapper.find('[data-testid="recipe-flow-recognition-id"]').text()).toContain('12')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('可以生成菜谱啦～')
+    expect(wrapper.text()).toContain('食材都确认好啦，可以生成菜谱啦～')
+    expect(wrapper.text()).not.toContain('recognition_id')
+    expect(wrapper.text()).not.toContain('model_version')
     expect(wrapper.emitted('confirmed')?.[0][0]).toEqual({
       recognition_id: 12,
       confirmed_ingredients: [
@@ -244,7 +222,7 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('recognized')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('请确认食材')
     expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="ingredient-empty"]').exists()).toBe(true)
 
@@ -264,7 +242,7 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('请重试')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('识别服务不可用')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('食物识别服务暂不可用')
   })
@@ -281,7 +259,7 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('请重试')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片过大')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('单张图片不能超过 10 MB')
 
@@ -289,7 +267,7 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('请重试')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('图片格式不支持')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('JPG、JPEG 或 PNG')
   })
@@ -304,7 +282,7 @@ describe('FoodRecipePage', () => {
     await wrapper.find('[data-testid="start-recognition"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('error')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('请重试')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('网络连接失败')
     expect(wrapper.find('[data-testid="error-state"]').text()).toContain('后端服务不可达')
   })

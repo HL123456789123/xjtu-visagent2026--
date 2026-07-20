@@ -14,7 +14,7 @@
         <div class="food-recipe-page__steps-line"></div>
       </div>
       <span class="food-recipe-page__state-badge" data-testid="workflow-state">
-        {{ workflowState }}
+        {{ workflowStateText }}
       </span>
     </div>
 
@@ -22,10 +22,7 @@
       <aside class="food-recipe-page__left">
         <div id="upload-panel" class="food-recipe-page__panel food-recipe-page__panel--upload">
           <header class="food-recipe-page__panel-header">
-            <div>
-              <span>Step 01</span>
-              <h2>上传食物照片</h2>
-            </div>
+            <h2>上传食物照片</h2>
           </header>
 
           <FoodImageUploader
@@ -52,19 +49,6 @@
           </button>
         </div>
 
-        <div class="food-recipe-page__panel food-recipe-page__panel--guide">
-          <span class="food-recipe-page__panel-kicker">小厨房流程</span>
-          <ul class="food-recipe-page__step-list">
-            <li v-for="step in workflowSteps" :key="step.key" :class="{ active: step.activeStates.includes(workflowState) }">
-              <span>{{ step.no }}</span>
-              <div>
-                <strong>{{ step.title }}</strong>
-                <small>{{ step.description }}</small>
-              </div>
-            </li>
-          </ul>
-          <p class="food-recipe-page__tip">如果识别不完整，可以手动补充食材，适合冰箱清库存和日常备餐。</p>
-        </div>
       </aside>
 
       <section class="food-recipe-page__right">
@@ -103,14 +87,14 @@
             @confirm="handleConfirm"
           />
 
+          <p v-if="recognitionMeta.task === 'classify'" class="food-recipe-page__mode-note">
+            当前为整图分类模式，每张图片识别一个主要食材。多食材照片请联系管理员切换检测模型。
+          </p>
+
           <RecognitionSummary
             :recognition-id="recognitionId"
             :confirmed-ingredients="confirmedIngredients"
             :status="workflowState"
-            :provider="recognitionMeta.provider"
-            :model-version="recognitionMeta.modelVersion"
-            :image-count="recognizedImageCount"
-            :source-image-names="selectedImageNames"
             @generate-recipe="generateRecipeFromRecognition"
           />
 
@@ -120,18 +104,12 @@
             data-testid="recipe-flow"
           >
             <header class="food-recipe-page__recipe-header">
-              <div>
-                <span>Recipe Flow</span>
-                <h2>菜谱生成结果</h2>
-              </div>
-              <strong data-testid="recipe-flow-recognition-id">
-                recognition_id: {{ recognitionId }}
-              </strong>
+              <h2>菜谱生成结果</h2>
             </header>
 
             <div class="food-recipe-page__preferences" data-testid="recipe-preferences">
               <label>
-                <span>份数</span>
+                <span>用餐人数</span>
                 <input
                   v-model.number="recipePreferences.servings"
                   type="number"
@@ -141,7 +119,7 @@
                 />
               </label>
               <label>
-                <span>口味</span>
+                <span>口味偏好</span>
                 <input
                   v-model.trim="recipePreferences.taste"
                   type="text"
@@ -150,7 +128,7 @@
                 />
               </label>
               <label>
-                <span>最长时间</span>
+                <span>希望多久做好</span>
                 <input
                   v-model.number="recipePreferences.max_time_minutes"
                   type="number"
@@ -160,7 +138,7 @@
                 />
               </label>
               <label>
-                <span>忌口</span>
+                <span>不吃或忌口</span>
                 <input
                   v-model.trim="avoidIngredientsText"
                   type="text"
@@ -177,35 +155,6 @@
               :show-chat-action="false"
               @retry="generateRecipeFromRecognition"
             />
-            <section
-              v-if="suggestedIngredients.length"
-              class="food-recipe-page__suggestions"
-              data-testid="recipe-suggestions"
-            >
-              <header>
-                <span>Recipe Update</span>
-                <h3>建议补充食材</h3>
-              </header>
-              <p>这些食材来自当前菜谱建议，不会自动视为你已拥有的食材。</p>
-              <ul>
-                <li v-for="ingredient in suggestedIngredients" :key="ingredient.name">
-                  <div>
-                    <strong>{{ ingredient.name }}</strong>
-                    <small>{{ ingredient.amount }} {{ ingredient.unit }}</small>
-                  </div>
-                  <button
-                    type="button"
-                    :disabled="suggestionSavingName === ingredient.name"
-                    @click="acceptSuggestedIngredient(ingredient)"
-                  >
-                    {{ suggestionSavingName === ingredient.name ? '正在加入…' : '纳入本次食材' }}
-                  </button>
-                </li>
-              </ul>
-              <p v-if="suggestionError" class="food-recipe-page__suggestions-error">
-                {{ suggestionError }}
-              </p>
-            </section>
             <ChatPage
               v-if="generatedRecipe?.recipe_id"
               :recipe-id="generatedRecipe.recipe_id"
@@ -220,13 +169,12 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { confirmFoodIngredients, normalizeRecognitionId, unwrapFoodApiData } from '@/api/food'
+import { normalizeRecognitionId } from '@/api/food'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
 import IngredientEditor from '@/components/food/IngredientEditor.vue'
 import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
 import RecipeCard from '@/components/recipe/RecipeCard.vue'
 import ChatPage from '@/views/ChatPage.vue'
-import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
 import { createRecipe, getRecipe, unwrapRecipeApiData } from '@/api/recipe'
 import { useFoodRecognitionWorkflow } from '@/composables/useFoodRecognitionWorkflow'
 
@@ -242,8 +190,6 @@ const emit = defineEmits(['confirmed', 'recipe-requested'])
 const generatedRecipe = ref(null)
 const recipeLoading = ref(false)
 const recipeError = ref(null)
-const suggestionSavingName = ref('')
-const suggestionError = ref('')
 const avoidIngredientsText = ref('')
 const recipePreferences = ref({
   servings: 2,
@@ -256,8 +202,6 @@ function resetRecipeFlow() {
   generatedRecipe.value = null
   recipeError.value = null
   recipeLoading.value = false
-  suggestionSavingName.value = ''
-  suggestionError.value = ''
 }
 
 const {
@@ -266,13 +210,11 @@ const {
   confThreshold,
   recognizedIngredients,
   confirmedIngredients,
-  recognizedImageCount,
   recognitionId,
   errorState,
   recognitionMeta,
   isBusy,
   busyText,
-  selectedImageNames,
   selectedImageText,
   handleConfirm,
   handleFileSelected,
@@ -312,53 +254,15 @@ const workflowSteps = [
 const showRecipeFlow = computed(
   () => workflowState.value === 'confirmed' || recipeLoading.value || generatedRecipe.value || recipeError.value
 )
-const confirmedIngredientNames = computed(
-  () => new Set(confirmedIngredients.value.map((ingredient) => normalizeIngredientName(ingredient.name)))
-)
-const suggestedIngredients = computed(() =>
-  (generatedRecipe.value?.ingredients || []).filter((ingredient) => {
-    const name = normalizeIngredientName(ingredient.name)
-    return name && !confirmedIngredientNames.value.has(name)
-  })
-)
-
-function normalizeIngredientName(value) {
-  return String(value || '').trim().toLowerCase()
-}
-
-async function acceptSuggestedIngredient(ingredient) {
-  const name = String(ingredient?.name || '').trim()
-  if (!name || !recognitionId.value || suggestionSavingName.value) return
-
-  suggestionSavingName.value = name
-  suggestionError.value = ''
-  const nextIngredients = [
-    ...confirmedIngredients.value,
-    {
-      name,
-      class_name: null,
-      quantity: Number(ingredient.amount) > 0 ? Number(ingredient.amount) : 1,
-      unit: String(ingredient.unit || '份').trim() || '份',
-      source: 'manual',
-    },
-  ]
-
-  try {
-    const response = await confirmFoodIngredients(recognitionId.value, nextIngredients)
-    const payload = unwrapFoodApiData(response)
-    const updatedIngredients = payload.confirmed_ingredients || nextIngredients
-    confirmedIngredients.value = updatedIngredients
-    recognizedIngredients.value = mapCandidatesToEditableIngredients(updatedIngredients)
-    emit('confirmed', {
-      recognition_id: normalizeRecognitionId(payload.recognition_id) || recognitionId.value,
-      confirmed_ingredients: updatedIngredients,
-    })
-  } catch (error) {
-    suggestionError.value = normalizeRecipeError(error).message
-  } finally {
-    suggestionSavingName.value = ''
-  }
-}
+const workflowStateText = computed(() => ({
+  idle: '等待上传',
+  selecting: '图片已选好',
+  uploading: '正在识别',
+  recognized: '请确认食材',
+  confirming: '正在保存',
+  confirmed: '可以生成菜谱啦～',
+  error: '请重试',
+}[workflowState.value] || '准备中'))
 
 function buildRecipePreferences() {
   const avoidIngredients = avoidIngredientsText.value
@@ -393,7 +297,7 @@ async function generateRecipeFromRecognition(payload = {}) {
     recipeError.value = {
       status: 422,
       code: 'BAD_REQUEST',
-      message: '缺少有效的 recognition_id，无法生成菜谱。',
+      message: '当前识别记录无效，请重新识别并确认食材。',
     }
     return
   }
@@ -632,9 +536,7 @@ onMounted(() => {
     radial-gradient(circle at 0 0, rgba(255, 202, 97, 0.32), transparent 42%);
 }
 
-.food-recipe-page__eyebrow,
-.food-recipe-page__panel-kicker,
-.food-recipe-page__panel-header span {
+.food-recipe-page__eyebrow {
   color: #b56a26;
   font-size: 11px;
   font-weight: 800;
@@ -704,81 +606,6 @@ onMounted(() => {
   }
 }
 
-/* ---- 引导面板 ---- */
-.food-recipe-page__panel--guide {
-  h2 {
-    display: none;
-  }
-}
-
-.food-recipe-page__step-list {
-  display: grid;
-  gap: 8px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-
-  li {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    border: 1px solid rgba(121, 82, 45, 0.1);
-    border-radius: 16px;
-    padding: 10px 12px;
-    background: rgba(255, 252, 245, 0.72);
-    transition: transform 0.2s ease, background-color 0.2s ease;
-
-    &.active {
-      transform: translateX(3px);
-      border-color: rgba(233, 109, 59, 0.28);
-      background: #fff1d2;
-
-      > span {
-        background: #e96d3b;
-        color: #fffaf0;
-      }
-    }
-  }
-
-  li > span {
-    display: inline-flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: #f7db9a;
-    color: #7c4c20;
-    font-size: 11px;
-    font-weight: 900;
-  }
-
-  strong {
-    display: block;
-    color: #3a2a1d;
-    font-size: 13px;
-  }
-
-  small {
-    display: block;
-    margin-top: 2px;
-    color: #8a6a50;
-    font-size: 11px;
-    line-height: 1.5;
-  }
-}
-
-.food-recipe-page__tip {
-  margin: 10px 0 0;
-  border-radius: 14px;
-  background: rgba(131, 170, 83, 0.12);
-  color: #6b7040;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 /* ---- 状态占位 ---- */
 .food-recipe-page__empty,
 .food-recipe-page__loading,
@@ -841,96 +668,6 @@ onMounted(() => {
   padding-top: 24px;
 }
 
-.food-recipe-page__suggestions {
-  display: grid;
-  gap: 10px;
-  border-left: 3px solid #89a94f;
-  background: rgba(239, 248, 214, 0.48);
-  padding: 14px 16px;
-
-  header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  header span {
-    color: #718336;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
-  h3,
-  p {
-    margin: 0;
-  }
-
-  h3 {
-    color: #3a2a1d;
-    font-size: 17px;
-  }
-
-  p {
-    color: #6f654e;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
-  ul {
-    display: grid;
-    gap: 8px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-top: 1px solid rgba(113, 131, 54, 0.16);
-    padding-top: 8px;
-  }
-
-  li div {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-  }
-
-  li strong {
-    color: #3a2a1d;
-  }
-
-  li small {
-    color: #718336;
-  }
-
-  button {
-    min-height: 32px;
-    border: 1px solid rgba(113, 131, 54, 0.42);
-    border-radius: 6px;
-    background: #fffef7;
-    color: #587020;
-    cursor: pointer;
-    font-weight: 700;
-    padding: 6px 10px;
-
-    &:disabled {
-      cursor: wait;
-      opacity: 0.55;
-    }
-  }
-}
-
-.food-recipe-page__suggestions-error {
-  color: #c44b37 !important;
-}
-
 .food-recipe-page__recipe-header {
   display: flex;
   align-items: center;
@@ -960,6 +697,16 @@ onMounted(() => {
     padding: 8px 14px;
     font-size: 13px;
   }
+}
+
+.food-recipe-page__mode-note {
+  margin: 12px 0 0;
+  border-left: 3px solid #d99a2b;
+  background: #fff6df;
+  color: #765b36;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .food-recipe-page__preferences {

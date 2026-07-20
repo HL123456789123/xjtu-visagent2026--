@@ -22,7 +22,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
   const recognizedImageCount = ref(0)
   const recognitionId = ref('')
   const errorState = ref({ status: null, title: '', message: '' })
-  const recognitionMeta = ref({ provider: '', modelVersion: '' })
+  const recognitionMeta = ref({ provider: '', modelVersion: '', task: 'detect', localization: 'object' })
 
   const isBusy = computed(() => workflowState.value === 'uploading' || workflowState.value === 'confirming')
   const busyText = computed(() =>
@@ -68,7 +68,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     recognizedImageCount.value = 0
     recognitionId.value = ''
     errorState.value = { status: null, title: '', message: '' }
-    recognitionMeta.value = { provider: '', modelVersion: '' }
+    recognitionMeta.value = { provider: '', modelVersion: '', task: 'detect', localization: 'object' }
     resetFoodRecipeFlow()
     if (selectedFiles.value.length === 0) workflowState.value = 'idle'
   }
@@ -104,6 +104,8 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     recognitionMeta.value = {
       provider: payload.provider,
       modelVersion: payload.model_version,
+      task: payload.task || 'detect',
+      localization: payload.localization || 'object',
     }
     recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
     confirmedIngredients.value = []
@@ -166,6 +168,8 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     recognitionMeta.value = {
       provider: recognition.provider,
       modelVersion: recognition.model_version,
+      task: recognition.task || 'detect',
+      localization: recognition.localization || 'object',
     }
     const restoredConfirmedIngredients = recognition.confirmed_ingredients || []
     recognizedIngredients.value = mapCandidatesToEditableIngredients(
