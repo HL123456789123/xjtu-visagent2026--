@@ -1,22 +1,6 @@
 <template>
   <main class="food-recipe-page">
-    <div class="food-recipe-page__toolbar">
-      <div class="food-recipe-page__steps">
-        <div
-          v-for="step in workflowSteps"
-          :key="step.key"
-          class="food-recipe-page__step"
-          :class="{ active: step.activeStates.includes(workflowState) }"
-        >
-          <span>{{ step.no }}</span>
-          <strong>{{ step.title }}</strong>
-        </div>
-        <div class="food-recipe-page__steps-line"></div>
-      </div>
-      <span class="food-recipe-page__state-badge" data-testid="workflow-state">
-        {{ workflowStateText }}
-      </span>
-    </div>
+    <FoodWorkflowHeader :workflow-state="workflowState" />
 
     <section class="food-recipe-page__body">
       <aside class="food-recipe-page__left">
@@ -98,86 +82,23 @@
             @generate-recipe="generateRecipeFromRecognition"
           />
 
-          <section
+          <RecipeWorkspace
             v-if="showRecipeFlow"
-            class="food-recipe-page__recipe-flow"
-            data-testid="recipe-flow"
-          >
-            <header class="food-recipe-page__recipe-header">
-              <h2>菜谱生成结果</h2>
-            </header>
-
-            <div class="food-recipe-page__preferences" data-testid="recipe-preferences">
-              <label>
-                <span>用餐人数</span>
-                <input
-                  v-model.number="recipePreferences.servings"
-                  type="number"
-                  min="1"
-                  max="10"
-                  :disabled="recipeLoading"
-                />
-              </label>
-              <label>
-                <span>口味偏好</span>
-                <input
-                  v-model.trim="recipePreferences.taste"
-                  type="text"
-                  maxlength="20"
-                  :disabled="recipeLoading"
-                />
-              </label>
-              <label>
-                <span>希望多久做好</span>
-                <input
-                  v-model.number="recipePreferences.max_time_minutes"
-                  type="number"
-                  min="5"
-                  max="180"
-                  :disabled="recipeLoading"
-                />
-              </label>
-              <label>
-                <span>不吃或忌口</span>
-                <input
-                  v-model.trim="avoidIngredientsText"
-                  type="text"
-                  placeholder="例如：香菜, 辣椒"
-                  :disabled="recipeLoading"
-                />
-              </label>
-            </div>
-
-            <RecipeCard
-              :recipe="generatedRecipe"
-              :loading="recipeLoading"
-              :error="recipeError"
-              :available-versions="recipeVersions"
-              :selected-version="selectedRecipeVersion"
-              :version-loading="versionLoading"
-              :show-chat-action="false"
-              @retry="generateRecipeFromRecognition"
-              @version-change="selectRecipeVersion"
-            />
-            <div
-              v-if="isViewingHistoricalVersion"
-              class="food-recipe-page__version-note"
-              data-testid="historical-version-note"
-            >
-              <span>正在查看 v{{ selectedRecipeVersion }}，历史内容不会被改写。</span>
-              <button type="button" data-testid="return-current-version" @click="selectRecipeVersion(currentRecipeVersion)">
-                返回当前 v{{ currentRecipeVersion }}
-              </button>
-            </div>
-            <p v-if="versionError" class="food-recipe-page__version-error" data-testid="recipe-version-error">
-              {{ versionError }}
-            </p>
-            <ChatPage
-              v-if="generatedRecipe?.recipe_id && !isViewingHistoricalVersion"
-              :recipe-id="generatedRecipe.recipe_id"
-              @recipe-updated="refreshGeneratedRecipe"
-            />
-          </section>
+            v-model:preferences="recipePreferences"
+            v-model:avoid-ingredients-text="avoidIngredientsText"
+            :recipe="generatedRecipe"
+            :loading="recipeLoading"
+            :error="recipeError"
+            :versions="recipeVersions"
+            :current-version="currentRecipeVersion"
+            :selected-version="selectedRecipeVersion"
+            :version-loading="versionLoading"
+            :version-error="versionError"
+            :is-historical-version="isViewingHistoricalVersion"
+            @retry="generateRecipeFromRecognition"
+            @version-change="selectRecipeVersion"
+            @recipe-updated="refreshGeneratedRecipe"
+          />
         </template>
       </section>
     </section>
@@ -185,21 +106,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { normalizeRecognitionId } from '@/api/food'
+import { onMounted, watch } from 'vue'
 import FoodImageUploader from '@/components/food/FoodImageUploader.vue'
+import FoodWorkflowHeader from '@/components/food/FoodWorkflowHeader.vue'
 import IngredientEditor from '@/components/food/IngredientEditor.vue'
 import RecognitionSummary from '@/components/food/RecognitionSummary.vue'
-import RecipeCard from '@/components/recipe/RecipeCard.vue'
-import ChatPage from '@/views/ChatPage.vue'
-import {
-  createRecipe,
-  getRecipe,
-  getRecipeVersion,
-  getRecipeVersions,
-  unwrapRecipeApiData,
-} from '@/api/recipe'
+import RecipeWorkspace from '@/components/recipe/RecipeWorkspace.vue'
 import { useFoodRecognitionWorkflow } from '@/composables/useFoodRecognitionWorkflow'
+import { useRecipeWorkflow } from '@/composables/useRecipeWorkflow'
 
 const props = defineProps({
   recipeId: {
@@ -210,31 +124,7 @@ const props = defineProps({
 
 const emit = defineEmits(['confirmed', 'recipe-requested'])
 
-const generatedRecipe = ref(null)
-const recipeLoading = ref(false)
-const recipeError = ref(null)
-const recipeVersions = ref([])
-const currentRecipeVersion = ref(null)
-const selectedRecipeVersion = ref(null)
-const versionLoading = ref(false)
-const versionError = ref('')
-const avoidIngredientsText = ref('')
-const recipePreferences = ref({
-  servings: 2,
-  taste: '家常',
-  max_time_minutes: 30,
-  avoid_ingredients: [],
-})
-
-function resetRecipeFlow() {
-  generatedRecipe.value = null
-  recipeError.value = null
-  recipeLoading.value = false
-  recipeVersions.value = []
-  currentRecipeVersion.value = null
-  selectedRecipeVersion.value = null
-  versionError.value = ''
-}
+let recipeWorkflow
 
 const {
   workflowState,
@@ -255,196 +145,39 @@ const {
   setValidationError,
   startRecognition,
 } = useFoodRecognitionWorkflow({
-  resetRecipeFlow,
+  resetRecipeFlow: () => recipeWorkflow?.resetRecipeFlow(),
   onConfirmed: (payload) => emit('confirmed', payload),
 })
 
-const workflowSteps = [
-  {
-    key: 'upload',
-    no: '01',
-    title: '上传图片',
-    description: '支持单张或多张 JPG / PNG。',
-    activeStates: ['idle', 'selecting', 'uploading'],
-  },
-  {
-    key: 'recognize',
-    no: '02',
-    title: '确认食材',
-    description: '检查识别结果，也可以手动新增。',
-    activeStates: ['recognized'],
-  },
-  {
-    key: 'recipe',
-    no: '03',
-    title: '生成菜谱',
-    description: '把确认食材交给菜谱模块。',
-    activeStates: ['confirmed'],
-  },
-]
-
-const showRecipeFlow = computed(
-  () => workflowState.value === 'confirmed' || recipeLoading.value || generatedRecipe.value || recipeError.value
-)
-const isViewingHistoricalVersion = computed(() =>
-  Number.isInteger(selectedRecipeVersion.value) &&
-  Number.isInteger(currentRecipeVersion.value) &&
-  selectedRecipeVersion.value !== currentRecipeVersion.value
-)
-const workflowStateText = computed(() => ({
-  idle: '等待上传',
-  selecting: '图片已选好',
-  uploading: '正在识别',
-  recognized: '请确认食材',
-  confirming: '正在保存',
-  confirmed: '可以生成菜谱啦～',
-  error: '请重试',
-}[workflowState.value] || '准备中'))
-
-function buildRecipePreferences() {
-  const avoidIngredients = avoidIngredientsText.value
-    .split(/[,，、\s]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-
-  return {
-    servings: Number(recipePreferences.value.servings) || 2,
-    taste: recipePreferences.value.taste || '家常',
-    max_time_minutes: recipePreferences.value.max_time_minutes || null,
-    avoid_ingredients: avoidIngredients,
-  }
-}
-
-function normalizeRecipeError(error) {
-  const status = error?.response?.status ?? 0
-  return {
-    status,
-    code: error?.response?.data?.code || (status === 0 ? 'NETWORK_ERROR' : undefined),
-    message:
-      error?.response?.data?.message ||
-      error?.response?.data?.detail ||
-      error?.message ||
-      '菜谱生成失败，请稍后重试。',
-  }
-}
-
-async function loadRecipeVersions(recipeId, fallbackVersion) {
-  const normalizedFallback = Number(fallbackVersion) || 1
-  try {
-    const response = await getRecipeVersions(recipeId)
-    const data = unwrapRecipeApiData(response) || {}
-    const versions = Array.isArray(data.versions) ? data.versions : []
-    recipeVersions.value = versions.length
-      ? versions
-      : [{ version: normalizedFallback, is_current: true }]
-    currentRecipeVersion.value = Number(data.current_version) || normalizedFallback
-  } catch {
-    recipeVersions.value = [{ version: normalizedFallback, is_current: true }]
-    currentRecipeVersion.value = normalizedFallback
-  }
-  selectedRecipeVersion.value = currentRecipeVersion.value
-}
-
-async function selectRecipeVersion(version) {
-  const recipeId = Number(generatedRecipe.value?.recipe_id)
-  const targetVersion = Number(version)
-  if (!Number.isInteger(recipeId) || recipeId <= 0 || !Number.isInteger(targetVersion)) return
-  if (targetVersion === selectedRecipeVersion.value) return
-
-  versionLoading.value = true
-  versionError.value = ''
-  try {
-    if (targetVersion === currentRecipeVersion.value) {
-      const response = await getRecipe(recipeId)
-      generatedRecipe.value = unwrapRecipeApiData(response)
-    } else {
-      const response = await getRecipeVersion(recipeId, targetVersion)
-      const snapshot = unwrapRecipeApiData(response)
-      generatedRecipe.value = {
-        ...snapshot.recipe,
-        recipe_id: recipeId,
-        recognition_id: generatedRecipe.value?.recognition_id,
-        version: snapshot.version,
-      }
-    }
-    selectedRecipeVersion.value = targetVersion
-  } catch (error) {
-    versionError.value = normalizeRecipeError(error).message
-  } finally {
-    versionLoading.value = false
-  }
-}
-
-async function generateRecipeFromRecognition(payload = {}) {
-  const nextRecognitionId = normalizeRecognitionId(payload.recognition_id ?? recognitionId.value)
-  if (!nextRecognitionId) {
-    recipeError.value = {
-      status: 422,
-      code: 'BAD_REQUEST',
-      message: '当前识别记录无效，请重新识别并确认食材。',
-    }
-    return
-  }
-
-  const preferences = buildRecipePreferences()
-  recipeLoading.value = true
-  recipeError.value = null
-  try {
-    const response = await createRecipe({
-      recognition_id: nextRecognitionId,
-      preferences,
-    })
-    const recipe = unwrapRecipeApiData(response)
-    generatedRecipe.value = recipe
-    await loadRecipeVersions(recipe.recipe_id, recipe.version)
-    emit('recipe-requested', {
-      recognition_id: nextRecognitionId,
-      preferences,
-      recipe_id: recipe?.recipe_id,
-      confirmed_ingredients: payload.confirmed_ingredients || confirmedIngredients.value,
-    })
-  } catch (error) {
-    recipeError.value = normalizeRecipeError(error)
-  } finally {
-    recipeLoading.value = false
-  }
-}
-
-async function refreshGeneratedRecipe(payload = {}) {
-  const recipeId = Number(payload.recipe_id ?? generatedRecipe.value?.recipe_id)
-  if (!Number.isInteger(recipeId) || recipeId <= 0) return
-
-  recipeLoading.value = true
-  recipeError.value = null
-  try {
-    const response = await getRecipe(recipeId)
-    generatedRecipe.value = unwrapRecipeApiData(response)
-    await loadRecipeVersions(recipeId, generatedRecipe.value?.version)
-  } catch (error) {
-    recipeError.value = normalizeRecipeError(error)
-  } finally {
-    recipeLoading.value = false
-  }
-}
-
-async function restoreRecipe(recipeId) {
-  if (!Number.isInteger(recipeId) || recipeId <= 0) return
-
-  recipeLoading.value = true
-  recipeError.value = null
-  try {
-    const recipeResponse = await getRecipe(recipeId)
-    const recipe = unwrapRecipeApiData(recipeResponse)
-    await restoreRecognitionForRecipe(recipe)
-    generatedRecipe.value = recipe
-    await loadRecipeVersions(recipeId, recipe.version)
-  } catch (error) {
-    recipeError.value = normalizeRecipeError(error)
+recipeWorkflow = useRecipeWorkflow({
+  workflowState,
+  recognitionId,
+  confirmedIngredients,
+  restoreRecognitionForRecipe,
+  onRecipeRequested: (payload) => emit('recipe-requested', payload),
+  onRestoreError: () => {
     workflowState.value = 'error'
-  } finally {
-    recipeLoading.value = false
-  }
-}
+  },
+})
+
+const {
+  generatedRecipe,
+  recipeLoading,
+  recipeError,
+  recipeVersions,
+  currentRecipeVersion,
+  selectedRecipeVersion,
+  versionLoading,
+  versionError,
+  avoidIngredientsText,
+  recipePreferences,
+  showRecipeFlow,
+  isViewingHistoricalVersion,
+  generateRecipeFromRecognition,
+  refreshGeneratedRecipe,
+  restoreRecipe,
+  selectRecipeVersion,
+} = recipeWorkflow
 
 watch(
   () => props.recipeId,
@@ -483,96 +216,6 @@ onMounted(() => {
       linear-gradient(90deg, rgba(125, 86, 36, 0.035) 1px, transparent 1px);
     background-size: 34px 34px;
   }
-}
-
-/* ---- 顶部步骤条 ---- */
-.food-recipe-page__toolbar {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px clamp(18px, 4vw, 72px);
-  border-bottom: 1px solid rgba(121, 82, 45, 0.08);
-}
-
-.food-recipe-page__steps {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  position: relative;
-}
-
-.food-recipe-page__step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 20px;
-  border-radius: 999px;
-  position: relative;
-  z-index: 1;
-  transition: background-color 0.25s ease;
-
-  &.active {
-    background: rgba(255, 241, 210, 0.8);
-
-    span {
-      background: #e96d3b;
-      color: #fffaf0;
-    }
-
-    strong {
-      color: #d76626;
-    }
-  }
-
-  span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: #f7db9a;
-    color: #7c4c20;
-    font-size: 11px;
-    font-weight: 900;
-    transition: background-color 0.25s ease, color 0.25s ease;
-  }
-
-  strong {
-    font-size: 14px;
-    font-weight: 700;
-    color: #8a6a50;
-    transition: color 0.25s ease;
-  }
-}
-
-.food-recipe-page__steps-line {
-  position: absolute;
-  top: 50%;
-  left: 40px;
-  right: 40px;
-  height: 2px;
-  background: rgba(121, 82, 45, 0.12);
-  transform: translateY(-50%);
-  z-index: 0;
-  border-radius: 1px;
-}
-
-.food-recipe-page__toolbar select {
-  height: 34px;
-  border: 1px solid rgba(121, 82, 45, 0.16);
-  border-radius: 999px;
-  padding: 0 12px;
-  color: #6f5038;
-  background: rgba(255, 255, 255, 0.78);
-  font-size: 13px;
-}
-
-.food-recipe-page__state-badge {
-  display: none;
 }
 
 /* ---- 主体双栏 ---- */
@@ -747,75 +390,6 @@ onMounted(() => {
   }
 }
 
-.food-recipe-page__recipe-flow {
-  display: grid;
-  gap: 18px;
-  margin-top: 6px;
-  border-top: 1px solid rgba(121, 82, 45, 0.12);
-  padding-top: 24px;
-}
-
-.food-recipe-page__version-note {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-left: 3px solid #d99a2b;
-  background: #fff6df;
-  color: #765b36;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.6;
-
-  button {
-    flex-shrink: 0;
-    border: 0;
-    background: transparent;
-    color: #b45b25;
-    cursor: pointer;
-    font: inherit;
-    font-weight: 800;
-    padding: 4px;
-  }
-}
-
-.food-recipe-page__version-error {
-  margin: 0;
-  color: #c44b37;
-  font-size: 13px;
-}
-
-.food-recipe-page__recipe-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: $spacing-md;
-
-  span {
-    color: #7b8c37;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
-  h2 {
-    margin: 4px 0 0;
-    color: #3a2a1d;
-    font-family: Georgia, "Songti SC", serif;
-    font-size: 24px;
-    font-weight: 500;
-  }
-
-  strong {
-    border-radius: 999px;
-    background: #eff8d6;
-    color: #62772b;
-    padding: 8px 14px;
-    font-size: 13px;
-  }
-}
-
 .food-recipe-page__mode-note {
   margin: 12px 0 0;
   border-left: 3px solid #d99a2b;
@@ -824,45 +398,6 @@ onMounted(() => {
   padding: 10px 12px;
   font-size: 13px;
   line-height: 1.6;
-}
-
-.food-recipe-page__preferences {
-  display: grid;
-  grid-template-columns: 90px minmax(120px, 0.8fr) 110px minmax(160px, 1fr);
-  gap: $spacing-md;
-  border: 1px solid rgba(121, 82, 45, 0.12);
-  border-radius: 22px;
-  background: rgba(255, 250, 241, 0.82);
-  padding: 14px;
-
-  label {
-    display: grid;
-    gap: $spacing-xs;
-    color: #8a6a50;
-    font-size: 12px;
-  }
-
-  input {
-    width: 100%;
-    height: 38px;
-    box-sizing: border-box;
-    border: 1px solid rgba(121, 82, 45, 0.16);
-    border-radius: 14px;
-    padding: 0 12px;
-    color: #3a2a1d;
-    background: #fffefa;
-
-    &:disabled {
-      color: #ad947d;
-      background: #f6efe4;
-    }
-
-    &:focus {
-      border-color: #89a94f;
-      box-shadow: 0 0 0 3px rgba(137, 169, 79, 0.14);
-      outline: none;
-    }
-  }
 }
 
 @keyframes food-spin {
@@ -882,9 +417,6 @@ onMounted(() => {
     min-height: calc(100vh - #{$header-height});
   }
 
-  .food-recipe-page__preferences {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 640px) {
@@ -892,18 +424,9 @@ onMounted(() => {
     padding: 0 14px 20px;
   }
 
-  .food-recipe-page__panel-header,
-  .food-recipe-page__recipe-header {
+  .food-recipe-page__panel-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .food-recipe-page__toolbar {
-    padding: 10px 14px;
-  }
-
-  .food-recipe-page__preferences {
-    grid-template-columns: 1fr;
   }
 }
 </style>
