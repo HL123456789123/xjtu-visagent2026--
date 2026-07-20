@@ -6,13 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.entity.db_models import User, TrainingTask, Model, SceneModel, Dataset, UserRole
+from app.entity.db_models import Model, User, UserRole
 from app.core.security import hash_password
 
 
 @pytest.fixture
 def test_user(db: Session, seed_rbac):
-    """创建测试用户（operator 角色）"""
+    """创建测试用户（user 角色）"""
     user = User(
         username="testuser",
         email="test@example.com",
@@ -21,8 +21,7 @@ def test_user(db: Session, seed_rbac):
     )
     db.add(user)
     db.flush()
-    # 分配 operator 角色
-    db.add(UserRole(user_id=user.id, role_id=seed_rbac["operator"].id))
+    db.add(UserRole(user_id=user.id, role_id=seed_rbac["user"].id))
     db.commit()
     db.refresh(user)
     return user

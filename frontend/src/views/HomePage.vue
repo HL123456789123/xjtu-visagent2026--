@@ -29,10 +29,12 @@ const actions = [
 ]
 
 const visibleActions = computed(() => {
-  const items = actions.filter((item) => !item.permission || userStore.hasPermission(item.permission))
-  if (['user:list', 'role:list', 'detection:task:view', 'training:task:view', 'dataset:view', 'model:view']
-    .some((permission) => userStore.hasPermission(permission))) {
-    items.push({ path: '/admin/workbench', title: '模型工作台', description: '进入检测、训练、数据与系统管理。' })
+  const items = [...actions]
+  if (userStore.isAdmin) {
+    items.push(
+      { path: '/admin/models', title: '模型管理', description: '校验、启用和回滚食材识别模型。' },
+      { path: '/admin/users', title: '用户管理', description: '维护账号状态和固定角色。' },
+    )
   }
   return items
 })

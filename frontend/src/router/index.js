@@ -26,7 +26,7 @@ const routes = [
   {
     path: '/',
     component: () => import('@/components/layout/MainLayout.vue'),
-    redirect: '/home',
+    redirect: '/food-recipes',
     meta: { requiresAuth: true },
     children: [
       {
@@ -58,30 +58,6 @@ const routes = [
         redirect: { name: 'History' },
       },
       {
-        path: 'detection',
-        name: 'Detection',
-        component: () => import('@/views/DetectionPage.vue'),
-        meta: { title: '目标检测', icon: 'Camera', permission: 'detection:task:view' },
-      },
-      {
-        path: 'training',
-        name: 'Training',
-        component: () => import('@/views/TrainingPage.vue'),
-        meta: { title: '模型训练', icon: 'Cpu', permission: 'training:task:view' },
-      },
-      {
-        path: 'datasets',
-        name: 'Datasets',
-        component: () => import('@/views/DatasetPage.vue'),
-        meta: { title: '数据集', icon: 'FolderOpened', permission: 'dataset:view' },
-      },
-      {
-        path: 'models',
-        name: 'Models',
-        component: () => import('@/views/ModelPage.vue'),
-        meta: { title: '模型管理', icon: 'Goods', permission: 'model:view' },
-      },
-      {
         path: 'history',
         name: 'History',
         component: () => import('@/views/HistoryPage.vue'),
@@ -99,28 +75,18 @@ const routes = [
         component: () => import('@/views/ProfilePage.vue'),
         meta: { title: '个人信息', icon: 'User' },
       },
-      // 管理员路由
+      // 固定三级角色下的管理员路由
       {
-        path: 'admin/workbench',
-        name: 'AdminWorkbench',
-        component: () => import('@/views/admin/AdminWorkbenchPage.vue'),
-        meta: {
-          title: '模型工作台',
-          icon: 'Setting',
-          anyPermissions: ['user:list', 'role:list', 'detection:task:view', 'training:task:view', 'dataset:view', 'model:view'],
-        },
+        path: 'admin/models',
+        name: 'FoodModelManage',
+        component: () => import('@/views/ModelPage.vue'),
+        meta: { title: '模型管理', icon: 'Cpu', adminOnly: true },
       },
       {
         path: 'admin/users',
         name: 'UserManage',
         component: () => import('@/views/admin/UserManagePage.vue'),
-        meta: { title: '用户管理', icon: 'UserFilled', permission: 'user:list' },
-      },
-      {
-        path: 'admin/roles',
-        name: 'RoleManage',
-        component: () => import('@/views/admin/RoleManagePage.vue'),
-        meta: { title: '角色管理', icon: 'Key', permission: 'role:list' },
+        meta: { title: '用户管理', icon: 'UserFilled', adminOnly: true },
       },
       // 404 页面（已登录用户在 MainLayout 主内容区内显示）
       {
@@ -196,6 +162,12 @@ router.beforeEach(async (to, from, next) => {
   } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
     // 已登录则跳转到首页
     next('/')
+  } else if (to.meta.adminOnly) {
+    if (!userStore.isAdmin) {
+      next({ name: 'NotFound' })
+    } else {
+      next()
+    }
   } else if (to.meta.anyPermissions) {
     const hasPerm = to.meta.anyPermissions.some((permission) => userStore.hasPermission(permission))
     if (!hasPerm) {

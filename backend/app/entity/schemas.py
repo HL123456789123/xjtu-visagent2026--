@@ -9,7 +9,7 @@ Pydantic 请求/响应模型
 """
 
 from datetime import datetime
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 from pydantic import BaseModel, Field, EmailStr
 
 
@@ -159,7 +159,6 @@ class UserAdminUpdate(BaseModel):
 
     email: Optional[str] = None
     phone: Optional[str] = None
-    is_active: Optional[bool] = None
 
 
 class UserRoleAssign(BaseModel):
@@ -172,6 +171,18 @@ class UserStatusUpdate(BaseModel):
     """启用/禁用用户"""
 
     is_active: bool = Field(..., description="是否启用")
+
+
+class UserProductRoleUpdate(BaseModel):
+    """Assign one of the two roles exposed by user management."""
+
+    role: Literal["user", "admin"]
+
+
+class AdminPasswordReset(BaseModel):
+    """Administrator-provided temporary password; never returned or logged."""
+
+    new_password: str = Field(..., min_length=8, max_length=72)
 
 
 # ══════════════════════════════════════════════════════════════

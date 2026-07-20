@@ -72,23 +72,24 @@ describe('AppHeader top navigation', () => {
   it('shows current navigation to a signed-in ordinary user without an admin entry', () => {
     const { wrapper } = mountHeader({
       id: 1,
-      username: 'viewer',
-      roles: ['viewer'],
+      username: 'cook',
+      roles: ['user'],
       permissions: [],
     })
 
     expect(wrapper.find('[data-testid="top-nav"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="nav-home"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="nav-home"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="nav-food"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="nav-history"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-dashboard"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-profile"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="nav-admin"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="nav-models"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="nav-users"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="nav-food"]').classes()).toContain('top-nav__item--active')
   })
 
-  it('shows the current administrator entry only when the current permissions allow it', async () => {
+  it('shows model and user management to a fixed administrator role', async () => {
     const { wrapper } = mountHeader({
       id: 2,
       username: 'manager',
@@ -96,13 +97,14 @@ describe('AppHeader top navigation', () => {
       permissions: ['user:list', 'role:list'],
     })
 
-    expect(wrapper.find('[data-testid="nav-admin"]').text()).toBe('模型工作台')
-    await wrapper.find('[data-testid="nav-admin"]').trigger('click')
-    expect(push).toHaveBeenCalledWith('/admin/workbench')
+    expect(wrapper.find('[data-testid="nav-models"]').text()).toBe('模型管理')
+    expect(wrapper.find('[data-testid="nav-users"]').text()).toBe('用户管理')
+    await wrapper.find('[data-testid="nav-models"]').trigger('click')
+    expect(push).toHaveBeenCalledWith('/admin/models')
   })
 
   it('keeps the compact navigation operable', async () => {
-    const { wrapper } = mountHeader({ id: 1, username: 'viewer', roles: ['viewer'], permissions: [] })
+    const { wrapper } = mountHeader({ id: 1, username: 'cook', roles: ['user'], permissions: [] })
 
     expect(wrapper.find('[data-testid="top-nav"]').classes()).not.toContain('top-nav--open')
     await wrapper.find('[data-testid="topnav-toggle"]').trigger('click')
@@ -110,7 +112,7 @@ describe('AppHeader top navigation', () => {
   })
 
   it('keeps logout available from the user menu', async () => {
-    const { store, wrapper } = mountHeader({ id: 1, username: 'viewer', roles: ['viewer'], permissions: [] })
+    const { store, wrapper } = mountHeader({ id: 1, username: 'cook', roles: ['user'], permissions: [] })
     store.logout = vi.fn().mockResolvedValue()
     ElMessageBox.confirm.mockResolvedValue()
 

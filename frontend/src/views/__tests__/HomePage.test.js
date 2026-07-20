@@ -20,7 +20,7 @@ function mountHome(user) {
 
 describe('HomePage', () => {
   it('offers only existing ordinary-user routes without fabricated statistics', () => {
-    const wrapper = mountHome({ id: 1, username: 'viewer', roles: ['viewer'], permissions: [] })
+    const wrapper = mountHome({ id: 1, username: 'viewer', roles: ['user'], permissions: [] })
 
     expect(wrapper.text()).toContain('开始食物识别')
     expect(wrapper.text()).toContain('历史记录')
@@ -29,10 +29,13 @@ describe('HomePage', () => {
     expect(wrapper.text()).not.toContain('管理后台')
   })
 
-  it('offers the model workbench only when an operation permission is present', () => {
+  it('offers the two real management entries only to a fixed administrator role', () => {
     const wrapper = mountHome({ id: 2, username: 'manager', roles: ['admin'], permissions: ['user:list'] })
 
-    expect(wrapper.text()).toContain('模型工作台')
-    expect(wrapper.html()).toContain('/admin/workbench')
+    expect(wrapper.text()).toContain('模型管理')
+    expect(wrapper.text()).toContain('用户管理')
+    expect(wrapper.html()).toContain('/admin/models')
+    expect(wrapper.html()).toContain('/admin/users')
+    expect(wrapper.html()).not.toContain('/admin/workbench')
   })
 })

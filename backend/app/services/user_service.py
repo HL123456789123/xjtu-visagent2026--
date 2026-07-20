@@ -7,7 +7,23 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.core.security import create_access_token, hash_password, verify_password
 from app.core.tz import now_cst
-from app.entity.db_models import User, UserRole, Role, RolePermission, Permission
+from app.entity.db_models import (
+    ChatSession,
+    Dataset,
+    DetectionScene,
+    DetectionTask,
+    FoodModelVersion,
+    FoodRecognitionTask,
+    Model,
+    OperationLog,
+    Permission,
+    Recipe,
+    Role,
+    RolePermission,
+    TrainingTask,
+    User,
+    UserRole,
+)
 
 
 class UserService:
@@ -49,10 +65,10 @@ class UserService:
         db.add(new_user)
         db.flush()
 
-        # 自动分配 viewer 角色（只读权限，需管理员手动提升角色）
-        viewer_role = db.query(Role).filter(Role.name == "viewer").first()
-        if viewer_role:
-            db.add(UserRole(user_id=new_user.id, role_id=viewer_role.id))
+        # 公开注册固定为普通用户，客户端提交的任何角色字段都不会被采用。
+        user_role = db.query(Role).filter(Role.name == "user").first()
+        if user_role:
+            db.add(UserRole(user_id=new_user.id, role_id=user_role.id))
 
         db.commit()
         db.refresh(new_user)
@@ -77,6 +93,9 @@ class UserService:
         user = db.query(User).filter((User.username == username) | (User.email == username)).first()
         if not user:
             raise HTTPException(status_code=401, detail="用户名或密码错误")
+
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="账号已停用")
 
         if not verify_password(password, user.hashed_password):
             raise HTTPException(status_code=401, detail="用户名或密码错误")
@@ -197,7 +216,13 @@ class UserService:
                 "phone": user.phone,
                 "avatar": user.avatar,
                 "is_active": user.is_active,
-                "roles": role_map.get(user.id, []),
+                "roles": [
+                    "super_admin"
+                    if "super_admin" in role_map.get(user.id, [])
+                    else "admin"
+                    if "admin" in role_map.get(user.id, [])
+                    else "user"
+                ],
                 "last_login_at": user.last_login_at,
                 "created_at": user.created_at,
             })
@@ -211,7 +236,7 @@ class UserService:
         }
 
     @staticmethod
-    def admin_update_user(db: Session, user_id: int, current_user_id: int, **kwargs) -> User:
+    def admin_update_user(db: Session, user_id: int, actor: User, **kwargs) -> User:
         """
         管理员修改用户信息
 
@@ -227,60 +252,61 @@ class UserService:
         Raises:
             HTTPException: 用户不存在或禁止操作
         """
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+        user = UserService._get_manageable_target(db, user_id, actor)
 
         # 更新允许的字段
-        allowed_fields = {"email", "phone", "is_active"}
+        allowed_fields = {"email", "phone"}
         for key, value in kwargs.items():
             if key in allowed_fields and value is not None:
                 setattr(user, key, value)
 
+        UserService._add_operation_log(
+            db,
+            actor,
+            action="update",
+            target=user,
+            description="更新用户基本信息",
+        )
+
         db.commit()
         db.refresh(user)
         return user
 
     @staticmethod
-    def assign_user_roles(db: Session, user_id: int, role_ids: list[int]) -> User:
-        """
-        分配用户角色（替换式）
+    def set_user_role(
+        db: Session,
+        user_id: int,
+        role_name: str,
+        actor: User,
+    ) -> User:
+        if role_name not in {"user", "admin"}:
+            raise HTTPException(status_code=400, detail="角色只允许 user 或 admin")
+        user = UserService._get_manageable_target(db, user_id, actor)
+        actor_role = UserService.get_product_role(db, actor)
+        target_role = UserService.get_product_role(db, user)
+        if target_role == "super_admin":
+            raise HTTPException(status_code=403, detail="超级管理员角色不可通过此接口修改")
+        if actor_role == "admin" and target_role != "user":
+            raise HTTPException(status_code=403, detail="管理员不能修改其他管理员")
 
-        Args:
-            db: 数据库会话
-            user_id: 用户 ID
-            role_ids: 角色 ID 列表
-
-        Returns:
-            更新后的用户对象
-
-        Raises:
-            HTTPException: 用户不存在或角色不存在
-        """
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
-
-        # 校验角色是否存在
-        roles = db.query(Role).filter(Role.id.in_(role_ids)).all()
-        if len(roles) != len(role_ids):
-            found_ids = {r.id for r in roles}
-            missing_ids = [rid for rid in role_ids if rid not in found_ids]
-            raise HTTPException(status_code=400, detail=f"角色不存在: {missing_ids}")
-
-        # 删除旧角色关联
+        role = db.query(Role).filter(Role.name == role_name).first()
+        if role is None:
+            raise HTTPException(status_code=500, detail="系统角色未初始化")
         db.query(UserRole).filter(UserRole.user_id == user_id).delete()
-
-        # 添加新角色关联
-        for role_id in role_ids:
-            db.add(UserRole(user_id=user_id, role_id=role_id))
-
+        db.add(UserRole(user_id=user_id, role_id=role.id))
+        UserService._add_operation_log(
+            db,
+            actor,
+            action="change_role",
+            target=user,
+            description=f"将用户角色从 {target_role} 调整为 {role_name}",
+        )
         db.commit()
         db.refresh(user)
         return user
 
     @staticmethod
-    def toggle_user_active(db: Session, user_id: int, is_active: bool, current_user_id: int) -> User:
+    def toggle_user_active(db: Session, user_id: int, is_active: bool, actor: User) -> User:
         """
         启用/禁用用户
 
@@ -296,20 +322,25 @@ class UserService:
         Raises:
             HTTPException: 禁止操作自身
         """
-        if user_id == current_user_id:
+        if user_id == actor.id:
             raise HTTPException(status_code=400, detail="不能禁用自身账号")
 
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+        user = UserService._get_manageable_target(db, user_id, actor)
 
         user.is_active = is_active
+        UserService._add_operation_log(
+            db,
+            actor,
+            action="enable" if is_active else "disable",
+            target=user,
+            description="启用用户" if is_active else "禁用用户",
+        )
         db.commit()
         db.refresh(user)
         return user
 
     @staticmethod
-    def delete_user(db: Session, user_id: int, current_user_id: int) -> bool:
+    def delete_user(db: Session, user_id: int, actor: User) -> bool:
         """
         删除用户
 
@@ -324,20 +355,104 @@ class UserService:
         Raises:
             HTTPException: 禁止删除自身
         """
-        if user_id == current_user_id:
+        if user_id == actor.id:
             raise HTTPException(status_code=400, detail="不能删除自身账号")
 
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
+        user = UserService._get_manageable_target(db, user_id, actor)
+        business_references = (
+            (DetectionScene, DetectionScene.created_by == user_id),
+            (DetectionTask, DetectionTask.user_id == user_id),
+            (Model, Model.created_by == user_id),
+            (Dataset, Dataset.user_id == user_id),
+            (TrainingTask, TrainingTask.user_id == user_id),
+            (FoodRecognitionTask, FoodRecognitionTask.user_id == user_id),
+            (Recipe, Recipe.user_id == user_id),
+            (ChatSession, ChatSession.user_id == user_id),
+            (
+                FoodModelVersion,
+                (FoodModelVersion.uploaded_by == user_id)
+                | (FoodModelVersion.activated_by == user_id),
+            ),
+        )
+        has_business_data = any(
+            db.query(model.id).filter(condition).first() is not None
+            for model, condition in business_references
+        )
+        if has_business_data:
+            raise HTTPException(status_code=409, detail="该用户已有业务数据，请先禁用账号")
 
         # 删除用户角色关联
         db.query(UserRole).filter(UserRole.user_id == user_id).delete()
 
-        # 删除用户
+        UserService._add_operation_log(
+            db,
+            actor,
+            action="delete",
+            target=user,
+            description="删除无业务数据的用户",
+        )
         db.delete(user)
         db.commit()
         return True
+
+    @staticmethod
+    def reset_password(db: Session, user_id: int, new_password: str, actor: User) -> None:
+        user = UserService._get_manageable_target(db, user_id, actor)
+        user.hashed_password = hash_password(new_password)
+        UserService._add_operation_log(
+            db,
+            actor,
+            action="reset_password",
+            target=user,
+            description="管理员重置用户密码",
+        )
+        db.commit()
+
+    @staticmethod
+    def get_product_role(db: Session, user: User) -> str:
+        roles = set(UserService.get_user_roles(db, user))
+        if "super_admin" in roles:
+            return "super_admin"
+        if "admin" in roles:
+            return "admin"
+        return "user"
+
+    @staticmethod
+    def _get_manageable_target(db: Session, user_id: int, actor: User) -> User:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        actor_role = UserService.get_product_role(db, actor)
+        target_role = UserService.get_product_role(db, user)
+        if actor_role not in {"admin", "super_admin"}:
+            raise HTTPException(status_code=403, detail="仅管理员可管理用户")
+        if target_role == "super_admin":
+            raise HTTPException(status_code=403, detail="不能管理超级管理员账号")
+        if actor_role == "admin" and target_role == "admin":
+            raise HTTPException(status_code=403, detail="管理员不能管理其他管理员")
+        return user
+
+    @staticmethod
+    def _add_operation_log(
+        db: Session,
+        actor: User,
+        *,
+        action: str,
+        target: User,
+        description: str,
+    ) -> None:
+        db.add(
+            OperationLog(
+                user_id=actor.id,
+                username=actor.username,
+                module="auth",
+                action=action,
+                target_type="user",
+                target_id=str(target.id),
+                description=description,
+                status="success",
+            )
+        )
 
 
 # 全局单例

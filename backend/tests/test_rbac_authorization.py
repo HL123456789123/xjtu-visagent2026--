@@ -69,9 +69,9 @@ def _auth_headers(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_registration_ignores_submitted_admin_role_and_assigns_only_viewer(db, client):
+def test_registration_ignores_submitted_admin_role_and_assigns_only_user(db, client):
     """A public register request cannot self-assign the administrator role."""
-    _role_with_permissions(db, "viewer", set())
+    _role_with_permissions(db, "user", set())
     username = _unique("registered")
 
     response = client.post(
@@ -87,7 +87,7 @@ def test_registration_ignores_submitted_admin_role_and_assigns_only_viewer(db, c
 
     assert response.status_code == 201
     user = db.query(User).filter(User.username == username).one()
-    assert user_service.get_user_roles(db, user) == ["viewer"]
+    assert user_service.get_user_roles(db, user) == ["user"]
     assert "admin" not in user_service.get_user_roles(db, user)
 
 
@@ -99,8 +99,8 @@ def test_regular_user_receives_403_from_administrator_api(db, client):
     assert response.status_code == 403
 
 
-def test_user_with_user_list_permission_can_access_administrator_api(db, client):
-    admin = _user_with_role(db, _unique("admin"), {"user:list"})
+def test_fixed_admin_role_can_access_administrator_api(db, client):
+    admin = _user_with_role(db, "admin", set())
 
     response = client.get("/api/admin/users", headers=_auth_headers(admin))
 
@@ -122,8 +122,8 @@ def test_forged_role_claim_in_token_cannot_escalate_database_permissions(db, cli
     assert response.status_code == 403
 
 
-def test_revoking_database_permission_blocks_an_old_token_immediately(db, client):
-    admin = _user_with_role(db, _unique("admin"), {"user:list"})
+def test_removing_database_admin_role_blocks_an_old_token_immediately(db, client):
+    admin = _user_with_role(db, "admin", set())
     old_headers = _auth_headers(admin)
 
     assert client.get("/api/admin/users", headers=old_headers).status_code == 200
@@ -132,3 +132,11 @@ def test_revoking_database_permission_blocks_an_old_token_immediately(db, client
     db.commit()
 
     assert client.get("/api/admin/users", headers=old_headers).status_code == 403
+
+
+def test_custom_role_with_user_permission_cannot_impersonate_admin(db, client):
+    user = _user_with_role(db, _unique("custom"), {"user:list"})
+
+    response = client.get("/api/admin/users", headers=_auth_headers(user))
+
+    assert response.status_code == 403

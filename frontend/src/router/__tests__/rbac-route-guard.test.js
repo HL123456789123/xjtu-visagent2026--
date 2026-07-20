@@ -21,8 +21,8 @@ describe('RBAC route guard', () => {
   it('blocks an ordinary user who enters an administrator URL directly', async () => {
     setAuthenticatedUser({
       id: 1,
-      username: 'viewer',
-      roles: ['viewer'],
+      username: 'cook',
+      roles: ['user'],
       permissions: ['food:recognize'],
     })
 
@@ -44,7 +44,7 @@ describe('RBAC route guard', () => {
     expect(router.currentRoute.value.name).toBe('UserManage')
   })
 
-  it('allows an operator to reach the model workbench without granting user administration', async () => {
+  it('removes the legacy operator workbench route', async () => {
     setAuthenticatedUser({
       id: 3,
       username: 'operator',
@@ -54,14 +54,14 @@ describe('RBAC route guard', () => {
 
     await router.push('/admin/workbench')
 
-    expect(router.currentRoute.value.name).toBe('AdminWorkbench')
+    expect(router.currentRoute.value.name).toBe('NotFound')
   })
 
   it('redirects an unscoped chat route to history but keeps recipe-scoped chat available', async () => {
     setAuthenticatedUser({
       id: 4,
       username: 'cook',
-      roles: ['viewer'],
+      roles: ['user'],
       permissions: ['food:recognize'],
     })
 

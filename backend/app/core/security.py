@@ -123,6 +123,8 @@ async def get_current_user(
     user = user_service.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="账号已停用")
     # 预计算 super_admin 状态并缓存，避免后续重复查库
     from app.entity.db_models import UserRole, Role
     _has_super_admin_role = (
@@ -172,6 +174,19 @@ def is_super_admin(user, db: Session) -> bool:
     result = has_role is not None
     _super_admin_cache[user] = result
     return result
+
+
+def is_admin(user, db: Session) -> bool:
+    """Return whether the database grants one of the two product admin roles."""
+    from app.entity.db_models import Role, UserRole
+
+    return (
+        db.query(Role.id)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .filter(UserRole.user_id == user.id, Role.name.in_(("admin", "super_admin")))
+        .first()
+        is not None
+    )
 
 
 # ── RBAC 权限校验依赖 ──────────────────────────────────
@@ -242,4 +257,17 @@ class RequireSuperuser:
                 status_code=403,
                 detail="权限不足，需要管理员权限",
             )
+        return current_user
+
+
+class RequireAdmin:
+    """Require the fixed admin or super_admin product role."""
+
+    async def __call__(
+        self,
+        current_user=Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ):
+        if not is_admin(current_user, db):
+            raise HTTPException(status_code=403, detail="权限不足，需要管理员权限")
         return current_user
