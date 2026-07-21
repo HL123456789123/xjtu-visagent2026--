@@ -19,6 +19,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
   const confThreshold = ref(0.25)
   const recognizedIngredients = ref([])
   const confirmedIngredients = ref([])
+  const recognitionImages = ref([])
   const recognizedImageCount = ref(0)
   const recognitionId = ref('')
   const errorState = ref({ status: null, title: '', message: '' })
@@ -65,6 +66,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
   function resetRecognition() {
     recognizedIngredients.value = []
     confirmedIngredients.value = []
+    recognitionImages.value = []
     recognizedImageCount.value = 0
     recognitionId.value = ''
     errorState.value = { status: null, title: '', message: '' }
@@ -109,6 +111,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     }
     recognizedIngredients.value = mapCandidatesToEditableIngredients(payload.ingredients || [])
     confirmedIngredients.value = []
+    recognitionImages.value = Array.isArray(payload.images) ? payload.images : []
     recognizedImageCount.value = payload.images?.length || selectedFiles.value.length
     resetFoodRecipeFlow()
     workflowState.value = 'recognized'
@@ -176,6 +179,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
       restoredConfirmedIngredients.length ? restoredConfirmedIngredients : recognition.ingredients || []
     )
     confirmedIngredients.value = restoredConfirmedIngredients
+    recognitionImages.value = Array.isArray(recognition.images) ? recognition.images : []
     recognizedImageCount.value = recognition.images?.length || 0
     selectedFiles.value = []
     workflowState.value = 'confirmed'
@@ -187,6 +191,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     confThreshold,
     recognizedIngredients,
     confirmedIngredients,
+    recognitionImages,
     recognizedImageCount,
     recognitionId,
     errorState,

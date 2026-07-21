@@ -76,6 +76,7 @@
           <IngredientEditor
             v-model="recognizedIngredients"
             :disabled="workflowState === 'confirmed' || workflowState === 'confirming'"
+            :images="recognitionImages"
             @confirm="handleConfirm"
           />
 
@@ -180,6 +181,7 @@ const {
   confThreshold,
   recognizedIngredients,
   confirmedIngredients,
+  recognitionImages,
   recognitionId,
   errorState,
   recognitionMeta,
@@ -515,7 +517,7 @@ onMounted(() => {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .food-recipe-page__stage--recognize {
     grid-template-columns: 1fr;
     overflow-y: auto;

@@ -55,7 +55,16 @@
           />
         </label>
         <div class="ingredient-editor__meta">
-          <span v-if="ingredient.image_index !== null" class="ingredient-editor__image-index">
+          <button
+            v-if="canPreviewIngredient(ingredient)"
+            class="ingredient-editor__image-index ingredient-editor__image-link"
+            type="button"
+            data-testid="ingredient-image-link"
+            @click="openPreview(ingredient)"
+          >
+            图 {{ ingredient.image_index + 1 }}
+          </button>
+          <span v-else-if="ingredient.image_index !== null" class="ingredient-editor__image-index">
             图 {{ ingredient.image_index + 1 }}
           </span>
           <span class="ingredient-editor__confidence">
@@ -96,11 +105,42 @@
         确认食材，准备生成菜谱
       </button>
     </footer>
+
+    <Teleport to="body">
+      <div
+        v-if="previewIngredient && previewImage"
+        class="ingredient-preview"
+        data-testid="ingredient-preview"
+        @click.self="closePreview"
+      >
+        <section class="ingredient-preview__dialog" role="dialog" aria-modal="true">
+          <header class="ingredient-preview__header">
+            <div>
+              <strong>{{ previewIngredient.name }}</strong>
+              <span>图 {{ previewIngredient.image_index + 1 }}</span>
+            </div>
+            <button type="button" title="关闭" data-testid="ingredient-preview-close" @click="closePreview">
+              <el-icon><Close /></el-icon>
+            </button>
+          </header>
+
+          <div class="ingredient-preview__canvas">
+            <div class="ingredient-preview__figure">
+              <img :src="previewImage.image_url" :alt="`图 ${previewIngredient.image_index + 1}`" @load="handlePreviewImageLoad" />
+              <div v-if="previewBoxStyle" class="ingredient-preview__box" :style="previewBoxStyle">
+                <span>{{ previewIngredient.name }} · {{ formatConfidence(previewIngredient.confidence) }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Close } from '@element-plus/icons-vue'
 import {
   buildConfirmedIngredients,
   mapCandidatesToEditableIngredients,
@@ -116,12 +156,42 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  images: {
+    type: Array,
+    default: () => [],
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'validation-error'])
 
 const ingredients = ref(mapCandidatesToEditableIngredients(props.modelValue))
 const validationErrors = ref([])
+const previewIngredient = ref(null)
+const previewNaturalSize = ref({ width: 0, height: 0 })
+
+const previewImage = computed(() => {
+  if (!previewIngredient.value) return null
+  return props.images.find((image) => image.image_index === previewIngredient.value.image_index) || null
+})
+
+const previewBoxStyle = computed(() => {
+  const bbox = previewIngredient.value?.bbox
+  const { width, height } = previewNaturalSize.value
+  if (!bbox || !width || !height) return null
+
+  const x1 = Math.max(0, Math.min(width, Number(bbox.x1)))
+  const y1 = Math.max(0, Math.min(height, Number(bbox.y1)))
+  const x2 = Math.max(x1, Math.min(width, Number(bbox.x2)))
+  const y2 = Math.max(y1, Math.min(height, Number(bbox.y2)))
+  if (![x1, y1, x2, y2].every(Number.isFinite) || x2 <= x1 || y2 <= y1) return null
+
+  return {
+    left: `${(x1 / width) * 100}%`,
+    top: `${(y1 / height) * 100}%`,
+    width: `${((x2 - x1) / width) * 100}%`,
+    height: `${((y2 - y1) / height) * 100}%`,
+  }
+})
 
 function emitUpdate() {
   emit('update:modelValue', ingredients.value.map((ingredient) => ({ ...ingredient })))
@@ -164,6 +234,36 @@ function formatSource(source) {
   return source === 'manual' ? '手动新增' : '模型识别'
 }
 
+function canPreviewIngredient(ingredient) {
+  return (
+    ingredient.source === 'model' &&
+    Number.isInteger(ingredient.image_index) &&
+    Boolean(ingredient.bbox) &&
+    props.images.some((image) => image.image_index === ingredient.image_index && image.image_url)
+  )
+}
+
+function openPreview(ingredient) {
+  previewNaturalSize.value = { width: 0, height: 0 }
+  previewIngredient.value = ingredient
+}
+
+function closePreview() {
+  previewIngredient.value = null
+  previewNaturalSize.value = { width: 0, height: 0 }
+}
+
+function handlePreviewImageLoad(event) {
+  previewNaturalSize.value = {
+    width: event.target.naturalWidth,
+    height: event.target.naturalHeight,
+  }
+}
+
+function handlePreviewKeydown(event) {
+  if (event.key === 'Escape' && previewIngredient.value) closePreview()
+}
+
 function validate() {
   const result = validateConfirmedIngredients(ingredients.value)
   validationErrors.value = result.errors
@@ -187,6 +287,9 @@ watch(
   },
   { deep: true }
 )
+
+onMounted(() => window.addEventListener('keydown', handlePreviewKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', handlePreviewKeydown))
 
 defineExpose({
   addIngredient,
@@ -267,9 +370,9 @@ defineExpose({
 
 .ingredient-editor__row {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) 90px 90px 150px 64px;
+  grid-template-columns: minmax(180px, 1fr) 84px 84px max-content 64px;
   align-items: end;
-  gap: $spacing-md;
+  gap: 12px;
   padding: 14px;
   border: 1px solid rgba(121, 82, 45, 0.11);
   border-radius: 6px;
@@ -304,8 +407,10 @@ defineExpose({
 .ingredient-editor__meta {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: 8px;
   min-height: 36px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .ingredient-editor__image-index,
@@ -314,6 +419,8 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   height: 24px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
   border-radius: 999px;
   padding: 0 $spacing-sm;
   font-size: 12px;
@@ -322,6 +429,14 @@ defineExpose({
 .ingredient-editor__image-index {
   background: #eff8ff;
   color: #175cd3;
+}
+
+.ingredient-editor__image-link {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .ingredient-editor__confidence {
@@ -361,6 +476,113 @@ defineExpose({
   justify-content: flex-end;
 }
 
+.ingredient-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: grid;
+  place-items: center;
+  background: rgba(48, 37, 28, 0.42);
+  padding: 24px;
+}
+
+.ingredient-preview__dialog {
+  width: min(50vw, 720px);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid rgba(121, 82, 45, 0.16);
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 24px 70px rgba(60, 39, 24, 0.24);
+}
+
+.ingredient-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(121, 82, 45, 0.12);
+  padding: 14px 16px;
+
+  div {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  strong {
+    color: #3a2a1d;
+    font-size: 17px;
+  }
+
+  span {
+    color: #806a55;
+    font-size: 13px;
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 50%;
+    background: #f6ede0;
+    color: #76573f;
+    cursor: pointer;
+    font-size: 18px;
+  }
+}
+
+.ingredient-preview__canvas {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  background: #f5f0e7;
+  padding: 16px;
+}
+
+.ingredient-preview__figure {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+
+  img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: 62vh;
+  }
+}
+
+.ingredient-preview__box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 3px solid #f06b38;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.78);
+
+  span {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    background: #f06b38;
+    color: #fff;
+    padding: 0 7px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 760px) {
   .ingredient-editor__header,
   .ingredient-editor__actions {
@@ -375,6 +597,14 @@ defineExpose({
 
   .ingredient-editor__meta {
     min-height: 24px;
+  }
+
+  .ingredient-preview {
+    padding: 16px;
+  }
+
+  .ingredient-preview__dialog {
+    width: calc(100vw - 32px);
   }
 }
 </style>

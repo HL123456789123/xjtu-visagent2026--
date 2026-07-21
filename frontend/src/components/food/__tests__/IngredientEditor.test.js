@@ -27,6 +27,11 @@ const candidates = [
   },
 ]
 
+const images = [
+  { image_index: 0, image_url: '/api/files/food/12/0' },
+  { image_index: 1, image_url: '/api/files/food/12/1' },
+]
+
 describe('ingredientEditorModel', () => {
   it('builds confirmed ingredients with trimmed names', () => {
     expect(
@@ -66,7 +71,7 @@ describe('ingredientEditorModel', () => {
 describe('IngredientEditor', () => {
   it('renders confidence and source from recognition candidates', () => {
     const wrapper = mount(IngredientEditor, {
-      props: { modelValue: candidates },
+      props: { modelValue: candidates, images },
     })
 
     expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(2)
@@ -74,6 +79,21 @@ describe('IngredientEditor', () => {
     expect(wrapper.text()).toContain('图 2')
     expect(wrapper.text()).toContain('93.0%')
     expect(wrapper.text()).toContain('模型识别')
+    expect(wrapper.findAll('[data-testid="ingredient-image-link"]')).toHaveLength(2)
+  })
+
+  it('opens the matching source image for a model candidate', async () => {
+    const wrapper = mount(IngredientEditor, {
+      props: { modelValue: candidates, images },
+      global: { stubs: { Teleport: true } },
+    })
+
+    await wrapper.find('[data-testid="ingredient-image-link"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="ingredient-preview"]').exists()).toBe(true)
+    expect(wrapper.find('.ingredient-preview__figure img').attributes('src')).toBe(images[0].image_url)
+    await wrapper.find('[data-testid="ingredient-preview-close"]').trigger('click')
+    expect(wrapper.find('[data-testid="ingredient-preview"]').exists()).toBe(false)
   })
 
   it('supports deleting and manually adding ingredients', async () => {
