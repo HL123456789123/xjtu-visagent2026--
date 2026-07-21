@@ -1,8 +1,11 @@
 <template>
   <header class="app-header">
-    <router-link class="header-brand" to="/home" aria-label="FridgeChef 首页">
-      <span class="brand-mark" aria-hidden="true">🍳</span>
-      <span class="brand-title">FridgeChef</span>
+    <router-link class="header-brand" to="/home" aria-label="VisAgent 拍食寻味首页">
+      <span class="brand-mark" aria-hidden="true"><el-icon><KnifeFork /></el-icon></span>
+      <span class="brand-copy">
+        <strong class="brand-title">VisAgent</strong>
+        <small>拍食寻味</small>
+      </span>
     </router-link>
 
     <button
@@ -57,7 +60,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Menu, User, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowDown, KnifeFork, Menu, User, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
@@ -146,15 +149,27 @@ async function handleCommand(command) {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 12px;
-  background: #fff3d8;
+  border-radius: 6px;
+  background: #31512f;
+  color: #fffaf0;
   box-shadow: inset 0 0 0 1px rgba(233, 109, 59, 0.14);
-  font-size: 19px;
+  font-size: 18px;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 1px;
+
+  small {
+    color: #9a684b;
+    font-size: 10px;
+    font-weight: 800;
+  }
 }
 
 .brand-title {
   color: #31512f;
-  font-size: 21px;
+  font-size: 19px;
   font-weight: 900;
   letter-spacing: 0;
 }
@@ -249,7 +264,7 @@ async function handleCommand(command) {
 }
 
 @media (max-width: 560px) {
-  .brand-title,
+  .brand-copy small,
   .username {
     display: none;
   }

@@ -2,19 +2,19 @@
   <div class="register-page">
     <section class="register-visual">
       <router-link class="register-brand" to="/login">
-        <span aria-hidden="true">🍳</span>
-        <strong>FridgeChef</strong>
+        <span aria-hidden="true"><el-icon><KnifeFork /></el-icon></span>
+        <strong>VisAgent · 拍食寻味</strong>
       </router-link>
       <h1>创建账号，保存你的每日美食灵感</h1>
       <p>把识别到的食材、生成过的菜谱和日常偏好沉淀成你的个人厨房助手。</p>
-      <img src="/login-hero.jpg" alt="新鲜蔬果食材" />
+      <img src="/food-carousel-tofu.jpg" alt="豆腐青菜菌菇家常菜" />
     </section>
 
     <section class="register-card">
       <div class="register-header">
         <span class="register-kicker">Join us</span>
         <h2>创建账号</h2>
-        <p>加入 FridgeChef，开始整理你的专属食材和菜谱。</p>
+        <p>加入拍食寻味，开始整理你的专属食材和菜谱。</p>
       </div>
 
       <el-form
@@ -98,7 +98,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock, Message } from '@element-plus/icons-vue'
+import { KnifeFork, User, Lock, Message } from '@element-plus/icons-vue'
 import { registerApi } from '@/api/auth'
 
 const router = useRouter()

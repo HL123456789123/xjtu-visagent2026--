@@ -1,14 +1,17 @@
 <template>
   <div class="main-layout">
     <AppHeader />
-    <main class="layout-content">
+    <main :class="['layout-content', { 'layout-content--workspace': route.name === 'FoodRecipe' }]">
       <router-view />
     </main>
   </div>
 </template>
 
 <script setup>
+import { useRoute } from 'vue-router'
 import AppHeader from './AppHeader.vue'
+
+const route = useRoute()
 </script>
 
 <style lang="scss" scoped>
@@ -17,9 +20,7 @@ import AppHeader from './AppHeader.vue'
   height: 100%;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(circle at 12% 10%, rgba(255, 213, 118, 0.34), transparent 28%),
-    linear-gradient(180deg, #fff8ea 0%, #fffdf7 46%, #f8efe3 100%);
+  background: #f3f5f0;
 }
 
 .layout-content {
@@ -27,6 +28,11 @@ import AppHeader from './AppHeader.vue'
   min-height: 0;
   overflow-y: auto;
   padding: $spacing-lg;
+}
+
+.layout-content--workspace {
+  overflow: hidden;
+  padding: 0;
 }
 
 @media (max-width: 720px) {

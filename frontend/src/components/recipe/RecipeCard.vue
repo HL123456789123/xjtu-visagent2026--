@@ -165,13 +165,9 @@ function emitVersionChange(version) {
 .recipe-card {
   display: grid;
   gap: 24px;
-  border: 1px solid rgba(121, 82, 45, 0.13);
-  border-radius: 30px;
-  background:
-    radial-gradient(circle at 100% 0, rgba(246, 190, 74, 0.22), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 250, 241, 0.94));
-  box-shadow: 0 26px 70px rgba(102, 68, 35, 0.14);
-  padding: clamp(20px, 3vw, 30px);
+  border: 0;
+  background: transparent;
+  padding: clamp(6px, 1vw, 12px);
   color: #3a2a1d;
 }
 
@@ -211,7 +207,7 @@ function emitVersionChange(version) {
   align-content: center;
   min-height: 220px;
   border: 1px dashed rgba(224, 82, 62, 0.22);
-  border-radius: 24px;
+  border-radius: 8px;
   background: #fff1e9;
   padding: $spacing-lg;
   text-align: center;
@@ -231,8 +227,8 @@ function emitVersionChange(version) {
 .recipe-card__retry {
   justify-self: center;
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  border-radius: 6px;
+  background: #e96d3b;
   color: #fffaf0;
   height: 38px;
   padding: 0 22px;
@@ -249,7 +245,7 @@ function emitVersionChange(version) {
   place-items: center;
   min-height: 220px;
   border: 1px dashed rgba(121, 82, 45, 0.22);
-  border-radius: 24px;
+  border-radius: 8px;
   background: #fffaf1;
   color: #8a6a50;
   text-align: center;

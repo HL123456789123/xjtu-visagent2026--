@@ -2,7 +2,7 @@
   <section class="recognition-summary" :class="`is-${status}`">
     <header class="recognition-summary__header">
       <div>
-        <h2>生成家常菜谱</h2>
+        <h2>开始生成菜谱</h2>
         <p>{{ summaryText }}</p>
       </div>
       <button
@@ -91,8 +91,8 @@ function emitRecipeRequest() {
 
 .recognition-summary__button {
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #89a94f, #e6a23c);
+  border-radius: 6px;
+  background: #6f8a45;
   color: #fffaf0;
   height: 42px;
   padding: 0 22px;

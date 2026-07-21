@@ -43,7 +43,7 @@ defineProps({
   display: grid;
   gap: 12px;
   border: 1px solid rgba(121, 82, 45, 0.11);
-  border-radius: 24px;
+  border-radius: 8px;
   background: rgba(255, 252, 245, 0.78);
   padding: 18px;
 }

@@ -7,6 +7,20 @@ import { foodRecognitionFixtures } from '@/fixtures/foodRecognition'
 import { recipeSuccessFixture } from '@/fixtures/recipe'
 import FoodRecipePage from '../FoodRecipePage.vue'
 
+const routerMocks = vi.hoisted(() => ({
+  query: {},
+  replace: vi.fn(),
+}))
+
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    useRoute: () => ({ query: routerMocks.query }),
+    useRouter: () => ({ replace: routerMocks.replace }),
+  }
+})
+
 function makeImageFile(name = 'meal.jpg') {
   return new File(['image'], name, { type: 'image/jpeg' })
 }
@@ -31,6 +45,7 @@ function makeFoodApiError(status, message) {
 describe('FoodRecipePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.keys(routerMocks.query).forEach((key) => delete routerMocks.query[key])
     vi.stubGlobal('URL', {
       createObjectURL: vi.fn((file) => `blob:${file.name}`),
       revokeObjectURL: vi.fn(),
@@ -91,7 +106,8 @@ describe('FoodRecipePage', () => {
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('可以生成菜谱啦～')
     expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(1)
     expect(wrapper.find('[data-testid="ingredient-name"]').element.value).toBe('egg')
-    expect(wrapper.text()).toContain('食材都确认好啦，可以生成菜谱啦～')
+    expect(wrapper.find('[data-testid="recipe-stage"]').isVisible()).toBe(true)
+    expect(wrapper.text()).not.toContain('开始生成菜谱')
     expect(wrapper.text()).toContain('当前为整图分类模式')
   })
 
@@ -243,6 +259,7 @@ describe('FoodRecipePage', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('可以生成菜谱啦～')
+    expect(wrapper.find('[data-testid="next-stage"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('食材都确认好啦，可以生成菜谱啦～')
     expect(wrapper.text()).not.toContain('recognition_id')
     expect(wrapper.text()).not.toContain('model_version')
@@ -253,6 +270,10 @@ describe('FoodRecipePage', () => {
         { name: '鸡蛋', class_name: 'egg', quantity: 1, unit: '个', source: 'model' },
       ],
     })
+
+    await wrapper.find('[data-testid="next-stage"]').trigger('click')
+    expect(wrapper.find('[data-testid="recipe-stage"]').isVisible()).toBe(true)
+    expect(wrapper.find('[data-testid="recognition-stage"]').isVisible()).toBe(false)
 
     await wrapper.find('[data-testid="recipe-generate"]').trigger('click')
     await flushPromises()
@@ -272,6 +293,9 @@ describe('FoodRecipePage', () => {
       ],
     })
     expect(wrapper.find('[data-testid="recipe-card"]').text()).toContain('番茄炒蛋')
+    expect(routerMocks.replace).toHaveBeenLastCalledWith({
+      query: { step: 'recipe', recipe_id: '101' },
+    })
   })
 
   it('keeps the empty-recognition state visible and allows manual ingredient input', async () => {

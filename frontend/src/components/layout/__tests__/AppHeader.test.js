@@ -78,6 +78,8 @@ describe('AppHeader top navigation', () => {
     })
 
     expect(wrapper.find('[data-testid="top-nav"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('VisAgent')
+    expect(wrapper.text()).toContain('拍食寻味')
     expect(wrapper.find('[data-testid="nav-home"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-food"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="nav-chat"]').exists()).toBe(false)

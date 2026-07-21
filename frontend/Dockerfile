@@ -1,4 +1,4 @@
-# Build the FridgeChef frontend with Bun and serve only the generated assets.
+# Build the VisAgent frontend with Bun and serve only the generated assets.
 FROM oven/bun:1.3.14-alpine AS builder
 
 WORKDIR /app

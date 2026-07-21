@@ -40,7 +40,7 @@ const routes = [
         name: 'FoodRecipe',
         component: () => import('@/views/FoodRecipePage.vue'),
         props: (route) => ({ recipeId: Number(route.query.recipe_id) || null }),
-        meta: { title: '食物识别与菜谱', icon: 'Goods' },
+        meta: { title: '食材与菜谱', icon: 'Goods' },
       },
       {
         path: 'chat',
@@ -120,8 +120,8 @@ function setVerified(val) {
 router.beforeEach(async (to, from, next) => {
   // 设置页面标题
   document.title = to.meta.title
-    ? `${to.meta.title} - visagent`
-    : 'visagent'
+    ? `${to.meta.title} - 拍食寻味`
+    : '拍食寻味'
 
   // 防御性检查：确保 Pinia 已激活（Vite 8 模块时序可能导致 install 阶段 Pinia 上下文丢失）
   if (!getActivePinia()) {

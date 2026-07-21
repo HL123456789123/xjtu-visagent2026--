@@ -1,7 +1,7 @@
 <template>
   <section class="food-recipe-page__recipe-flow" data-testid="recipe-flow">
     <header class="food-recipe-page__recipe-header">
-      <h2>菜谱生成结果</h2>
+      <h2>按你的口味生成</h2>
     </header>
 
     <div class="food-recipe-page__preferences" data-testid="recipe-preferences">
@@ -180,7 +180,7 @@ function updateTextPreference(key, event) {
   grid-template-columns: 90px minmax(120px, 0.8fr) 110px minmax(160px, 1fr);
   gap: $spacing-md;
   border: 1px solid rgba(121, 82, 45, 0.12);
-  border-radius: 22px;
+  border-radius: 8px;
   background: rgba(255, 250, 241, 0.82);
   padding: 14px;
 
@@ -196,7 +196,7 @@ function updateTextPreference(key, event) {
     height: 38px;
     box-sizing: border-box;
     border: 1px solid rgba(121, 82, 45, 0.16);
-    border-radius: 14px;
+    border-radius: 6px;
     padding: 0 12px;
     color: #3a2a1d;
     background: #fffefa;

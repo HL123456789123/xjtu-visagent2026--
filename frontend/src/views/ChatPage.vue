@@ -233,7 +233,7 @@ onBeforeUnmount(() => stopStream?.())
   min-height: 420px;
   padding: 22px;
   border: 1px solid rgba(121, 82, 45, 0.14);
-  border-radius: 24px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.9);
 }
 
@@ -254,7 +254,7 @@ onBeforeUnmount(() => stopStream?.())
   max-height: 420px;
   overflow-y: auto;
   padding: 14px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: #fffaf1;
 }
 
@@ -273,7 +273,7 @@ onBeforeUnmount(() => stopStream?.())
   max-width: 82%;
   margin: 10px 0;
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -308,14 +308,14 @@ onBeforeUnmount(() => stopStream?.())
   resize: vertical;
   padding: 12px;
   border: 1px solid rgba(121, 82, 45, 0.2);
-  border-radius: 14px;
+  border-radius: 6px;
 }
 
 .recipe-chat__composer button {
   align-self: end;
   padding: 12px 20px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 6px;
   background: #e8783d;
   color: white;
   font-weight: 700;

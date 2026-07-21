@@ -2,9 +2,8 @@
   <section class="ingredient-editor">
     <header class="ingredient-editor__header">
       <div>
-        <span class="ingredient-editor__kicker">Step 02</span>
-        <h2>确认今天的食材</h2>
-        <p>{{ ingredients.length }} 项待确认，可以直接修改名称或补充遗漏食材。</p>
+        <h2>识别结果与食材确认</h2>
+        <p>共 {{ ingredients.length }} 项，可以修改名称、数量，或补充遗漏食材。</p>
       </div>
       <button
         class="ingredient-editor__add"
@@ -229,19 +228,11 @@ defineExpose({
   }
 }
 
-.ingredient-editor__kicker {
-  color: #b56a26;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
 .ingredient-editor__add,
 .ingredient-editor__confirm,
 .ingredient-editor__delete {
   border: 1px solid rgba(121, 82, 45, 0.14);
-  border-radius: 999px;
+  border-radius: 6px;
   background: #fff8ea;
   color: #7a4a28;
   height: 38px;
@@ -264,7 +255,7 @@ defineExpose({
 .ingredient-editor__add,
 .ingredient-editor__confirm {
   border-color: transparent;
-  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  background: #e96d3b;
   color: #fffaf0;
   box-shadow: 0 12px 24px rgba(229, 104, 52, 0.22);
 }
@@ -281,9 +272,8 @@ defineExpose({
   gap: $spacing-md;
   padding: 14px;
   border: 1px solid rgba(121, 82, 45, 0.11);
-  border-radius: 20px;
+  border-radius: 6px;
   background: rgba(255, 252, 245, 0.82);
-  box-shadow: 0 12px 26px rgba(102, 68, 35, 0.06);
 
   label {
     display: grid;
@@ -297,7 +287,7 @@ defineExpose({
     height: 40px;
     box-sizing: border-box;
     border: 1px solid rgba(121, 82, 45, 0.16);
-    border-radius: 14px;
+    border-radius: 6px;
     padding: 0 12px;
     color: #3a2a1d;
     background: #fffefa;
@@ -353,7 +343,7 @@ defineExpose({
   place-items: center;
   min-height: 96px;
   border: 1px dashed rgba(121, 82, 45, 0.22);
-  border-radius: 20px;
+  border-radius: 6px;
   background: #fffaf1;
   color: #8a6a50;
 }
@@ -361,7 +351,7 @@ defineExpose({
 .ingredient-editor__errors {
   margin: 0;
   padding: $spacing-sm $spacing-md;
-  border-radius: 16px;
+  border-radius: 6px;
   background: #fff1e9;
   color: #c44b37;
   font-size: 13px;

@@ -1,13 +1,32 @@
 <template>
   <div class="login-page">
-    <section class="login-visual">
+    <section
+      class="login-visual"
+      @mouseenter="pauseCarousel"
+      @mouseleave="startCarousel"
+      @focusin="pauseCarousel"
+      @focusout="startCarousel"
+    >
       <router-link class="login-brand" to="/login">
-        <span aria-hidden="true">🍳</span>
-        <strong>FridgeChef</strong>
+        <span aria-hidden="true"><el-icon><KnifeFork /></el-icon></span>
+        <strong>VisAgent · 拍食寻味</strong>
       </router-link>
-      <h1>开始你的专属美食之旅</h1>
+      <h1>
+        <span>开始你的专属</span>
+        <span>美食之旅</span>
+      </h1>
       <p>识别食材、确认清单、生成家常食谱，把每天吃什么变得轻松一点。</p>
-      <img src="/login-hero.jpg" alt="新鲜食材" />
+      <div class="login-carousel" aria-label="菜品图片轮播">
+        <img
+          v-for="(slide, index) in slides"
+          :key="slide.src"
+          :class="['login-carousel__image', { 'is-active': index === activeSlide }]"
+          :src="slide.src"
+          :alt="index === activeSlide ? slide.alt : ''"
+          :aria-hidden="index !== activeSlide"
+          :loading="index === 0 ? 'eager' : 'lazy'"
+        />
+      </div>
     </section>
 
     <section class="login-card">
@@ -71,10 +90,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Lock } from '@element-plus/icons-vue'
+import { KnifeFork, User, Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -83,6 +102,33 @@ const userStore = useUserStore()
 
 const formRef = ref(null)
 const loading = ref(false)
+const activeSlide = ref(0)
+let carouselTimer = null
+
+const slides = [
+  { src: '/food-carousel-1.jpg', alt: '咖喱饭与新鲜配菜' },
+  { src: '/food-carousel-tomato-beef.jpg', alt: '番茄牛肉家常菜' },
+  { src: '/food-carousel-tofu.jpg', alt: '豆腐青菜菌菇家常菜' },
+]
+
+function prefersReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+}
+
+function pauseCarousel() {
+  if (carouselTimer) window.clearInterval(carouselTimer)
+  carouselTimer = null
+}
+
+function startCarousel() {
+  if (carouselTimer || prefersReducedMotion()) return
+  carouselTimer = window.setInterval(() => {
+    activeSlide.value = (activeSlide.value + 1) % slides.length
+  }, 4000)
+}
+
+onMounted(startCarousel)
+onBeforeUnmount(pauseCarousel)
 
 /** 登录表单 */
 const loginForm = reactive({
@@ -152,10 +198,15 @@ async function handleLogin() {
     margin: 34px 0 0;
     color: #2e2116;
     font-family: Georgia, "Songti SC", serif;
-    font-size: clamp(38px, 6vw, 70px);
+    font-size: 64px;
     font-weight: 500;
     line-height: 1.04;
-    letter-spacing: -0.055em;
+    letter-spacing: 0;
+
+    span {
+      display: block;
+      white-space: nowrap;
+    }
   }
 
   p {
@@ -166,13 +217,32 @@ async function handleLogin() {
     line-height: 1.85;
   }
 
-  img {
-    width: min(760px, 100%);
-    height: 300px;
-    margin-top: 30px;
-    border-radius: 34px;
-    object-fit: cover;
-    box-shadow: 0 24px 70px rgba(102, 68, 35, 0.18);
+}
+
+.login-carousel {
+  position: relative;
+  width: min(760px, 100%);
+  height: 300px;
+  margin-top: 30px;
+  overflow: hidden;
+  border-radius: 34px;
+  background: #f2e7d7;
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.18);
+}
+
+.login-carousel__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.025);
+  transition: opacity 0.65s ease, transform 5s ease;
+
+  &.is-active {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -280,6 +350,10 @@ async function handleLogin() {
   .login-card {
     max-width: 520px;
   }
+
+  .login-visual h1 {
+    font-size: 48px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -289,6 +363,21 @@ async function handleLogin() {
 
   .login-card {
     padding: 26px;
+  }
+
+  .login-visual h1 {
+    font-size: 36px;
+  }
+
+  .login-carousel {
+    height: 240px;
+    border-radius: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-carousel__image {
+    transition: none;
   }
 }
 </style>

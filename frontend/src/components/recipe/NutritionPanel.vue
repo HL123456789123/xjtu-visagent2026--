@@ -80,7 +80,7 @@ const basisLabel = computed(() => {
   display: grid;
   gap: 12px;
   border: 1px solid rgba(121, 82, 45, 0.11);
-  border-radius: 24px;
+  border-radius: 8px;
   background: rgba(255, 252, 245, 0.78);
   padding: 18px;
 }
@@ -112,7 +112,7 @@ const basisLabel = computed(() => {
   gap: 2px;
   padding: $spacing-md $spacing-sm;
   border: 1px solid rgba(121, 82, 45, 0.1);
-  border-radius: 18px;
+  border-radius: 8px;
   background: linear-gradient(180deg, #fff8ea, #fffdf8);
 }
 
@@ -145,7 +145,7 @@ const basisLabel = computed(() => {
   padding: $spacing-sm $spacing-md;
   border-left: 3px solid #e6a23c;
   background: #fff3d8;
-  border-radius: 14px;
+  border-radius: 6px;
   color: #856449;
   font-size: 12px;
   line-height: 1.5;
