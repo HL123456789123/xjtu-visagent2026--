@@ -138,7 +138,7 @@ function startCarousel() {
   if (carouselTimer || prefersReducedMotion()) return
   carouselTimer = window.setInterval(() => {
     activeSlide.value = (activeSlide.value + 1) % slides.length
-  }, 4000)
+  }, 2000)
 }
 
 onMounted(startCarousel)
