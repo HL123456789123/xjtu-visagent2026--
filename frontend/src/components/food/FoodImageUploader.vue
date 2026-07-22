@@ -31,7 +31,7 @@
       >
         <div
           v-for="(preview, index) in previewUrls"
-          :key="preview.file.name || preview.url"
+          :key="fileKey(preview.file)"
           class="food-uploader__preview"
         >
           <img :src="preview.url" :alt="preview.file.name" />
@@ -63,16 +63,27 @@
       <span class="food-uploader__name" data-testid="food-image-name">
         {{ selectedName || '未选择图片' }}
       </span>
-      <button
-        v-if="selectedFiles.length"
-        class="food-uploader__clear"
-        type="button"
-        :disabled="disabled"
-        data-testid="food-image-clear"
-        @click="clearSelection"
-      >
-        清空
-      </button>
+      <div v-if="selectedFiles.length" class="food-uploader__footer-actions">
+        <button
+          v-if="selectedFiles.length < maxFiles"
+          class="food-uploader__add-more"
+          type="button"
+          :disabled="disabled"
+          data-testid="food-image-add-more"
+          @click="openFileDialog"
+        >
+          + 继续添加
+        </button>
+        <button
+          class="food-uploader__clear"
+          type="button"
+          :disabled="disabled"
+          data-testid="food-image-clear"
+          @click="clearSelection"
+        >
+          清空
+        </button>
+      </div>
     </div>
 
     <p v-if="validationMessage" class="food-uploader__error" data-testid="food-image-error">
@@ -122,8 +133,10 @@ const dragging = ref(false)
 
 const selectedFiles = computed(() => (Array.isArray(props.modelValue) ? props.modelValue : []))
 const selectedName = computed(() => {
-  if (selectedFiles.value.length === 1) return selectedFiles.value[0].name
-  if (selectedFiles.value.length > 1) return `已选择 ${selectedFiles.value.length} 张图片`
+  const count = selectedFiles.value.length
+  const remaining = Math.max(0, props.maxFiles - count)
+  if (count === 1) return `${selectedFiles.value[0].name}，还可添加 ${remaining} 张`
+  if (count > 1) return `已选择 ${count} 张图片，还可添加 ${remaining} 张`
   return ''
 })
 const maxSizeBytes = computed(() => props.maxSizeMB * 1024 * 1024)
@@ -174,16 +187,11 @@ function createPreviewUrl(file) {
   }
 }
 
-function selectFiles(files) {
-  const nextFiles = Array.from(files || [])
-  const error = validateFiles(nextFiles)
-  if (error) {
-    emit('update:modelValue', [])
-    revokePreviews()
-    setValidationError(error)
-    return false
-  }
+function fileKey(file) {
+  return [file?.name, file?.size, file?.lastModified, file?.type].join(':')
+}
 
+function applySelection(nextFiles) {
   validationMessage.value = ''
   revokePreviews()
   previewUrls.value = nextFiles.map((file) => ({
@@ -199,19 +207,57 @@ function selectFiles(files) {
   return true
 }
 
+function selectFiles(files) {
+  const nextFiles = Array.from(files || [])
+  const error = validateFiles(nextFiles)
+  if (error) {
+    emit('update:modelValue', [])
+    revokePreviews()
+    setValidationError(error)
+    return false
+  }
+
+  return applySelection(nextFiles)
+}
+
+function appendFiles(files) {
+  const incomingFiles = Array.from(files || [])
+  if (!incomingFiles.length) return false
+
+  const selectedKeys = new Set(selectedFiles.value.map(fileKey))
+  const uniqueIncoming = incomingFiles.filter((file) => {
+    const key = fileKey(file)
+    if (selectedKeys.has(key)) return false
+    selectedKeys.add(key)
+    return true
+  })
+  if (!uniqueIncoming.length) {
+    setValidationError('这些图片已经选过啦。')
+    return false
+  }
+
+  const nextFiles = [...selectedFiles.value, ...uniqueIncoming]
+  const error = validateFiles(nextFiles)
+  if (error) {
+    setValidationError(error)
+    return false
+  }
+  return applySelection(nextFiles)
+}
+
 function selectFile(file) {
   return selectFiles(file ? [file] : [])
 }
 
 function handleNativeFile(event) {
-  selectFiles(event.target.files || [])
+  appendFiles(event.target.files || [])
   event.target.value = ''
 }
 
 function handleDrop(event) {
   dragging.value = false
   if (props.disabled) return
-  selectFiles(event.dataTransfer?.files || [])
+  appendFiles(event.dataTransfer?.files || [])
 }
 
 function openFileDialog() {
@@ -254,6 +300,7 @@ defineExpose({
   validateFiles,
   selectFile,
   selectFiles,
+  appendFiles,
   clearSelection,
   removeSelectedFile,
 })
@@ -422,6 +469,23 @@ defineExpose({
   height: 32px;
   padding: 0 $spacing-md;
   cursor: pointer;
+}
+
+.food-uploader__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.food-uploader__add-more {
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #c45b2d;
+  padding: 0 4px;
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .food-uploader__error {

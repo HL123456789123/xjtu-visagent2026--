@@ -6,7 +6,10 @@ import {
   normalizeRecognitionId,
   unwrapFoodApiData,
 } from '@/api/food'
-import { mapCandidatesToEditableIngredients } from '@/components/food/ingredientEditorModel'
+import {
+  mapCandidatesToEditableIngredients,
+  mergeConfirmedIngredientsWithCandidates,
+} from '@/components/food/ingredientEditorModel'
 
 /**
  * Owns the recognition and confirmation state used by the food-to-recipe flow.
@@ -22,6 +25,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
   const recognitionImages = ref([])
   const recognizedImageCount = ref(0)
   const recognitionId = ref('')
+  const confirmedEditSnapshot = ref([])
   const errorState = ref({ status: null, title: '', message: '' })
   const recognitionMeta = ref({ provider: '', modelVersion: '', task: 'detect', localization: 'object' })
 
@@ -69,6 +73,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     recognitionImages.value = []
     recognizedImageCount.value = 0
     recognitionId.value = ''
+    confirmedEditSnapshot.value = []
     errorState.value = { status: null, title: '', message: '' }
     recognitionMeta.value = { provider: '', modelVersion: '', task: 'detect', localization: 'object' }
     resetFoodRecipeFlow()
@@ -151,6 +156,7 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
 
       recognitionId.value = confirmedRecognitionId
       confirmedIngredients.value = confirmed
+      confirmedEditSnapshot.value = []
       workflowState.value = 'confirmed'
       resetFoodRecipeFlow()
       onConfirmed?.({
@@ -160,6 +166,34 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     } catch (error) {
       handleApiError(error)
     }
+  }
+
+  function cloneEditableIngredients(items) {
+    return items.map((ingredient) => ({
+      ...ingredient,
+      bbox: ingredient.bbox ? { ...ingredient.bbox } : null,
+      sourceDetections: Array.isArray(ingredient.sourceDetections)
+        ? ingredient.sourceDetections.map((detection) => ({
+            ...detection,
+            bbox: detection.bbox ? { ...detection.bbox } : null,
+          }))
+        : [],
+    }))
+  }
+
+  function beginEditingConfirmedIngredients() {
+    if (workflowState.value !== 'confirmed') return
+    confirmedEditSnapshot.value = cloneEditableIngredients(recognizedIngredients.value)
+    errorState.value = { status: null, title: '', message: '' }
+    workflowState.value = 'editing_confirmed'
+  }
+
+  function cancelEditingConfirmedIngredients() {
+    if (workflowState.value !== 'editing_confirmed') return
+    recognizedIngredients.value = cloneEditableIngredients(confirmedEditSnapshot.value)
+    confirmedEditSnapshot.value = []
+    errorState.value = { status: null, title: '', message: '' }
+    workflowState.value = 'confirmed'
   }
 
   async function restoreRecipe(recipe) {
@@ -175,13 +209,17 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
       localization: recognition.localization || 'object',
     }
     const restoredConfirmedIngredients = recognition.confirmed_ingredients || []
-    recognizedIngredients.value = mapCandidatesToEditableIngredients(
-      restoredConfirmedIngredients.length ? restoredConfirmedIngredients : recognition.ingredients || []
-    )
+    recognizedIngredients.value = restoredConfirmedIngredients.length
+      ? mergeConfirmedIngredientsWithCandidates(
+          recognition.ingredients || [],
+          restoredConfirmedIngredients,
+        )
+      : mapCandidatesToEditableIngredients(recognition.ingredients || [])
     confirmedIngredients.value = restoredConfirmedIngredients
     recognitionImages.value = Array.isArray(recognition.images) ? recognition.images : []
     recognizedImageCount.value = recognition.images?.length || 0
     selectedFiles.value = []
+    confirmedEditSnapshot.value = []
     workflowState.value = 'confirmed'
   }
 
@@ -200,6 +238,8 @@ export function useFoodRecognitionWorkflow({ onConfirmed, resetRecipeFlow }) {
     busyText,
     selectedImageNames,
     selectedImageText,
+    beginEditingConfirmedIngredients,
+    cancelEditingConfirmedIngredients,
     handleApiError,
     handleConfirm,
     handleFileSelected,

@@ -298,6 +298,78 @@ describe('FoodRecipePage', () => {
     })
   })
 
+  it('groups repeated detections into one confirmed ingredient', async () => {
+    const repeated = {
+      ...foodRecognitionFixtures.success,
+      ingredients: [
+        foodRecognitionFixtures.success.ingredients[0],
+        {
+          ...foodRecognitionFixtures.success.ingredients[0],
+          candidate_id: 'img-1-det-repeat',
+          image_index: 1,
+          confidence: 0.62,
+        },
+      ],
+    }
+    const confirm = vi.fn().mockImplementation(({ recognitionId, ingredients }) =>
+      Promise.resolve({
+        data: { recognition_id: recognitionId, confirmed_ingredients: ingredients },
+      })
+    )
+    setFoodApiClient({
+      create: vi.fn().mockResolvedValue({ data: repeated }),
+      confirm,
+    })
+    const wrapper = mount(FoodRecipePage)
+
+    await selectImages(wrapper, [makeImageFile('one.jpg'), makeImageFile('two.jpg')])
+    await wrapper.find('[data-testid="start-recognition"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-testid="ingredient-name"]')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="ingredient-image-link"]').text()).toBe('识别来源')
+    await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(confirm.mock.calls[0][0].ingredients).toHaveLength(1)
+    expect(confirm.mock.calls[0][0].ingredients[0].class_name).toBe('tomato')
+  })
+
+  it('can undo confirmation, cancel edits, and reconfirm updated ingredients', async () => {
+    const confirm = vi.fn().mockImplementation(({ recognitionId, ingredients }) =>
+      Promise.resolve({
+        data: { recognition_id: recognitionId, confirmed_ingredients: ingredients },
+      })
+    )
+    setFoodApiClient({
+      create: vi.fn().mockResolvedValue({ data: foodRecognitionFixtures.success }),
+      confirm,
+    })
+    const wrapper = mount(FoodRecipePage)
+
+    await selectImages(wrapper)
+    await wrapper.find('[data-testid="start-recognition"]').trigger('click')
+    await flushPromises()
+    await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('[data-testid="ingredient-edit-confirmed"]').trigger('click')
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('正在调整食材')
+    expect(wrapper.find('[data-testid="next-stage"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('[data-testid="ingredient-name"]').setValue('改名番茄')
+    await wrapper.find('[data-testid="ingredient-edit-cancel"]').trigger('click')
+    expect(wrapper.find('[data-testid="ingredient-name"]').element.value).toBe('番茄')
+
+    await wrapper.find('[data-testid="ingredient-edit-confirmed"]').trigger('click')
+    await wrapper.find('[data-testid="ingredient-quantity"]').setValue(2)
+    await wrapper.find('[data-testid="ingredient-confirm"]').trigger('click')
+    await flushPromises()
+
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(confirm.mock.calls[1][0].ingredients[0].quantity).toBe(2)
+    expect(wrapper.find('[data-testid="workflow-state"]').text()).toBe('可以生成菜谱啦～')
+  })
+
   it('keeps the empty-recognition state visible and allows manual ingredient input', async () => {
     setFoodApiClient({
       create: vi.fn().mockResolvedValue({ data: foodRecognitionFixtures.empty }),

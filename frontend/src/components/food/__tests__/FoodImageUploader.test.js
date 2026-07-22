@@ -120,6 +120,39 @@ describe('FoodImageUploader', () => {
     expect(wrapper.findAll('.food-uploader__preview img')).toHaveLength(2)
   })
 
+  it('appends images selected in separate rounds', async () => {
+    const wrapper = mount(FoodImageUploader)
+    const first = new File(['image'], 'meal-one.jpg', { type: 'image/jpeg' })
+    const second = new File(['image'], 'meal-two.png', { type: 'image/png' })
+
+    expect(wrapper.vm.appendFiles([first])).toBe(true)
+    await wrapper.setProps({ modelValue: [first] })
+    expect(wrapper.vm.appendFiles([second])).toBe(true)
+    await wrapper.setProps({ modelValue: [first, second] })
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)[0]).toEqual([first, second])
+    expect(wrapper.find('[data-testid="food-image-add-more"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="food-image-name"]').text()).toContain('还可添加 6 张')
+  })
+
+  it('keeps the current selection when a duplicate or ninth image is added', async () => {
+    const wrapper = mount(FoodImageUploader)
+    const files = Array.from({ length: 9 }, (_, index) =>
+      new File(['image'], `meal-${index + 1}.jpg`, { type: 'image/jpeg' })
+    )
+
+    wrapper.vm.selectFiles(files.slice(0, 8))
+    await wrapper.setProps({ modelValue: files.slice(0, 8) })
+
+    expect(wrapper.vm.appendFiles([files[0]])).toBe(false)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="food-image-error"]').text()).toContain('已经选过')
+    expect(wrapper.vm.appendFiles([files[8]])).toBe(false)
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)[0]).toEqual(files.slice(0, 8))
+    expect(wrapper.find('[data-testid="food-image-error"]').text()).toContain('最多上传 8 张')
+  })
+
   it('removes a single selected image from the preview list', async () => {
     const wrapper = mount(FoodImageUploader)
     const first = new File(['image'], 'meal-one.jpg', { type: 'image/jpeg' })

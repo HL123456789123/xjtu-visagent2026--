@@ -75,9 +75,14 @@
 
           <IngredientEditor
             v-model="recognizedIngredients"
-            :disabled="workflowState === 'confirmed' || workflowState === 'confirming'"
+            :disabled="workflowState === 'confirming'"
+            :confirmed="workflowState === 'confirmed'"
+            :editing="workflowState === 'editing_confirmed'"
+            :has-existing-recipe="Boolean(generatedRecipe)"
             :images="recognitionImages"
-            @confirm="handleConfirm"
+            @confirm="handleIngredientConfirm"
+            @edit-requested="handleBeginIngredientEdit"
+            @cancel-edit="cancelEditingConfirmedIngredients"
           />
 
           <p v-if="recognitionMeta.task === 'classify'" class="food-recipe-page__mode-note">
@@ -188,6 +193,8 @@ const {
   isBusy,
   busyText,
   selectedImageText,
+  beginEditingConfirmedIngredients,
+  cancelEditingConfirmedIngredients,
   handleConfirm,
   handleFileSelected,
   resetRecognition,
@@ -229,8 +236,9 @@ const {
   selectRecipeVersion,
 } = recipeWorkflow
 
-const canEnterRecipe = computed(
-  () => workflowState.value === 'confirmed' || Boolean(generatedRecipe.value),
+const canEnterRecipe = computed(() =>
+  workflowState.value !== 'editing_confirmed' &&
+  (workflowState.value === 'confirmed' || Boolean(generatedRecipe.value))
 )
 
 function syncStageQuery(stage, { recipeId = null, clearRecipe = false } = {}) {
@@ -267,6 +275,22 @@ function handleRecognitionCleared() {
   resetRecognition()
   activeStage.value = 'recognize'
   syncStageQuery('recognize', { clearRecipe: true })
+}
+
+function handleBeginIngredientEdit() {
+  beginEditingConfirmedIngredients()
+  activeStage.value = 'recognize'
+  syncStageQuery('recognize')
+}
+
+async function handleIngredientConfirm(ingredients) {
+  const wasEditing = workflowState.value === 'editing_confirmed'
+  const hadExistingRecipe = Boolean(generatedRecipe.value)
+  await handleConfirm(ingredients)
+  if (wasEditing && hadExistingRecipe && workflowState.value === 'confirmed') {
+    activeStage.value = 'recognize'
+    syncStageQuery('recognize', { clearRecipe: true })
+  }
 }
 
 watch(

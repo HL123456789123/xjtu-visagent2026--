@@ -3,13 +3,13 @@
     <header class="ingredient-editor__header">
       <div>
         <h2>识别结果与食材确认</h2>
-        <p>共 {{ ingredients.length }} 项，可以修改名称、数量，或补充遗漏食材。</p>
+        <p>共 {{ ingredients.length }} 种食材，可以修改名称、数量，或补充遗漏食材。</p>
       </div>
       <button
         class="ingredient-editor__add"
         type="button"
         data-testid="ingredient-add"
-        :disabled="disabled"
+        :disabled="readOnly"
         @click="addIngredient"
       >
         + 新增食材
@@ -27,7 +27,7 @@
           <input
             v-model="ingredient.name"
             type="text"
-            :disabled="disabled"
+            :disabled="readOnly"
             data-testid="ingredient-name"
             @input="syncIngredient(index)"
           />
@@ -39,7 +39,7 @@
             type="number"
             min="0.01"
             step="0.01"
-            :disabled="disabled"
+            :disabled="readOnly"
             data-testid="ingredient-quantity"
             @input="syncIngredient"
           />
@@ -49,7 +49,7 @@
           <input
             v-model="ingredient.unit"
             type="text"
-            :disabled="disabled"
+            :disabled="readOnly"
             data-testid="ingredient-unit"
             @input="syncIngredient"
           />
@@ -62,10 +62,10 @@
             data-testid="ingredient-image-link"
             @click="openPreview(ingredient)"
           >
-            图 {{ ingredient.image_index + 1 }}
+            识别来源
           </button>
-          <span v-else-if="ingredient.image_index !== null" class="ingredient-editor__image-index">
-            图 {{ ingredient.image_index + 1 }}
+          <span v-else-if="formatDetectionSummary(ingredient)" class="ingredient-editor__image-index">
+            识别来源
           </span>
           <span class="ingredient-editor__confidence">
             {{ formatConfidence(ingredient.confidence) }}
@@ -77,7 +77,7 @@
         <button
           class="ingredient-editor__delete"
           type="button"
-          :disabled="disabled"
+          :disabled="readOnly"
           data-testid="ingredient-delete"
           @click="removeIngredient(index)"
         >
@@ -95,14 +95,39 @@
     </ul>
 
     <footer class="ingredient-editor__actions">
+      <p v-if="editing && hasExistingRecipe" class="ingredient-editor__edit-note">
+        重新确认后可按新食材生成菜谱，当前菜谱仍保留在历史记录中。
+      </p>
+      <span v-else></span>
       <button
+        v-if="confirmed"
+        class="ingredient-editor__confirm"
+        type="button"
+        data-testid="ingredient-edit-confirmed"
+        :disabled="disabled"
+        @click="emit('edit-requested')"
+      >
+        修改已确认食材
+      </button>
+      <button
+        v-if="editing"
+        class="ingredient-editor__cancel"
+        type="button"
+        data-testid="ingredient-edit-cancel"
+        :disabled="disabled"
+        @click="emit('cancel-edit')"
+      >
+        取消修改
+      </button>
+      <button
+        v-if="!confirmed"
         class="ingredient-editor__confirm"
         type="button"
         data-testid="ingredient-confirm"
         :disabled="disabled"
         @click="confirmIngredients"
       >
-        确认食材，准备生成菜谱
+        {{ editing ? '重新确认食材' : '确认食材，准备生成菜谱' }}
       </button>
     </footer>
 
@@ -117,18 +142,41 @@
           <header class="ingredient-preview__header">
             <div>
               <strong>{{ previewIngredient.name }}</strong>
-              <span>图 {{ previewIngredient.image_index + 1 }}</span>
+              <span>图 {{ previewDetection.image_index + 1 }}</span>
             </div>
-            <button type="button" title="关闭" data-testid="ingredient-preview-close" @click="closePreview">
-              <el-icon><Close /></el-icon>
-            </button>
+            <div class="ingredient-preview__controls">
+              <span v-if="previewDetections.length > 1">
+                {{ previewDetectionIndex + 1 }} / {{ previewDetections.length }}
+              </span>
+              <button
+                v-if="previewDetections.length > 1"
+                type="button"
+                title="上一个位置"
+                data-testid="ingredient-preview-previous"
+                @click="movePreview(-1)"
+              >
+                <el-icon><ArrowLeft /></el-icon>
+              </button>
+              <button
+                v-if="previewDetections.length > 1"
+                type="button"
+                title="下一个位置"
+                data-testid="ingredient-preview-next"
+                @click="movePreview(1)"
+              >
+                <el-icon><ArrowRight /></el-icon>
+              </button>
+              <button type="button" title="关闭" data-testid="ingredient-preview-close" @click="closePreview">
+                <el-icon><Close /></el-icon>
+              </button>
+            </div>
           </header>
 
           <div class="ingredient-preview__canvas">
             <div class="ingredient-preview__figure">
-              <img :src="previewImage.image_url" :alt="`图 ${previewIngredient.image_index + 1}`" @load="handlePreviewImageLoad" />
+              <img :src="previewImage.image_url" :alt="`图 ${previewDetection.image_index + 1}`" @load="handlePreviewImageLoad" />
               <div v-if="previewBoxStyle" class="ingredient-preview__box" :style="previewBoxStyle">
-                <span>{{ previewIngredient.name }} · {{ formatConfidence(previewIngredient.confidence) }}</span>
+                <span>{{ previewIngredient.name }} · {{ formatConfidence(previewDetection.confidence) }}</span>
               </div>
             </div>
           </div>
@@ -140,7 +188,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Close } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Close } from '@element-plus/icons-vue'
 import {
   buildConfirmedIngredients,
   mapCandidatesToEditableIngredients,
@@ -160,22 +208,68 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  confirmed: {
+    type: Boolean,
+    default: false,
+  },
+  editing: {
+    type: Boolean,
+    default: false,
+  },
+  hasExistingRecipe: {
+    type: Boolean,
+    default: false,
+  },
 })
 
-const emit = defineEmits(['update:modelValue', 'confirm', 'validation-error'])
+const emit = defineEmits([
+  'update:modelValue',
+  'confirm',
+  'validation-error',
+  'edit-requested',
+  'cancel-edit',
+])
 
 const ingredients = ref(mapCandidatesToEditableIngredients(props.modelValue))
 const validationErrors = ref([])
 const previewIngredient = ref(null)
+const previewDetectionIndex = ref(0)
 const previewNaturalSize = ref({ width: 0, height: 0 })
+const readOnly = computed(() => props.disabled || props.confirmed)
+
+function getIngredientDetections(ingredient) {
+  if (Array.isArray(ingredient?.sourceDetections) && ingredient.sourceDetections.length) {
+    return ingredient.sourceDetections
+  }
+  if (Number.isInteger(ingredient?.image_index) && ingredient?.bbox) {
+    return [{
+      candidate_id: ingredient.candidate_id || null,
+      image_index: ingredient.image_index,
+      confidence: ingredient.confidence,
+      bbox: ingredient.bbox,
+    }]
+  }
+  return []
+}
+
+const previewDetections = computed(() => {
+  if (!previewIngredient.value) return []
+  return getIngredientDetections(previewIngredient.value).filter((detection) =>
+    Number.isInteger(detection.image_index) &&
+    detection.bbox &&
+    props.images.some((image) => image.image_index === detection.image_index && image.image_url)
+  )
+})
+
+const previewDetection = computed(() => previewDetections.value[previewDetectionIndex.value] || null)
 
 const previewImage = computed(() => {
-  if (!previewIngredient.value) return null
-  return props.images.find((image) => image.image_index === previewIngredient.value.image_index) || null
+  if (!previewDetection.value) return null
+  return props.images.find((image) => image.image_index === previewDetection.value.image_index) || null
 })
 
 const previewBoxStyle = computed(() => {
-  const bbox = previewIngredient.value?.bbox
+  const bbox = previewDetection.value?.bbox
   const { width, height } = previewNaturalSize.value
   if (!bbox || !width || !height) return null
 
@@ -214,6 +308,7 @@ function addIngredient() {
     unit: '个',
     source: 'manual',
     bbox: null,
+    sourceDetections: [],
   })
   validationErrors.value = []
   emitUpdate()
@@ -234,22 +329,49 @@ function formatSource(source) {
   return source === 'manual' ? '手动新增' : '模型识别'
 }
 
+function formatDetectionSummary(ingredient) {
+  const detections = getIngredientDetections(ingredient)
+  if (!detections.length) return ''
+  const imageNumbers = [...new Set(
+    detections
+      .map((detection) => detection.image_index)
+      .filter(Number.isInteger)
+      .map((imageIndex) => imageIndex + 1)
+  )]
+  if (!imageNumbers.length) return ''
+  const imageText = imageNumbers.length <= 2
+    ? `图 ${imageNumbers.join('、')}`
+    : `图 ${imageNumbers.slice(0, 2).join('、')} 等`
+  return detections.length > 1 ? `${imageText} · ${detections.length}处` : imageText
+}
+
 function canPreviewIngredient(ingredient) {
   return (
     ingredient.source === 'model' &&
-    Number.isInteger(ingredient.image_index) &&
-    Boolean(ingredient.bbox) &&
-    props.images.some((image) => image.image_index === ingredient.image_index && image.image_url)
+    getIngredientDetections(ingredient).some((detection) =>
+      Number.isInteger(detection.image_index) &&
+      detection.bbox &&
+      props.images.some((image) => image.image_index === detection.image_index && image.image_url)
+    )
   )
 }
 
 function openPreview(ingredient) {
   previewNaturalSize.value = { width: 0, height: 0 }
   previewIngredient.value = ingredient
+  previewDetectionIndex.value = 0
+}
+
+function movePreview(direction) {
+  const count = previewDetections.value.length
+  if (count <= 1) return
+  previewNaturalSize.value = { width: 0, height: 0 }
+  previewDetectionIndex.value = (previewDetectionIndex.value + direction + count) % count
 }
 
 function closePreview() {
   previewIngredient.value = null
+  previewDetectionIndex.value = 0
   previewNaturalSize.value = { width: 0, height: 0 }
 }
 
@@ -262,6 +384,8 @@ function handlePreviewImageLoad(event) {
 
 function handlePreviewKeydown(event) {
   if (event.key === 'Escape' && previewIngredient.value) closePreview()
+  if (event.key === 'ArrowLeft' && previewIngredient.value) movePreview(-1)
+  if (event.key === 'ArrowRight' && previewIngredient.value) movePreview(1)
 }
 
 function validate() {
@@ -370,7 +494,7 @@ defineExpose({
 
 .ingredient-editor__row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 84px 84px max-content 64px;
+  grid-template-columns: minmax(180px, 1fr) 84px 84px 236px 64px;
   align-items: end;
   gap: 12px;
   padding: 14px;
@@ -476,6 +600,24 @@ defineExpose({
   justify-content: flex-end;
 }
 
+.ingredient-editor__edit-note {
+  margin: 0 auto 0 0;
+  color: #856449;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ingredient-editor__cancel {
+  height: 38px;
+  border: 1px solid rgba(121, 82, 45, 0.2);
+  border-radius: 6px;
+  background: #fff;
+  color: #76573f;
+  padding: 0 16px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
 .ingredient-preview {
   position: fixed;
   inset: 0;
@@ -535,6 +677,11 @@ defineExpose({
     cursor: pointer;
     font-size: 18px;
   }
+}
+
+.ingredient-preview__controls {
+  align-items: center !important;
+  margin-left: auto;
 }
 
 .ingredient-preview__canvas {
@@ -597,6 +744,15 @@ defineExpose({
 
   .ingredient-editor__meta {
     min-height: 24px;
+  }
+
+  .ingredient-editor__actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .ingredient-editor__edit-note {
+    width: 100%;
   }
 
   .ingredient-preview {

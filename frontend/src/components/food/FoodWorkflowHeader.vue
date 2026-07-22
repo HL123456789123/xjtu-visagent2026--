@@ -53,6 +53,7 @@ const workflowStateText = computed(() => ({
   recognized: '请确认食材',
   confirming: '正在保存',
   confirmed: '可以生成菜谱啦～',
+  editing_confirmed: '正在调整食材',
   error: '请重试',
 }[props.workflowState] || '准备中'))
 </script>
