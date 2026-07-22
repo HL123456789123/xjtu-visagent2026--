@@ -1,10 +1,20 @@
 <template>
   <div class="register-page">
-    <div class="register-card">
+    <section class="register-visual">
+      <router-link class="register-brand" to="/login">
+        <span aria-hidden="true">🍳</span>
+        <strong>FridgeChef</strong>
+      </router-link>
+      <h1>创建账号，保存你的每日美食灵感</h1>
+      <p>把识别到的食材、生成过的菜谱和日常偏好沉淀成你的个人厨房助手。</p>
+      <img src="/login-hero.jpg" alt="新鲜蔬果食材" />
+    </section>
+
+    <section class="register-card">
       <div class="register-header">
-        <img src="/favicon.svg" alt="logo" class="register-logo" />
+        <span class="register-kicker">Join us</span>
         <h2>创建账号</h2>
-        <p>加入 visagent</p>
+        <p>加入 FridgeChef，开始整理你的专属食材和菜谱。</p>
       </div>
 
       <el-form
@@ -71,7 +81,7 @@
             :loading="loading"
             @click="handleRegister"
           >
-            注册
+            注册并去登录
           </el-button>
         </el-form-item>
       </el-form>
@@ -80,7 +90,7 @@
         <span>已有账号？</span>
         <router-link to="/login">立即登录</router-link>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -157,59 +167,165 @@ async function handleRegister() {
 <style lang="scss" scoped>
 .register-page {
   width: 100%;
-  height: 100vh;
-  display: flex;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 460px;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  gap: clamp(28px, 5vw, 72px);
+  padding: clamp(28px, 5vw, 70px);
+  box-sizing: border-box;
+  background:
+    radial-gradient(circle at 10% 12%, rgba(255, 213, 118, 0.42), transparent 28%),
+    radial-gradient(circle at 88% 8%, rgba(137, 169, 79, 0.18), transparent 24%),
+    linear-gradient(180deg, #fff8ea 0%, #fffdf7 48%, #f8efe3 100%);
+  color: #3a2a1d;
+  font-family: "Trebuchet MS", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 
-.register-card {
-  width: 420px;
-  padding: 40px;
-  background: #fff;
-  border-radius: $border-radius-lg;
-  box-shadow: $shadow-lg;
-}
+.register-visual {
+  min-width: 0;
 
-.register-header {
-  text-align: center;
-  margin-bottom: 32px;
-
-  .register-logo {
-    width: 48px;
-    height: 48px;
-    margin-bottom: 12px;
-  }
-
-  h2 {
-    font-size: 22px;
-    color: $text-primary;
-    margin-bottom: 8px;
+  h1 {
+    max-width: 620px;
+    margin: 34px 0 0;
+    color: #2e2116;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: clamp(38px, 6vw, 70px);
+    font-weight: 500;
+    line-height: 1.04;
+    letter-spacing: -0.055em;
   }
 
   p {
-    font-size: 13px;
-    color: $text-secondary;
+    max-width: 500px;
+    margin: 20px 0 0;
+    color: #76573f;
+    font-size: 16px;
+    line-height: 1.85;
   }
+
+  img {
+    width: min(760px, 100%);
+    height: 300px;
+    margin-top: 30px;
+    border-radius: 34px;
+    object-fit: cover;
+    box-shadow: 0 24px 70px rgba(102, 68, 35, 0.18);
+  }
+}
+
+.register-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #31512f;
+  text-decoration: none;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: #fff3d8;
+    font-size: 20px;
+  }
+
+  strong {
+    font-size: 22px;
+    font-weight: 900;
+  }
+}
+
+.register-card {
+  width: 100%;
+  padding: 40px;
+  box-sizing: border-box;
+  border: 1px solid rgba(121, 82, 45, 0.12);
+  border-radius: 32px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 24px 70px rgba(102, 68, 35, 0.14);
+  backdrop-filter: blur(18px);
+}
+
+.register-header {
+  text-align: left;
+  margin-bottom: 32px;
+
+  h2 {
+    margin: 6px 0 0;
+    color: #3a2a1d;
+    font-family: Georgia, "Songti SC", serif;
+    font-size: 34px;
+    font-weight: 500;
+  }
+
+  p {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: #856449;
+    line-height: 1.7;
+  }
+}
+
+.register-kicker {
+  color: #b56a26;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.register-card :deep(.el-input__wrapper) {
+  min-height: 46px;
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(121, 82, 45, 0.14) inset;
 }
 
 .register-btn {
   width: 100%;
+  height: 46px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f1a93b, #e96d3b);
+  font-weight: 900;
+  box-shadow: 0 14px 30px rgba(229, 104, 52, 0.24);
 }
 
 .register-footer {
   text-align: center;
   font-size: 13px;
-  color: $text-secondary;
+  color: #856449;
 
   a {
-    color: $primary-color;
+    color: #d76626;
     margin-left: 4px;
+    font-weight: 800;
 
     &:hover {
       text-decoration: underline;
     }
+  }
+}
+
+@media (max-width: 960px) {
+  .register-page {
+    grid-template-columns: 1fr;
+  }
+
+  .register-card {
+    max-width: 520px;
+  }
+}
+
+@media (max-width: 560px) {
+  .register-page {
+    padding: 20px;
+  }
+
+  .register-card {
+    padding: 26px;
   }
 }
 </style>

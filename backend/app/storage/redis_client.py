@@ -25,6 +25,9 @@ class RedisClient:
         try:
             self._client = redis.from_url(
                 settings.redis_url,
+                # The adapter only uses RESP2 commands, so do not require
+                # RESP3 and keep Redis 5/7/8 compatibility.
+                protocol=2,
                 decode_responses=True,  # 自动解码为字符串
                 socket_connect_timeout=5,
                 socket_timeout=5,

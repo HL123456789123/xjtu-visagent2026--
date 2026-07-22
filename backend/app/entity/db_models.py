@@ -50,6 +50,8 @@ class User(Base):
     user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
     detection_tasks = relationship("DetectionTask", back_populates="user")
     training_tasks = relationship("TrainingTask", back_populates="user")
+    food_recognition_tasks = relationship("FoodRecognitionTask", back_populates="user")
+    recipes = relationship("Recipe", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
     operation_logs = relationship("OperationLog", back_populates="user")
     models = relationship("Model", back_populates="creator")
@@ -485,6 +487,51 @@ class TrainingMetric(Base):
 # ══════════════════════════════════════════════════════════════
 
 
+class FoodRecognitionTask(Base):
+    """One V1.1 multi-image recognition and its confirmed ingredient snapshot."""
+
+    __tablename__ = "food_recognition_tasks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    image_object_names = Column(JSON, nullable=False, default=list)
+    status = Column(String(20), nullable=False, default="completed", index=True)
+    provider = Column(String(20), nullable=False)
+    model_version = Column(String(100), nullable=False)
+    raw_detections = Column(JSON, nullable=False, default=list)
+    confirmed_ingredients = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=now_cst, index=True)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=now_cst, onupdate=now_cst
+    )
+
+    user = relationship("User", back_populates="food_recognition_tasks")
+    recipes = relationship("Recipe", back_populates="recognition")
+
+
+class Recipe(Base):
+    """Complete V1 Recipe JSON linked to a confirmed recognition."""
+
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    recognition_id = Column(
+        Integer, ForeignKey("food_recognition_tasks.id"), nullable=False, index=True
+    )
+    version = Column(Integer, nullable=False, default=1)
+    recipe_data = Column(JSON, nullable=False)
+    generator = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=now_cst)
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=now_cst, onupdate=now_cst
+    )
+
+    user = relationship("User", back_populates="recipes")
+    recognition = relationship("FoodRecognitionTask", back_populates="recipes")
+    chat_sessions = relationship("ChatSession", back_populates="recipe")
+
+
 class ChatSession(Base):
     """对话会话表 — 每次对话创建一个会话"""
 
@@ -494,6 +541,7 @@ class ChatSession(Base):
     user_id = Column(
         Integer, ForeignKey("users.id"), nullable=False, index=True, comment="所属用户"
     )
+    recipe_id = Column(Integer, ForeignKey("recipes.id"), nullable=True, index=True)
     session_uuid = Column(
         String(100), unique=True, nullable=False, index=True, comment="会话唯一标识"
     )
@@ -506,6 +554,7 @@ class ChatSession(Base):
 
     # 关联
     user = relationship("User", back_populates="chat_sessions")
+    recipe = relationship("Recipe", back_populates="chat_sessions")
     messages = relationship(
         "ChatMessage",
         back_populates="session",

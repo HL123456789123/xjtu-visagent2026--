@@ -26,14 +26,28 @@ const routes = [
   {
     path: '/',
     component: () => import('@/components/layout/MainLayout.vue'),
-    redirect: '/chat',
+    redirect: '/food-recipes',
     meta: { requiresAuth: true },
     children: [
+      {
+        path: 'food-recipes',
+        name: 'FoodRecipe',
+        component: () => import('@/views/FoodRecipePage.vue'),
+        meta: { title: '食物识别与菜谱', icon: 'Goods' },
+      },
       {
         path: 'chat',
         name: 'Chat',
         component: () => import('@/views/ChatPage.vue'),
-        meta: { title: '智能对话', icon: 'ChatDotRound', permission: 'agent:chat' },
+        props: (route) => ({ recipeId: Number(route.query.recipe_id) || null }),
+        meta: { title: '菜谱智能对话', icon: 'ChatDotRound' },
+      },
+      {
+        path: 'recipe-chat/:recognitionId',
+        name: 'RecipeChat',
+        component: () => import('@/views/RecipeChatView.vue'),
+        props: (route) => ({ recognitionId: Number(route.params.recognitionId) }),
+        meta: { title: '菜谱与智能对话', icon: 'ChatDotRound' },
       },
       {
         path: 'detection',
